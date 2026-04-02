@@ -4,82 +4,73 @@
  * 保持与 PolyLingo 相同的 API 接口，便于迁移
  */
 
+// 检测是否在 Tauri 环境
+const checkIsTauri = () => {
+  return (
+    typeof window !== 'undefined' &&
+    (window.__TAURI__ !== undefined ||
+     window.__TAURI_INTERNALS__ !== undefined)
+  );
+};
+
 class EasyLingoDB {
   constructor() {
     this.db = null;
     this.isInitialized = false;
+    this.isMock = false;
   }
 
   async init() {
     if (this.isInitialized) return;
     
-    // 检测是否在 Tauri 环境
-    const isTauri = () => {
-      return window.__TAURI__ !== undefined || 
-             window.__TAURI_INTERNALS__ !== undefined ||
-             navigator.userAgent.includes('Tauri');
-    };
+    const isTauri = checkIsTauri();
     
-    if (!isTauri()) {
-      console.warn('Not in Tauri environment, using mock database (settings will not persist)');
+    if (!isTauri) {
+      console.warn('Not in Tauri environment, using mock database');
       this.db = this.createMockDB();
+      this.isMock = true;
       this.isInitialized = true;
       return;
     }
     
     // 在 Tauri 环境中，尝试加载 SQL 插件
-    let Database = null;
-    
     try {
-      // 尝试动态导入（ESM 方式）
-      const sqlModule = await import('@tauri-apps/plugin-sql');
-      Database = sqlModule.default || sqlModule.Database;
-      console.log('SQL plugin loaded via import');
-    } catch (e1) {
-      console.warn('Failed to import SQL plugin via ESM:', e1.message);
-      
-      try {
-        // 使用全局对象（Tauri v2 备用方式）
-        if (window.__TAURI__ && window.__TAURI__.sql) {
-          Database = window.__TAURI__.sql.default || window.__TAURI__.sql;
-          console.log('SQL plugin loaded via window.__TAURI__.sql');
-        }
-      } catch (e2) {
-        console.error('Failed to load SQL plugin from global:', e2.message);
+      // Tauri v2: SQL 插件通过全局对象暴露
+      if (window.__TAURI__ && window.__TAURI__.sql) {
+        const SQL = window.__TAURI__.sql;
+        // SQL 插件可能直接是对象，或有 default 属性
+        const Database = SQL.default || SQL;
+        this.db = await Database.load('sqlite:easylingo.db');
+        console.log('✅ SQLite database loaded successfully');
+      } else {
+        throw new Error('Tauri SQL plugin not found in window.__TAURI__');
       }
-    }
-    
-    // 如果没有成功加载 SQL 插件，使用 Mock DB
-    if (!Database) {
-      console.warn('Tauri SQL plugin not available, using mock database');
-      this.db = this.createMockDB();
-      this.isInitialized = true;
-      return;
-    }
-    
-    // 加载 SQLite 数据库
-    try {
-      this.db = await Database.load('sqlite:easylingo.db');
-      console.log('SQLite database loaded - settings will persist');
     } catch (e) {
-      console.error('Failed to load SQLite database:', e);
+      console.error('❌ Failed to load SQLite database:', e);
+      console.warn('Falling back to mock database');
       this.db = this.createMockDB();
+      this.isMock = true;
       this.isInitialized = true;
       return;
     }
     
     // 创建表结构
-    await this.createTables();
-    
-    // 插入默认数据
-    await this.seedData();
-    
-    this.isInitialized = true;
-    console.log('EasyLingo DB initialized successfully');
+    try {
+      await this.createTables();
+      await this.seedData();
+      this.isInitialized = true;
+      console.log('✅ Database initialized successfully');
+    } catch (e) {
+      console.error('❌ Failed to initialize database:', e);
+      this.db = this.createMockDB();
+      this.isMock = true;
+      this.isInitialized = true;
+    }
   }
   
   // Mock DB for browser testing
   createMockDB() {
+    console.log('Creating mock database...');
     const mockData = {
       modules: [],
       entries: [],
@@ -87,42 +78,61 @@ class EasyLingoDB {
       records: [],
       settings: {}
     };
+    
     return {
       execute: async (sql, params) => {
         // 处理 settings 表的 INSERT/REPLACE
-        if (sql.includes('settings') && params) {
+        if (sql.includes('settings') && params && params.length >= 2) {
           const [key, value] = params;
           mockData.settings[key] = value;
-          console.log('Mock DB: Setting saved', key, value);
+        }
+        // 处理 DELETE
+        if (sql.includes('DELETE')) {
+          // 简化处理，实际项目中可扩展
         }
       },
       select: async (sql, params) => {
         // 处理 COUNT 查询
         if (sql.includes('COUNT(*)')) {
           if (sql.includes('entries')) {
-            if (sql.includes('WHERE') && params) {
-              // 带条件的计数（简化实现）
+            if (sql.includes('WHERE') && params && params.length > 0) {
               return [{ count: mockData.entries.length }];
             }
             return [{ count: mockData.entries.length }];
           }
           if (sql.includes('modules')) return [{ count: mockData.modules.length }];
           if (sql.includes('materials')) return [{ count: mockData.materials.length }];
+          if (sql.includes('records')) return [{ count: mockData.records.length }];
           return [{ count: 0 }];
         }
         
         // 处理 settings 表的 SELECT
-        if (sql.includes('settings') && params) {
+        if (sql.includes('settings') && params && params.length > 0) {
           const key = params[0];
           const value = mockData.settings[key];
-          console.log('Mock DB: Setting loaded', key, value);
-          return value ? [{ value }] : [];
+          return value !== undefined ? [{ value }] : [];
         }
         
-        // Simple mock implementation
+        // 处理 ORDER BY
+        if (sql.includes('ORDER BY')) {
+          const isDesc = sql.includes('DESC');
+          if (sql.includes('records')) {
+            let results = [...mockData.records];
+            if (isDesc) results.reverse();
+            // 处理 LIMIT
+            const limitMatch = sql.match(/LIMIT\s+(\d+)/);
+            if (limitMatch) {
+              results = results.slice(0, parseInt(limitMatch[1]));
+            }
+            return results;
+          }
+        }
+        
+        // Simple table queries
         if (sql.includes('modules')) return mockData.modules;
         if (sql.includes('entries')) return mockData.entries;
         if (sql.includes('materials')) return mockData.materials;
+        if (sql.includes('records')) return mockData.records;
         return [];
       }
     };
@@ -208,6 +218,10 @@ class EasyLingoDB {
   }
 
   async seedData() {
+    // 检查是否已有默认模块
+    const existing = await this.db.select('SELECT id FROM modules WHERE id IN ("german", "japanese", "english")');
+    if (existing.length > 0) return;
+    
     // 插入默认模块
     const defaultModules = [
       { id: 'german', name: '德语', flag: '🇩🇪', isDefault: 1 },
@@ -216,13 +230,10 @@ class EasyLingoDB {
     ];
 
     for (const mod of defaultModules) {
-      const exists = await this.db.select('SELECT id FROM modules WHERE id = ?', [mod.id]);
-      if (exists.length === 0) {
-        await this.db.execute(
-          'INSERT INTO modules (id, name, flag, isDefault) VALUES (?, ?, ?, ?)',
-          [mod.id, mod.name, mod.flag, mod.isDefault]
-        );
-      }
+      await this.db.execute(
+        'INSERT OR IGNORE INTO modules (id, name, flag, isDefault) VALUES (?, ?, ?, ?)',
+        [mod.id, mod.name, mod.flag, mod.isDefault]
+      );
     }
   }
 
@@ -411,10 +422,7 @@ class EasyLingoDB {
     const data = JSON.parse(jsonData);
     
     // 清空现有数据
-    await this.db.execute('DELETE FROM records');
-    await this.db.execute('DELETE FROM entries');
-    await this.db.execute('DELETE FROM materials');
-    await this.db.execute('DELETE FROM modules');
+    await this.clearAllData();
     
     // 导入模块
     for (const mod of data.modules || []) {
@@ -489,55 +497,38 @@ const createTableProxy = (tableName) => {
       if (tableName === 'materials') return await db.deleteMaterial(id);
     },
     where: (field) => {
-      let currentValue = null;
-      
       return {
-        equals: (value) => {
-          currentValue = value;
-          return {
-            toArray: async () => {
-              await db.init();
-              if (tableName === 'entries' && field === 'moduleId') {
-                return await db.getEntries(value);
-              }
-              if (tableName === 'materials' && field === 'moduleId') {
-                return await db.getMaterials(value);
-              }
-              return await db.db.select(`SELECT * FROM ${tableName} WHERE ${field} = ?`, [value]);
-            },
-            count: async () => {
-              await db.init();
-              if (tableName === 'entries' && field === 'moduleId') {
-                return await db.countEntries(value);
-              }
-              const result = await db.db.select(`SELECT COUNT(*) as count FROM ${tableName} WHERE ${field} = ?`, [value]);
-              return result[0].count;
-            },
-            delete: async () => {
-              await db.init();
-              await db.db.execute(`DELETE FROM ${tableName} WHERE ${field} = ?`, [value]);
-            },
-            and: (filterFn) => ({
-              toArray: async () => {
-                await db.init();
-                const all = await db.db.select(`SELECT * FROM ${tableName} WHERE ${field} = ?`, [value]);
-                return all.filter(filterFn);
-              }
-            })
-          };
-        },
+        equals: (value) => ({
+          toArray: async () => {
+            await db.init();
+            if (tableName === 'entries' && field === 'moduleId') {
+              return await db.getEntries(value);
+            }
+            if (tableName === 'materials' && field === 'moduleId') {
+              return await db.getMaterials(value);
+            }
+            return await db.db.select(`SELECT * FROM ${tableName} WHERE ${field} = ?`, [value]);
+          },
+          count: async () => {
+            await db.init();
+            if (tableName === 'entries' && field === 'moduleId') {
+              return await db.countEntries(value);
+            }
+            const result = await db.db.select(`SELECT COUNT(*) as count FROM ${tableName} WHERE ${field} = ?`, [value]);
+            return result[0].count;
+          },
+          delete: async () => {
+            await db.init();
+            await db.db.execute(`DELETE FROM ${tableName} WHERE ${field} = ?`, [value]);
+          }
+        }),
         and: (filterFn) => ({
           toArray: async () => {
             await db.init();
             const all = await db.db.select(`SELECT * FROM ${tableName}`);
             return all.filter(filterFn);
           }
-        }),
-        toArray: async () => {
-          // 支持 where(field).toArray() 不带 equals
-          await db.init();
-          return await db.db.select(`SELECT * FROM ${tableName} WHERE ${field} IS NOT NULL`);
-        }
+        })
       };
     },
     filter: (fn) => ({
@@ -549,22 +540,16 @@ const createTableProxy = (tableName) => {
     }),
     orderBy: (field) => ({
       reverse: () => ({
+        toArray: async () => {
+          await db.init();
+          return await db.db.select(`SELECT * FROM ${tableName} ORDER BY ${field} DESC`);
+        },
         limit: (n) => ({
           toArray: async () => {
             await db.init();
             return await db.db.select(`SELECT * FROM ${tableName} ORDER BY ${field} DESC LIMIT ?`, [n]);
           }
-        }),
-        toArray: async () => {
-          await db.init();
-          return await db.db.select(`SELECT * FROM ${tableName} ORDER BY ${field} DESC`);
-        }
-      }),
-      limit: (n) => ({
-        toArray: async () => {
-          await db.init();
-          return await db.db.select(`SELECT * FROM ${tableName} ORDER BY ${field} ASC LIMIT ?`, [n]);
-        }
+        })
       }),
       toArray: async () => {
         await db.init();
