@@ -13,32 +13,56 @@ class EasyLingoDB {
   async init() {
     if (this.isInitialized) return;
     
-    // 检查是否在 Tauri 环境
-    if (typeof window === 'undefined' || !window.__TAURI__) {
-      console.warn('Not in Tauri environment, using mock database');
+    // 检测是否在 Tauri 环境
+    const isTauri = () => {
+      return window.__TAURI__ !== undefined || 
+             window.__TAURI_INTERNALS__ !== undefined ||
+             navigator.userAgent.includes('Tauri');
+    };
+    
+    if (!isTauri()) {
+      console.warn('Not in Tauri environment, using mock database (settings will not persist)');
+      this.db = this.createMockDB();
+      this.isInitialized = true;
+      return;
+    }
+    
+    // 在 Tauri 环境中，尝试加载 SQL 插件
+    let Database = null;
+    
+    try {
+      // 使用全局对象（Tauri v2 推荐方式）
+      if (window.__TAURI__ && window.__TAURI__.sql) {
+        Database = window.__TAURI__.sql;
+        console.log('SQL plugin loaded via window.__TAURI__.sql');
+      } else {
+        // 尝试动态导入
+        const sqlModule = await import('@tauri-apps/plugin-sql');
+        Database = sqlModule.default;
+        console.log('SQL plugin loaded via import');
+      }
+    } catch (e) {
+      console.error('Failed to load SQL plugin:', e);
+    }
+    
+    // 如果没有成功加载 SQL 插件，使用 Mock DB
+    if (!Database) {
+      console.warn('Tauri SQL plugin not available, using mock database');
       this.db = this.createMockDB();
       this.isInitialized = true;
       return;
     }
     
     // 加载 SQLite 数据库
-    let Database;
     try {
-      // 首先尝试使用全局对象
-      if (window.__TAURI__ && window.__TAURI__.sql) {
-        Database = window.__TAURI__.sql.default || window.__TAURI__.sql;
-      } else {
-        // 回退到动态导入
-        const sqlModule = await import('@tauri-apps/plugin-sql');
-        Database = sqlModule.default;
-      }
+      this.db = await Database.load('sqlite:easylingo.db');
+      console.log('SQLite database loaded - settings will persist');
     } catch (e) {
-      console.error('Failed to load SQL plugin:', e);
-      throw new Error('SQLite database not available');
+      console.error('Failed to load SQLite database:', e);
+      this.db = this.createMockDB();
+      this.isInitialized = true;
+      return;
     }
-    
-    this.db = await Database.load('sqlite:easylingo.db');
-    console.log('SQLite database loaded');
     
     // 创建表结构
     await this.createTables();
@@ -47,7 +71,7 @@ class EasyLingoDB {
     await this.seedData();
     
     this.isInitialized = true;
-    console.log('EasyLingo DB initialized');
+    console.log('EasyLingo DB initialized successfully');
   }
   
   // Mock DB for browser testing
