@@ -1,0 +1,24 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for EasyLingo",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-copy-file",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-exists",
+    "sql:default",
+    "sql:allow-load",
+    "sql:allow-execute",
+    "sql:allow-select"
+  ]
+}

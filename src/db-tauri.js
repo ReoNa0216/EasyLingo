@@ -13,8 +13,16 @@ class EasyLingoDB {
   async init() {
     if (this.isInitialized) return;
     
+    // 检查是否在 Tauri 环境
+    if (typeof window === 'undefined' || !window.__TAURI__) {
+      console.warn('Not in Tauri environment, using mock database');
+      this.db = this.createMockDB();
+      this.isInitialized = true;
+      return;
+    }
+    
     // 加载 SQLite 数据库
-    const { default: Database } = await import('@tauri-apps/plugin-sql');
+    const Database = window.__TAURI__.sql?.default || (await import('@tauri-apps/plugin-sql')).default;
     this.db = await Database.load('sqlite:easylingo.db');
     
     // 创建表结构
@@ -25,6 +33,26 @@ class EasyLingoDB {
     
     this.isInitialized = true;
     console.log('EasyLingo DB initialized');
+  }
+  
+  // Mock DB for browser testing
+  createMockDB() {
+    const mockData = {
+      modules: [],
+      entries: [],
+      materials: [],
+      records: [],
+      settings: {}
+    };
+    return {
+      execute: async () => {},
+      select: async (sql, params) => {
+        // Simple mock implementation
+        if (sql.includes('modules')) return mockData.modules;
+        if (sql.includes('entries')) return mockData.entries;
+        return [];
+      }
+    };
   }
 
   async createTables() {

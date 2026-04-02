@@ -1602,19 +1602,21 @@ ${chunk.substring(0, 8000)}
   },
   
   // EasyLingo: Tauri 新闻抓取适配方法
-  async fetchNewsWithTauri(source, category = null) {
+  ensureTauriNewsAvailable() {
     if (!window.isTauri || !window.tauriNews) {
-      throw new Error('新闻抓取需要 Tauri 环境');
+      throw new Error('新闻抓取仅支持桌面版 EasyLingo（Tauri）');
     }
+  },
+
+  async fetchNewsWithTauri(source, category = null) {
+    this.ensureTauriNewsAvailable();
     
     const rssText = await window.tauriNews.fetchRSS(source);
     return rssText;
   },
   
   async fetchArticleWithTauri(url) {
-    if (!window.isTauri || !window.tauriNews) {
-      throw new Error('文章获取需要 Tauri 环境');
-    }
+    this.ensureTauriNewsAvailable();
     
     return await window.tauriNews.fetchArticle(url);
   },
@@ -1637,25 +1639,7 @@ ${chunk.substring(0, 8000)}
     if (status) status.textContent = '正在获取 BBC 新闻...';
     
     try {
-      let rssText;
-      
-      // EasyLingo: 优先使用 Tauri 原生抓取
-      if (window.isTauri && window.tauriNews) {
-        rssText = await this.fetchNewsWithTauri('bbc', this.bbcCategory);
-      } else {
-        // 回退到浏览器 fetch（需要代理）
-        const settings = await this.getSettings();
-        const PROXY_BASE_URL = settings.proxyUrl;
-        if (!PROXY_BASE_URL) {
-          throw new Error('请配置代理服务地址或在 Tauri 环境中运行');
-        }
-        const apiUrl = `${PROXY_BASE_URL}/api/bbc/rss?category=${this.bbcCategory}`;
-        
-        const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error('Failed to fetch RSS');
-        
-        rssText = await response.text();
-      }
+      const rssText = await this.fetchNewsWithTauri('bbc', this.bbcCategory);
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(rssText, 'text/xml');
       
@@ -1705,15 +1689,7 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      let articleData;
-      if (window.isTauri && window.tauriNews) {
-        articleData = await this.fetchArticleWithTauri(selectedArticle.link);
-        // articleData 现在包含 {title, content}
-      } else {
-        const articleProxy = `${settings.proxyUrl}/api/bbc/article?url=${encodeURIComponent(selectedArticle.link)}`;
-        const articleRes = await fetch(articleProxy);
-        articleData = await articleRes.json();
-      }
+      const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
       
       if (articleData.content) {
         // 解析日期，处理无效日期情况
@@ -1844,14 +1820,7 @@ ${chunk.substring(0, 8000)}
     if (status) status.textContent = '正在获取 The Guardian 新闻...';
     
     try {
-      const settings = await this.getSettings();
-      const PROXY_BASE_URL = settings.proxyUrl;
-      const apiUrl = `${PROXY_BASE_URL}/api/guardian/rss?category=${this.guardianCategory}`;
-      
-      const response = await fetch(apiUrl);
-      if (!response.ok) throw new Error('Failed to fetch RSS');
-      
-      const rssText = await response.text();
+      const rssText = await this.fetchNewsWithTauri('guardian', this.guardianCategory);
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(rssText, 'text/xml');
       
@@ -1895,9 +1864,7 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleProxy = `${settings.proxyUrl}/api/guardian/article?url=${encodeURIComponent(selectedArticle.link)}`;
-      const articleRes = await fetch(articleProxy);
-      const articleData = await articleRes.json();
+      const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
       
       if (articleData.content) {
         const pubDate = new Date(selectedArticle.pubDate);
@@ -2024,14 +1991,7 @@ ${chunk.substring(0, 8000)}
     if (status) status.textContent = '正在获取 NPR 新闻...';
     
     try {
-      const settings = await this.getSettings();
-      const PROXY_BASE_URL = settings.proxyUrl;
-      const apiUrl = `${PROXY_BASE_URL}/api/npr/rss?category=${this.nprCategory}`;
-      
-      const response = await fetch(apiUrl);
-      if (!response.ok) throw new Error('Failed to fetch RSS');
-      
-      const rssText = await response.text();
+      const rssText = await this.fetchNewsWithTauri('npr', this.nprCategory);
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(rssText, 'text/xml');
       
@@ -2081,9 +2041,7 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleProxy = `${settings.proxyUrl}/api/npr/article?url=${encodeURIComponent(selectedArticle.link)}`;
-      const articleRes = await fetch(articleProxy);
-      const articleData = await articleRes.json();
+      const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
       
       if (articleData.content) {
         // 解析日期，处理无效日期情况
@@ -2432,20 +2390,13 @@ ${chunk.substring(0, 8000)}
     const contentDiv = document.getElementById('zdf-content');
     
     try {
-      const settings = await this.getSettings();
-      const PROXY_BASE_URL = settings.proxyUrl;
-      
+      this.ensureTauriNewsAvailable();
+
       btn.disabled = true;
       progress.classList.remove('hidden');
       status.textContent = '正在获取 ZDF Heute 资讯...';
-      
-      const apiUrl = `${PROXY_BASE_URL}/api/zdf/rss`;
-      
-      const response = await fetch(apiUrl);
-      if (!response.ok) throw new Error('RSS 获取失败');
-      
-      // corsproxy.io 直接返回原始内容
-      const rssContent = await response.text();
+
+      const rssContent = await this.fetchNewsWithTauri('zdf');
       
       // 解析 RSS XML
       const parser = new DOMParser();
@@ -2506,13 +2457,9 @@ ${chunk.substring(0, 8000)}
       // 尝试获取完整内容
       let fullContent = selectedArticle.description;
       try {
-        const articleProxy = `${settings.proxyUrl}/api/zdf/article?url=${encodeURIComponent(selectedArticle.link)}`;
-        const articleRes = await fetch(articleProxy);
-        if (articleRes.ok) {
-          const articleData = await articleRes.json();
-          // 后端已经提取好正文内容
-          fullContent = articleData.content || selectedArticle.description;
-        }
+        const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
+        // 后端已经提取好正文内容
+        fullContent = articleData.content || selectedArticle.description;
       } catch (e) {
         console.log('无法获取完整内容，使用简介');
       }
@@ -2649,16 +2596,7 @@ ${chunk.substring(0, 8000)}
     if (status) status.textContent = '正在获取朝日新聞...';
     
     try {
-      const settings = await this.getSettings();
-      const PROXY_BASE_URL = settings.proxyUrl;
-      const apiUrl = `${PROXY_BASE_URL}/api/asahi/rss`;
-      
-      console.log('Fetching Asahi RSS:', apiUrl);
-      
-      const response = await fetch(apiUrl);
-      if (!response.ok) throw new Error('Failed to fetch RSS');
-      
-      const rssText = await response.text();
+      const rssText = await this.fetchNewsWithTauri('asahi');
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(rssText, 'text/xml');
       
@@ -2713,9 +2651,7 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleProxy = `${PROXY_BASE_URL}/api/asahi/article?url=${encodeURIComponent(selectedArticle.link)}`;
-      const articleRes = await fetch(articleProxy);
-      const articleData = await articleRes.json();
+      const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
       
       if (articleData.content) {
         // 处理日期 - 朝日 RSS 使用 dc:date 格式
@@ -6030,13 +5966,31 @@ Requirements:
   
   // Settings
   async showSettings() {
-    const settings = await this.getSettings();
-    document.getElementById('setting-api-url').value = settings.apiUrl;
-    document.getElementById('setting-api-key').value = settings.apiKey || '';
-    document.getElementById('setting-model').value = settings.model;
-    document.getElementById('setting-max-tokens').value = settings.maxTokens;
-    document.getElementById('setting-daily-limit').value = settings.dailyLimit;
-    document.getElementById('settings-modal').classList.remove('hidden');
+    try {
+      const settings = await this.getSettings();
+
+      const apiUrlInput = document.getElementById('setting-api-url');
+      const apiKeyInput = document.getElementById('setting-api-key');
+      const modelInput = document.getElementById('setting-model');
+      const maxTokensInput = document.getElementById('setting-max-tokens');
+      const dailyLimitInput = document.getElementById('setting-daily-limit');
+      const settingsModal = document.getElementById('settings-modal');
+
+      if (!settingsModal) {
+        throw new Error('找不到设置弹窗节点 #settings-modal');
+      }
+
+      if (apiUrlInput) apiUrlInput.value = settings.apiUrl;
+      if (apiKeyInput) apiKeyInput.value = settings.apiKey || '';
+      if (modelInput) modelInput.value = settings.model;
+      if (maxTokensInput) maxTokensInput.value = settings.maxTokens;
+      if (dailyLimitInput) dailyLimitInput.value = settings.dailyLimit;
+
+      settingsModal.classList.remove('hidden');
+    } catch (error) {
+      console.error('showSettings error:', error);
+      alert('打开设置失败：' + error.message);
+    }
   },
   
   closeSettings() {
@@ -6632,6 +6586,7 @@ Requirements:
 
 // Initialize app on load
 document.addEventListener('DOMContentLoaded', () => {
+  window.app = app;
   app.init();
 });
 

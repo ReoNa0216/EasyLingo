@@ -24,11 +24,16 @@ class TauriFileAPI {
       return;
     }
     
-    const { invoke } = await import('@tauri-apps/api/core');
-    const { open, save } = await import('@tauri-apps/plugin-dialog');
+    // 使用全局 Tauri 对象
+    this.invoke = window.__TAURI__.core?.invoke;
     
-    this.invoke = invoke;
-    this.dialog = { open, save };
+    // 动态导入 dialog 插件
+    try {
+      const dialog = await import('@tauri-apps/plugin-dialog');
+      this.dialog = { open: dialog.open, save: dialog.save };
+    } catch (e) {
+      console.warn('Dialog plugin not available:', e);
+    }
   }
 
   /**
@@ -78,8 +83,7 @@ class TauriNewsAPI {
       return;
     }
 
-    const { invoke } = await import('@tauri-apps/api/core');
-    this.invoke = invoke;
+    this.invoke = window.__TAURI__.core?.invoke;
   }
 
   /**

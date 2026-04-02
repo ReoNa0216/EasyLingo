@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "python -m http.server 1420 --directory src"
+    "beforeDevCommand": "python scripts/dev_server.py"
   },
   "app": {
     "windows": [
@@ -21,7 +21,8 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": ["default"]
     }
   },
   "bundle": {
