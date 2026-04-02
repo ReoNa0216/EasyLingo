@@ -444,35 +444,58 @@ const createTableProxy = (tableName) => {
       if (tableName === 'entries') return await db.deleteEntry(id);
       if (tableName === 'materials') return await db.deleteMaterial(id);
     },
-    where: (field) => ({
-      equals: (value) => ({
-        toArray: async () => {
-          await db.init();
-          if (tableName === 'entries' && field === 'moduleId') {
-            return await db.getEntries(value);
-          }
-          if (tableName === 'materials' && field === 'moduleId') {
-            return await db.getMaterials(value);
-          }
-          return await db.db.select(`SELECT * FROM ${tableName} WHERE ${field} = ?`, [value]);
+    where: (field) => {
+      let currentValue = null;
+      
+      return {
+        equals: (value) => {
+          currentValue = value;
+          return {
+            toArray: async () => {
+              await db.init();
+              if (tableName === 'entries' && field === 'moduleId') {
+                return await db.getEntries(value);
+              }
+              if (tableName === 'materials' && field === 'moduleId') {
+                return await db.getMaterials(value);
+              }
+              return await db.db.select(`SELECT * FROM ${tableName} WHERE ${field} = ?`, [value]);
+            },
+            count: async () => {
+              await db.init();
+              if (tableName === 'entries' && field === 'moduleId') {
+                return await db.countEntries(value);
+              }
+              const result = await db.db.select(`SELECT COUNT(*) as count FROM ${tableName} WHERE ${field} = ?`, [value]);
+              return result[0].count;
+            },
+            delete: async () => {
+              await db.init();
+              await db.db.execute(`DELETE FROM ${tableName} WHERE ${field} = ?`, [value]);
+            },
+            and: (filterFn) => ({
+              toArray: async () => {
+                await db.init();
+                const all = await db.db.select(`SELECT * FROM ${tableName} WHERE ${field} = ?`, [value]);
+                return all.filter(filterFn);
+              }
+            })
+          };
         },
-        count: async () => {
-          await db.init();
-          if (tableName === 'entries' && field === 'moduleId') {
-            return await db.countEntries(value);
+        and: (filterFn) => ({
+          toArray: async () => {
+            await db.init();
+            const all = await db.db.select(`SELECT * FROM ${tableName}`);
+            return all.filter(filterFn);
           }
-          const result = await db.db.select(`SELECT COUNT(*) as count FROM ${tableName} WHERE ${field} = ?`, [value]);
-          return result[0].count;
-        }
-      }),
-      and: (filter) => ({
+        }),
         toArray: async () => {
+          // 支持 where(field).toArray() 不带 equals
           await db.init();
-          // 简化实现，仅支持 records 表
-          return await db.db.select(`SELECT * FROM ${tableName} WHERE ${field} = ?`, []);
+          return await db.db.select(`SELECT * FROM ${tableName} WHERE ${field} IS NOT NULL`);
         }
-      })
-    }),
+      };
+    },
     filter: (fn) => ({
       toArray: async () => {
         await db.init();
