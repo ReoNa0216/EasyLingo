@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PolyLingo - 语言学习助手</title>
+  <title>EasyLingo - 语言学习助手</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -22,8 +22,10 @@
   <!-- Marked.js for Markdown rendering (custom modules only) -->
   <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
   
-  <!-- Dexie.js (IndexedDB) -->
-  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <!-- EasyLingo Database (Tauri SQL) -->
+  <script type="module" src="db-tauri.js"></script>
+  <script type="module" src="tauri-api.js"></script>
+  <script type="module" src="file-handler.js"></script>
   
   <!-- FullCalendar -->
   <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/main.min.css' rel='stylesheet' />

@@ -1,21 +1,14 @@
 /**
- * PolyLingo - Language Learning Assistant
- * Main Application Logic
+ * EasyLingo - Language Learning Assistant
+ * Main Application Logic (Tauri Desktop Version)
+ * 
+ * Database: SQLite via Tauri SQL Plugin
+ * File Operations: Tauri Native Dialog
+ * News Fetching: Tauri Rust Backend (no CORS proxy needed)
  */
 
-// Database Setup
-const db = new Dexie('PolyLingoDB');
-
-// Define database schema - version 5 with auto-increment keys
-db.version(5).stores({
-  modules: '++id, name, language, createdAt',
-  materials: '++id, moduleId, title, content, sourceFile, createdAt',
-  entries: '++id, materialId, moduleId, type, original, translation, srsLevel, nextReview, interval, createdAt',
-  cards: '++id, materialId, content, srsLevel, nextReview, interval, createdAt',
-  tests: '++id, moduleId, questions, answers, results, score, duration, createdAt',
-  records: '++id, date, moduleId, duration, action, createdAt',
-  settings: '++id, value'
-});
+// Database Setup - EasyLingo uses Tauri SQL (SQLite)
+// db object is initialized in db-tauri.js and exposed as window.db
 
 // Application State
 const app = {
@@ -94,8 +87,8 @@ const app = {
       // 清理可能的重复元素（针对 Edge 浏览器刷新问题）
       this.cleanupDuplicateElements();
       
-      // 尝试打开数据库
-      await db.open();
+      // 初始化 Tauri SQLite 数据库
+      await db.init();
       
       await this.initModules();
       await this.loadCustomModules();
@@ -524,9 +517,12 @@ ${placeholderText}`;
       return;
     }
     
+    // 使用 EasyLingo 文件处理器
+    const handler = window.fileHandler || new EasyLingoFileHandler();
+    
     for (const file of files) {
       try {
-        const content = await this.parseFile(file);
+        const content = await handler.parseFile(file);
         await this.saveMaterial(file.name, content);
       } catch (error) {
         console.error('Error parsing file:', error);
@@ -537,6 +533,37 @@ ${placeholderText}`;
     await this.loadModuleMaterials();
     await this.updateSidebarStats();
     // 不记录上传时间，只有学习和复习计入学习时间
+  },
+  
+  // EasyLingo: 新的文件选择方法（支持 Tauri 原生对话框）
+  async selectAndProcessFiles() {
+    if (!this.currentModule) {
+      alert('请先选择一个学习模块');
+      return;
+    }
+    
+    try {
+      const handler = window.fileHandler || new EasyLingoFileHandler();
+      const files = await handler.selectFiles();
+      
+      if (files.length === 0) return;
+      
+      for (const file of files) {
+        try {
+          const content = await handler.parseFile(file);
+          await this.saveMaterial(file.name, content);
+        } catch (error) {
+          console.error('Error parsing file:', error);
+          alert(`解析文件 ${file.name} 失败: ${error.message}`);
+        }
+      }
+      
+      await this.loadModuleMaterials();
+      await this.updateSidebarStats();
+    } catch (error) {
+      console.error('Error selecting files:', error);
+      alert('选择文件失败: ' + error.message);
+    }
   },
   
   async parseFile(file) {
@@ -1574,6 +1601,24 @@ ${chunk.substring(0, 8000)}
     alert('BBC 抓取记录已清空');
   },
   
+  // EasyLingo: Tauri 新闻抓取适配方法
+  async fetchNewsWithTauri(source, category = null) {
+    if (!window.isTauri || !window.tauriNews) {
+      throw new Error('新闻抓取需要 Tauri 环境');
+    }
+    
+    const rssText = await window.tauriNews.fetchRSS(source);
+    return rssText;
+  },
+  
+  async fetchArticleWithTauri(url) {
+    if (!window.isTauri || !window.tauriNews) {
+      throw new Error('文章获取需要 Tauri 环境');
+    }
+    
+    return await window.tauriNews.fetchArticle(url);
+  },
+  
   // 获取 BBC 新闻
   async fetchBBCNews() {
     if (this.fetchedBBCFeeds.length === 0) {
@@ -1592,14 +1637,25 @@ ${chunk.substring(0, 8000)}
     if (status) status.textContent = '正在获取 BBC 新闻...';
     
     try {
-      const settings = await this.getSettings();
-      const PROXY_BASE_URL = settings.proxyUrl;
-      const apiUrl = `${PROXY_BASE_URL}/api/bbc/rss?category=${this.bbcCategory}`;
+      let rssText;
       
-      const response = await fetch(apiUrl);
-      if (!response.ok) throw new Error('Failed to fetch RSS');
-      
-      const rssText = await response.text();
+      // EasyLingo: 优先使用 Tauri 原生抓取
+      if (window.isTauri && window.tauriNews) {
+        rssText = await this.fetchNewsWithTauri('bbc', this.bbcCategory);
+      } else {
+        // 回退到浏览器 fetch（需要代理）
+        const settings = await this.getSettings();
+        const PROXY_BASE_URL = settings.proxyUrl;
+        if (!PROXY_BASE_URL) {
+          throw new Error('请配置代理服务地址或在 Tauri 环境中运行');
+        }
+        const apiUrl = `${PROXY_BASE_URL}/api/bbc/rss?category=${this.bbcCategory}`;
+        
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error('Failed to fetch RSS');
+        
+        rssText = await response.text();
+      }
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(rssText, 'text/xml');
       
@@ -1649,9 +1705,19 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleProxy = `${settings.proxyUrl}/api/bbc/article?url=${encodeURIComponent(selectedArticle.link)}`;
-      const articleRes = await fetch(articleProxy);
-      const articleData = await articleRes.json();
+      let articleData;
+      if (window.isTauri && window.tauriNews) {
+        const articleHtml = await this.fetchArticleWithTauri(selectedArticle.link);
+        // 简化处理：直接返回 HTML 内容
+        articleData = {
+          title: selectedArticle.title,
+          content: articleHtml
+        };
+      } else {
+        const articleProxy = `${settings.proxyUrl}/api/bbc/article?url=${encodeURIComponent(selectedArticle.link)}`;
+        const articleRes = await fetch(articleProxy);
+        articleData = await articleRes.json();
+      }
       
       if (articleData.content) {
         // 解析日期，处理无效日期情况
@@ -6020,52 +6086,84 @@ Requirements:
   
   // Data Export/Import
   async exportData() {
-    const data = {
-      modules: await db.modules.toArray(),
-      materials: await db.materials.toArray(),
-      cards: await db.cards.toArray(),
-      tests: await db.tests.toArray(),
-      records: await db.records.toArray(),
-      settings: await db.settings.toArray(),
-      exportDate: new Date().toISOString()
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `polylingo_backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      // EasyLingo: 使用 Tauri 原生文件保存（如果可用）
+      if (window.isTauri && window.tauriData) {
+        await window.tauriData.exportData();
+        alert('数据导出成功');
+        return;
+      }
+      
+      // 浏览器环境：使用下载方式
+      const data = {
+        modules: await db.modules.toArray(),
+        materials: await db.materials.toArray(),
+        cards: await db.cards.toArray(),
+        tests: await db.tests.toArray(),
+        records: await db.records.toArray(),
+        settings: await db.settings.toArray(),
+        exportDate: new Date().toISOString(),
+        appName: 'EasyLingo',
+        version: '1.0'
+      };
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `easylingo_backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('导出失败: ' + error.message);
+    }
   },
   
   async importData(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
     try {
+      let data;
+      
+      // EasyLingo: 优先使用 Tauri 原生文件选择
+      if (window.isTauri && window.tauriData) {
+        if (!confirm('导入数据将覆盖现有数据，确定继续吗？')) return;
+        await window.tauriData.importData();
+        alert('数据导入成功');
+        this.loadDashboard();
+        return;
+      }
+      
+      // 浏览器环境
+      const file = event.target.files[0];
+      if (!file) return;
+      
       const text = await file.text();
-      const data = JSON.parse(text);
+      data = JSON.parse(text);
       
       if (confirm('导入数据将覆盖现有数据，确定继续吗？')) {
-        await db.modules.clear();
-        await db.materials.clear();
-        await db.cards.clear();
-        await db.tests.clear();
-        await db.records.clear();
+        await db.clearAllData();
         
-        if (data.modules) await db.modules.bulkPut(data.modules);
-        if (data.materials) await db.materials.bulkPut(data.materials);
-        if (data.cards) await db.cards.bulkPut(data.cards);
-        if (data.tests) await db.tests.bulkPut(data.tests);
-        if (data.records) await db.records.bulkPut(data.records);
-        if (data.settings) await db.settings.bulkPut(data.settings);
+        if (data.modules) {
+          for (const m of data.modules) await db.modules.put(m);
+        }
+        if (data.materials) {
+          for (const m of data.materials) await db.materials.put(m);
+        }
+        if (data.cards) {
+          for (const c of data.cards) await db.entries.put(c);
+        }
+        if (data.records) {
+          for (const r of data.records) await db.records.put(r);
+        }
+        if (data.settings) {
+          for (const s of data.settings) await db.settings.put(s.id || s.key, s.value);
+        }
         
         alert('数据导入成功');
         this.loadDashboard();
       }
     } catch (error) {
       alert('导入失败: ' + error.message);
+      console.error(error);
     }
   },
   
