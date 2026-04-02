@@ -6036,7 +6036,6 @@ Requirements:
     document.getElementById('setting-model').value = settings.model;
     document.getElementById('setting-max-tokens').value = settings.maxTokens;
     document.getElementById('setting-daily-limit').value = settings.dailyLimit;
-    document.getElementById('setting-proxy-url').value = settings.proxyUrl;
     document.getElementById('settings-modal').classList.remove('hidden');
   },
   
@@ -6050,20 +6049,18 @@ Requirements:
     await db.settings.put({ id: 'model', value: document.getElementById('setting-model').value });
     await db.settings.put({ id: 'maxTokens', value: parseInt(document.getElementById('setting-max-tokens').value) || 8000 });
     await db.settings.put({ id: 'dailyLimit', value: parseInt(document.getElementById('setting-daily-limit').value) || 20 });
-    await db.settings.put({ id: 'proxyUrl', value: document.getElementById('setting-proxy-url').value.trim() });
     
     this.closeSettings();
     alert('设置已保存');
   },
   
   async getSettings() {
-    const [apiUrl, apiKey, model, maxTokens, dailyLimit, proxyUrl] = await Promise.all([
+    const [apiUrl, apiKey, model, maxTokens, dailyLimit] = await Promise.all([
       db.settings.get('apiUrl'),
       db.settings.get('apiKey'),
       db.settings.get('model'),
       db.settings.get('maxTokens'),
-      db.settings.get('dailyLimit'),
-      db.settings.get('proxyUrl')
+      db.settings.get('dailyLimit')
     ]);
     
     // 移除apiUrl末尾的斜杠，避免双斜杠问题
@@ -6075,8 +6072,7 @@ Requirements:
       apiKey: (apiKey && apiKey.value) || '',
       model: (model && model.value) || '',
       maxTokens: (maxTokens && maxTokens.value) || 8000,
-      dailyLimit: (dailyLimit && dailyLimit.value) || 20,
-      proxyUrl: (proxyUrl && proxyUrl.value) || ''
+      dailyLimit: (dailyLimit && dailyLimit.value) || 20
     };
   },
   
