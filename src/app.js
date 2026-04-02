@@ -5998,36 +5998,62 @@ Requirements:
   },
   
   async saveSettings() {
-    await db.settings.put({ id: 'apiUrl', value: document.getElementById('setting-api-url').value });
-    await db.settings.put({ id: 'apiKey', value: document.getElementById('setting-api-key').value });
-    await db.settings.put({ id: 'model', value: document.getElementById('setting-model').value });
-    await db.settings.put({ id: 'maxTokens', value: parseInt(document.getElementById('setting-max-tokens').value) || 8000 });
-    await db.settings.put({ id: 'dailyLimit', value: parseInt(document.getElementById('setting-daily-limit').value) || 20 });
-    
-    this.closeSettings();
-    alert('设置已保存');
+    try {
+      const settings = {
+        apiUrl: document.getElementById('setting-api-url').value,
+        apiKey: document.getElementById('setting-api-key').value,
+        model: document.getElementById('setting-model').value,
+        maxTokens: parseInt(document.getElementById('setting-max-tokens').value) || 8000,
+        dailyLimit: parseInt(document.getElementById('setting-daily-limit').value) || 20
+      };
+      
+      // 直接调用 db 方法，避免代理问题
+      await db.setSetting('apiUrl', settings.apiUrl);
+      await db.setSetting('apiKey', settings.apiKey);
+      await db.setSetting('model', settings.model);
+      await db.setSetting('maxTokens', settings.maxTokens);
+      await db.setSetting('dailyLimit', settings.dailyLimit);
+      
+      console.log('Settings saved:', settings);
+      this.closeSettings();
+      alert('设置已保存');
+    } catch (error) {
+      console.error('Save settings error:', error);
+      alert('保存失败: ' + error.message);
+    }
   },
   
   async getSettings() {
-    const [apiUrl, apiKey, model, maxTokens, dailyLimit] = await Promise.all([
-      db.settings.get('apiUrl'),
-      db.settings.get('apiKey'),
-      db.settings.get('model'),
-      db.settings.get('maxTokens'),
-      db.settings.get('dailyLimit')
-    ]);
-    
-    // 移除apiUrl末尾的斜杠，避免双斜杠问题
-    let apiUrlValue = (apiUrl && apiUrl.value) || 'https://api.openai.com/v1';
-    apiUrlValue = apiUrlValue.replace(/\/$/, '');
-    
-    return {
-      apiUrl: apiUrlValue,
-      apiKey: (apiKey && apiKey.value) || '',
-      model: (model && model.value) || '',
-      maxTokens: (maxTokens && maxTokens.value) || 8000,
-      dailyLimit: (dailyLimit && dailyLimit.value) || 20
-    };
+    try {
+      // 直接调用 db 方法
+      const apiUrl = await db.getSetting('apiUrl');
+      const apiKey = await db.getSetting('apiKey');
+      const model = await db.getSetting('model');
+      const maxTokens = await db.getSetting('maxTokens');
+      const dailyLimit = await db.getSetting('dailyLimit');
+      
+      // 移除apiUrl末尾的斜杠，避免双斜杠问题
+      let apiUrlValue = apiUrl || 'https://api.openai.com/v1';
+      apiUrlValue = apiUrlValue.replace(/\/$/, '');
+      
+      return {
+        apiUrl: apiUrlValue,
+        apiKey: apiKey || '',
+        model: model || '',
+        maxTokens: parseInt(maxTokens) || 8000,
+        dailyLimit: parseInt(dailyLimit) || 20
+      };
+    } catch (error) {
+      console.error('Get settings error:', error);
+      // 返回默认值
+      return {
+        apiUrl: 'https://api.openai.com/v1',
+        apiKey: '',
+        model: '',
+        maxTokens: 8000,
+        dailyLimit: 20
+      };
+    }
   },
   
   // Data Export/Import
