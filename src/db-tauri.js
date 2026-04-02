@@ -529,11 +529,27 @@ const createTableProxy = (tableName) => {
     }),
     orderBy: (field) => ({
       reverse: () => ({
-        limit: async (n) => {
+        limit: (n) => ({
+          toArray: async () => {
+            await db.init();
+            return await db.db.select(`SELECT * FROM ${tableName} ORDER BY ${field} DESC LIMIT ?`, [n]);
+          }
+        }),
+        toArray: async () => {
           await db.init();
-          return await db.db.select(`SELECT * FROM ${tableName} ORDER BY ${field} DESC LIMIT ?`, [n]);
+          return await db.db.select(`SELECT * FROM ${tableName} ORDER BY ${field} DESC`);
         }
-      })
+      }),
+      limit: (n) => ({
+        toArray: async () => {
+          await db.init();
+          return await db.db.select(`SELECT * FROM ${tableName} ORDER BY ${field} ASC LIMIT ?`, [n]);
+        }
+      }),
+      toArray: async () => {
+        await db.init();
+        return await db.db.select(`SELECT * FROM ${tableName} ORDER BY ${field} ASC`);
+      }
     })
   };
 };
