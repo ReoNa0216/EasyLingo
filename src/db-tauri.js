@@ -31,18 +31,22 @@ class EasyLingoDB {
     let Database = null;
     
     try {
-      // 使用全局对象（Tauri v2 推荐方式）
-      if (window.__TAURI__ && window.__TAURI__.sql) {
-        Database = window.__TAURI__.sql;
-        console.log('SQL plugin loaded via window.__TAURI__.sql');
-      } else {
-        // 尝试动态导入
-        const sqlModule = await import('@tauri-apps/plugin-sql');
-        Database = sqlModule.default;
-        console.log('SQL plugin loaded via import');
+      // 尝试动态导入（ESM 方式）
+      const sqlModule = await import('@tauri-apps/plugin-sql');
+      Database = sqlModule.default || sqlModule.Database;
+      console.log('SQL plugin loaded via import');
+    } catch (e1) {
+      console.warn('Failed to import SQL plugin via ESM:', e1.message);
+      
+      try {
+        // 使用全局对象（Tauri v2 备用方式）
+        if (window.__TAURI__ && window.__TAURI__.sql) {
+          Database = window.__TAURI__.sql.default || window.__TAURI__.sql;
+          console.log('SQL plugin loaded via window.__TAURI__.sql');
+        }
+      } catch (e2) {
+        console.error('Failed to load SQL plugin from global:', e2.message);
       }
-    } catch (e) {
-      console.error('Failed to load SQL plugin:', e);
     }
     
     // 如果没有成功加载 SQL 插件，使用 Mock DB
@@ -93,6 +97,20 @@ class EasyLingoDB {
         }
       },
       select: async (sql, params) => {
+        // 处理 COUNT 查询
+        if (sql.includes('COUNT(*)')) {
+          if (sql.includes('entries')) {
+            if (sql.includes('WHERE') && params) {
+              // 带条件的计数（简化实现）
+              return [{ count: mockData.entries.length }];
+            }
+            return [{ count: mockData.entries.length }];
+          }
+          if (sql.includes('modules')) return [{ count: mockData.modules.length }];
+          if (sql.includes('materials')) return [{ count: mockData.materials.length }];
+          return [{ count: 0 }];
+        }
+        
         // 处理 settings 表的 SELECT
         if (sql.includes('settings') && params) {
           const key = params[0];
@@ -100,9 +118,11 @@ class EasyLingoDB {
           console.log('Mock DB: Setting loaded', key, value);
           return value ? [{ value }] : [];
         }
+        
         // Simple mock implementation
         if (sql.includes('modules')) return mockData.modules;
         if (sql.includes('entries')) return mockData.entries;
+        if (sql.includes('materials')) return mockData.materials;
         return [];
       }
     };

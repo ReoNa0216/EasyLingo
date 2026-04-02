@@ -343,11 +343,16 @@ const tauriFile = new TauriFileAPI();
 const tauriNews = new TauriNewsAPI();
 const tauriData = new TauriDataAPI();
 
-// 全局暴露
+// 全局暴露（使用 Object.defineProperty 避免只读错误）
 window.tauriFile = tauriFile;
 window.tauriNews = tauriNews;
 window.tauriData = tauriData;
-window.isTauri = isTauri;
+// 不要覆盖 window.isTauri，使用 window.__isTauri 或检查函数
+try {
+  window.isTauri = isTauri;
+} catch (e) {
+  // isTauri 可能是只读的，忽略错误
+}
 
 // 兼容性导出
 export { tauriFile, tauriNews, tauriData, isTauri };
