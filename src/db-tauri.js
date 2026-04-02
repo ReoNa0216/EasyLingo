@@ -22,8 +22,23 @@ class EasyLingoDB {
     }
     
     // 加载 SQLite 数据库
-    const Database = window.__TAURI__.sql?.default || (await import('@tauri-apps/plugin-sql')).default;
+    let Database;
+    try {
+      // 首先尝试使用全局对象
+      if (window.__TAURI__ && window.__TAURI__.sql) {
+        Database = window.__TAURI__.sql.default || window.__TAURI__.sql;
+      } else {
+        // 回退到动态导入
+        const sqlModule = await import('@tauri-apps/plugin-sql');
+        Database = sqlModule.default;
+      }
+    } catch (e) {
+      console.error('Failed to load SQL plugin:', e);
+      throw new Error('SQLite database not available');
+    }
+    
     this.db = await Database.load('sqlite:easylingo.db');
+    console.log('SQLite database loaded');
     
     // 创建表结构
     await this.createTables();
@@ -45,8 +60,22 @@ class EasyLingoDB {
       settings: {}
     };
     return {
-      execute: async () => {},
+      execute: async (sql, params) => {
+        // 处理 settings 表的 INSERT/REPLACE
+        if (sql.includes('settings') && params) {
+          const [key, value] = params;
+          mockData.settings[key] = value;
+          console.log('Mock DB: Setting saved', key, value);
+        }
+      },
       select: async (sql, params) => {
+        // 处理 settings 表的 SELECT
+        if (sql.includes('settings') && params) {
+          const key = params[0];
+          const value = mockData.settings[key];
+          console.log('Mock DB: Setting loaded', key, value);
+          return value ? [{ value }] : [];
+        }
         // Simple mock implementation
         if (sql.includes('modules')) return mockData.modules;
         if (sql.includes('entries')) return mockData.entries;
