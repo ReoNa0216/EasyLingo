@@ -6094,7 +6094,7 @@ Requirements:
       const data = {
         modules: await db.modules.toArray(),
         materials: await db.materials.toArray(),
-        cards: await db.cards.toArray(),
+        entries: await db.entries.toArray(),
         tests: await db.tests.toArray(),
         records: await db.records.toArray(),
         settings: await db.settings.toArray(),
@@ -6144,8 +6144,10 @@ Requirements:
         if (data.materials) {
           for (const m of data.materials) await db.materials.put(m);
         }
-        if (data.cards) {
-          for (const c of data.cards) await db.entries.put(c);
+        // 兼容 PolyLingo: cards -> entries
+        const entries = data.entries || data.cards;
+        if (entries) {
+          for (const e of entries) await db.entries.put(e);
         }
         if (data.records) {
           for (const r of data.records) await db.records.put(r);
@@ -6604,7 +6606,7 @@ Requirements:
       await db.modules.delete(moduleId);
       const materials = await db.materials.where('moduleId').equals(moduleId).toArray();
       for (const m of materials) {
-        await db.cards.where('materialId').equals(m.id).delete();
+        await db.db.execute('DELETE FROM entries WHERE materialId = ?', [m.id]);
       }
       await db.materials.where('moduleId').equals(moduleId).delete();
       
