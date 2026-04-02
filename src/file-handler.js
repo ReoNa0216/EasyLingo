@@ -6,34 +6,47 @@
 class EasyLingoFileHandler {
   constructor() {
     this.isTauri = typeof window !== 'undefined' && window.__TAURI__ !== undefined;
+    this.invoke = null;
+  }
+
+  async init() {
+    if (this.isTauri && !this.invoke) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      this.invoke = invoke;
+    }
   }
 
   /**
    * 选择文件（浏览器或 Tauri）
    */
   async selectFiles() {
-    if (this.isTauri && window.tauriFile) {
+    if (this.isTauri) {
+      await this.init();
+      
       // Tauri 环境 - 使用原生文件选择器
-      const filePath = await window.tauriFile.openFile({
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      
+      const filePath = await open({
+        multiple: false,
         filters: [
           { name: '文本文件', extensions: ['txt', 'md'] },
           { name: 'PDF 文档', extensions: ['pdf'] },
-          { name: 'Word 文档', extensions: ['docx'] },
+          { name: 'Word 文档', extensions: ['docx', 'doc'] },
           { name: '所有文件', extensions: ['*'] }
         ]
       });
 
       if (!filePath) return [];
 
-      // 读取文件内容
-      const content = await window.tauriFile.readTextFile(filePath);
-      const fileName = filePath.split(/[\\/]/).pop();
-
+      // 获取文件信息
+      const fileInfo = await this.invoke('get_file_info', { path: filePath });
+      
       return [{
-        name: fileName,
+        name: fileInfo.name,
         path: filePath,
-        content: content,
-        isText: true
+        extension: fileInfo.extension,
+        size: fileInfo.size,
+        isTauri: true
       }];
     } else {
       // 浏览器环境 - 使用原生 input
@@ -45,17 +58,13 @@ class EasyLingoFileHandler {
         
         input.onchange = async (e) => {
           const files = Array.from(e.target.files);
-          const fileObjects = [];
-          
-          for (const file of files) {
-            fileObjects.push({
-              name: file.name,
-              file: file,  // 原始 File 对象
-              isText: file.name.match(/\.(txt|md)$/i)
-            });
-          }
-          
-          resolve(fileObjects);
+          resolve(files.map(file => ({
+            name: file.name,
+            file: file,
+            extension: file.name.split('.').pop().toLowerCase(),
+            size: file.size,
+            isTauri: false
+          })));
         };
         
         input.click();
@@ -67,40 +76,82 @@ class EasyLingoFileHandler {
    * 解析文件内容
    */
   async parseFile(fileObj) {
-    const ext = fileObj.name.split('.').pop().toLowerCase();
+    const ext = fileObj.extension || fileObj.name.split('.').pop().toLowerCase();
 
     switch (ext) {
       case 'pdf':
-        if (fileObj.isText) {
-          // Tauri 环境，文本内容可能是空或不完整
-          // 需要特殊处理：使用 Tauri 读取二进制然后解析
-          return await this.parsePDFWithTauri(fileObj.path);
+        if (fileObj.isTauri) {
+          return await this.parsePDFTauri(fileObj.path);
         }
-        return await this.parsePDF(fileObj.file);
+        return await this.parsePDFBrowser(fileObj.file);
       
       case 'docx':
-        if (fileObj.isText) {
-          return await this.parseDOCXWithTauri(fileObj.path);
+      case 'doc':
+        if (fileObj.isTauri) {
+          return await this.parseDOCXTauri(fileObj.path);
         }
-        return await this.parseDOCX(fileObj.file);
+        return await this.parseDOCXBrowser(fileObj.file);
       
       case 'md':
       case 'txt':
-        if (fileObj.content) {
-          return fileObj.content;
+        if (fileObj.isTauri) {
+          return await this.invoke('read_file_text', { path: fileObj.path });
         }
-        return await this.parseText(fileObj.file);
+        return await this.parseTextBrowser(fileObj.file);
       
       default:
         throw new Error(`不支持的文件格式: ${ext}`);
     }
   }
 
-  async parsePDF(file) {
+  // ========== 浏览器环境解析 ==========
+  async parsePDFBrowser(file) {
     const arrayBuffer = await file.arrayBuffer();
     return await this.parsePDFBuffer(arrayBuffer);
   }
 
+  async parseDOCXBrowser(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value;
+  }
+
+  async parseTextBrowser(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(e);
+      reader.readAsText(file);
+    });
+  }
+
+  // ========== Tauri 环境解析 ==========
+  async parsePDFTauri(filePath) {
+    await this.init();
+    
+    // 读取文件为字节数组
+    const bytes = await this.invoke('read_file_bytes', { path: filePath });
+    
+    // 转换为 ArrayBuffer
+    const arrayBuffer = new Uint8Array(bytes).buffer;
+    
+    return await this.parsePDFBuffer(arrayBuffer);
+  }
+
+  async parseDOCXTauri(filePath) {
+    await this.init();
+    
+    // 读取文件为字节数组
+    const bytes = await this.invoke('read_file_bytes', { path: filePath });
+    
+    // 转换为 ArrayBuffer
+    const arrayBuffer = new Uint8Array(bytes).buffer;
+    
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value;
+  }
+
+  // ========== 通用 PDF 解析 ==========
   async parsePDFBuffer(arrayBuffer) {
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     let text = '';
@@ -126,40 +177,12 @@ class EasyLingoFileHandler {
       pageResults.sort((a, b) => a.pageNum - b.pageNum);
       text += pageResults.map(p => p.text).join('\n') + '\n';
 
+      // 让出主线程
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 
     console.log(`PDF parsed: ${pdf.numPages} pages, ${text.length} chars`);
     return text;
-  }
-
-  async parseDOCX(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value;
-  }
-
-  async parseText(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = (e) => reject(e);
-      reader.readAsText(file);
-    });
-  }
-
-  // Tauri 环境下读取二进制文件
-  async parsePDFWithTauri(filePath) {
-    // 在 Tauri 中，我们需要读取文件为 ArrayBuffer
-    // 由于 Tauri fs 插件的限制，暂时返回提示信息
-    // 实际实现需要添加二进制文件读取支持
-    console.warn('PDF parsing in Tauri requires binary file support');
-    throw new Error('PDF 解析在桌面端需要额外配置，请先使用 TXT 或 MD 文件');
-  }
-
-  async parseDOCXWithTauri(filePath) {
-    console.warn('DOCX parsing in Tauri requires binary file support');
-    throw new Error('Word 解析在桌面端需要额外配置，请先使用 TXT 或 MD 文件');
   }
 }
 

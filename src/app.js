@@ -1707,12 +1707,8 @@ ${chunk.substring(0, 8000)}
       
       let articleData;
       if (window.isTauri && window.tauriNews) {
-        const articleHtml = await this.fetchArticleWithTauri(selectedArticle.link);
-        // 简化处理：直接返回 HTML 内容
-        articleData = {
-          title: selectedArticle.title,
-          content: articleHtml
-        };
+        articleData = await this.fetchArticleWithTauri(selectedArticle.link);
+        // articleData 现在包含 {title, content}
       } else {
         const articleProxy = `${settings.proxyUrl}/api/bbc/article?url=${encodeURIComponent(selectedArticle.link)}`;
         const articleRes = await fetch(articleProxy);

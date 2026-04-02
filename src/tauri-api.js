@@ -15,6 +15,7 @@ class TauriFileAPI {
   constructor() {
     this.dialog = null;
     this.fs = null;
+    this.invoke = null;
   }
 
   async init() {
@@ -23,17 +24,15 @@ class TauriFileAPI {
       return;
     }
     
+    const { invoke } = await import('@tauri-apps/api/core');
     const { open, save } = await import('@tauri-apps/plugin-dialog');
-    const { readTextFile, writeTextFile } = await import('@tauri-apps/plugin-fs');
     
+    this.invoke = invoke;
     this.dialog = { open, save };
-    this.fs = { readTextFile, writeTextFile };
   }
 
   /**
    * 打开文件选择对话框
-   * @param {Object} options
-   * @returns {Promise<string|null>} 文件路径或 null
    */
   async openFile(options = {}) {
     if (!this.dialog) await this.init();
@@ -45,68 +44,23 @@ class TauriFileAPI {
       { name: '所有文件', extensions: ['*'] }
     ];
 
-    const result = await this.dialog.open({
+    return await this.dialog.open({
       multiple: false,
       filters: filters
     });
-
-    return result;
   }
 
   /**
-   * 读取文本文件
-   * @param {string} filePath
-   * @returns {Promise<string>}
+   * 保存文件对话框
    */
-  async readTextFile(filePath) {
-    if (!this.fs) await this.init();
-    if (!isTauri()) throw new Error('Not in Tauri environment');
-
-    return await this.fs.readTextFile(filePath);
-  }
-
-  /**
-   * 保存文件对话框并写入
-   * @param {string} content
-   * @param {Object} options
-   */
-  async saveFile(content, options = {}) {
+  async saveFile(options = {}) {
     if (!this.dialog) await this.init();
-    if (!isTauri()) throw new Error('Not in Tauri environment');
+    if (!isTauri()) return null;
 
-    const filePath = await this.dialog.save({
+    return await this.dialog.save({
       defaultPath: options.defaultPath || 'untitled.txt',
       filters: options.filters || [{ name: '文本文件', extensions: ['txt'] }]
     });
-
-    if (filePath) {
-      await this.fs.writeTextFile(filePath, content);
-    }
-
-    return filePath;
-  }
-
-  /**
-   * 拖放文件处理（兼容原有拖放逻辑）
-   * 在桌面端，拖放会通过 Tauri 事件处理
-   */
-  setupDragDrop(callback) {
-    if (!isTauri()) {
-      // 浏览器环境，使用原生拖放
-      document.addEventListener('dragover', (e) => e.preventDefault());
-      document.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        const files = e.dataTransfer.files;
-        if (files.length > 0 && callback) {
-          callback(files[0]);
-        }
-      });
-      return;
-    }
-
-    // Tauri 环境：使用文件选择器替代拖放
-    // 因为 Tauri WebView 的拖放需要额外配置
-    console.log('Tauri environment: use file picker instead of drag-drop');
   }
 }
 
@@ -131,7 +85,6 @@ class TauriNewsAPI {
   /**
    * 获取新闻 RSS
    * @param {string} source - 新闻源: bbc, guardian, npr, zdf, asahi
-   * @returns {Promise<string>} RSS XML 内容
    */
   async fetchRSS(source) {
     if (!this.invoke) await this.init();
@@ -141,15 +94,176 @@ class TauriNewsAPI {
   }
 
   /**
-   * 获取文章内容
+   * 获取文章内容并提取纯文本
    * @param {string} url - 文章 URL
-   * @returns {Promise<string>} HTML 内容
+   * @returns {Promise<{title: string, content: string}>}
    */
   async fetchArticle(url) {
     if (!this.invoke) await this.init();
     if (!isTauri()) throw new Error('News fetching requires Tauri environment');
 
-    return await this.invoke('fetch_article_content', { url });
+    const html = await this.invoke('fetch_article_content', { url });
+    
+    // 提取纯文本内容
+    return this.extractArticleText(html, url);
+  }
+
+  /**
+   * 从 HTML 中提取文章文本
+   */
+  extractArticleText(html, url) {
+    // 创建 DOM 解析器
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // 提取标题
+    const title = doc.querySelector('title')?.textContent || 
+                  doc.querySelector('h1')?.textContent || 
+                  'Unknown Title';
+    
+    // 移除脚本和样式元素
+    doc.querySelectorAll('script, style, nav, header, footer, aside, .advertisement, .ads').forEach(el => el.remove());
+    
+    let content = '';
+    
+    // 针对不同网站的特定选择器
+    if (url.includes('bbc.com') || url.includes('bbc.co.uk')) {
+      content = this.extractBBCContent(doc);
+    } else if (url.includes('theguardian.com')) {
+      content = this.extractGuardianContent(doc);
+    } else if (url.includes('npr.org')) {
+      content = this.extractNPRContent(doc);
+    } else if (url.includes('zdf.de')) {
+      content = this.extractZDFContent(doc);
+    } else if (url.includes('asahi.com')) {
+      content = this.extractAsahiContent(doc);
+    } else {
+      // 通用提取策略
+      content = this.extractGenericContent(doc);
+    }
+    
+    // 清理文本
+    content = this.cleanText(content);
+    
+    return { title: this.cleanText(title), content };
+  }
+
+  extractBBCContent(doc) {
+    // BBC 文章通常在 article 标签或特定 data-component 中
+    const article = doc.querySelector('article');
+    if (article) {
+      return article.innerText;
+    }
+    
+    // 备选选择器
+    const contentDiv = doc.querySelector('[data-component="text-block"]');
+    if (contentDiv) {
+      return contentDiv.innerText;
+    }
+    
+    return this.extractGenericContent(doc);
+  }
+
+  extractGuardianContent(doc) {
+    // Guardian 文章内容
+    const article = doc.querySelector('article');
+    if (article) {
+      return article.innerText;
+    }
+    
+    const contentDiv = doc.querySelector('.article-body');
+    if (contentDiv) {
+      return contentDiv.innerText;
+    }
+    
+    return this.extractGenericContent(doc);
+  }
+
+  extractNPRContent(doc) {
+    // NPR 文章内容
+    const story = doc.querySelector('#storytext') || doc.querySelector('.storytext');
+    if (story) {
+      return story.innerText;
+    }
+    
+    const article = doc.querySelector('article');
+    if (article) {
+      return article.innerText;
+    }
+    
+    return this.extractGenericContent(doc);
+  }
+
+  extractZDFContent(doc) {
+    // ZDF 文章内容
+    const article = doc.querySelector('article') || doc.querySelector('.content');
+    if (article) {
+      return article.innerText;
+    }
+    
+    return this.extractGenericContent(doc);
+  }
+
+  extractAsahiContent(doc) {
+    // 朝日新闻文章内容
+    const article = doc.querySelector('article') || doc.querySelector('.article');
+    if (article) {
+      return article.innerText;
+    }
+    
+    const contentDiv = doc.querySelector('.main-text') || doc.querySelector('#main');
+    if (contentDiv) {
+      return contentDiv.innerText;
+    }
+    
+    return this.extractGenericContent(doc);
+  }
+
+  extractGenericContent(doc) {
+    // 通用策略：查找最可能包含文章内容的元素
+    const selectors = [
+      'article',
+      '[role="main"]',
+      'main',
+      '.content',
+      '.article-body',
+      '.post-content',
+      '.entry-content',
+      '#content',
+      '#main-content'
+    ];
+    
+    for (const selector of selectors) {
+      const element = doc.querySelector(selector);
+      if (element) {
+        const text = element.innerText;
+        // 如果内容足够长，可能是文章
+        if (text.length > 500) {
+          return text;
+        }
+      }
+    }
+    
+    // 最后的备选：取 body 中的段落
+    const paragraphs = doc.querySelectorAll('p');
+    let text = '';
+    paragraphs.forEach(p => {
+      if (p.innerText.length > 50) {
+        text += p.innerText + '\n\n';
+      }
+    });
+    
+    return text || doc.body.innerText;
+  }
+
+  cleanText(text) {
+    if (!text) return '';
+    
+    return text
+      .replace(/\s+/g, ' ')           // 合并多个空白
+      .replace(/\n\s*\n/g, '\n\n')    // 合并多个空行
+      .replace(/^\s+|\s+$/g, '')     // 去除首尾空白
+      .trim();
   }
 
   /**
@@ -172,10 +286,15 @@ class TauriNewsAPI {
 class TauriDataAPI {
   constructor() {
     this.fileAPI = new TauriFileAPI();
+    this.invoke = null;
   }
 
   async init() {
     await this.fileAPI.init();
+    if (isTauri() && !this.invoke) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      this.invoke = invoke;
+    }
   }
 
   /**
@@ -185,10 +304,14 @@ class TauriDataAPI {
     const { db } = window;
     const data = await db.exportData();
     
-    const filePath = await this.fileAPI.saveFile(data, {
+    const filePath = await this.fileAPI.saveFile({
       defaultPath: `easylingo-backup-${new Date().toISOString().split('T')[0]}.json`,
       filters: [{ name: 'JSON 文件', extensions: ['json'] }]
     });
+
+    if (filePath && this.invoke) {
+      await this.invoke('write_file_text', { path: filePath, content: data });
+    }
 
     return filePath;
   }
@@ -203,7 +326,7 @@ class TauriDataAPI {
 
     if (!filePath) return null;
 
-    const content = await this.fileAPI.readTextFile(filePath);
+    const content = await this.invoke('read_file_text', { path: filePath });
     const { db } = window;
     await db.importData(content);
 
