@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PolyLingo - 语言学习助手</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
+  
+ <!-- Flag Icons CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@6.6.6/css/flag-icons.min.css">
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- Marked.js for Markdown rendering (custom modules only) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  
+  <!-- Dexie.js (IndexedDB) -->
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  
+  <!-- FullCalendar -->
+  <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/main.min.css' rel='stylesheet' />
+  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+  
+  <!-- File Parsers -->
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Playfair Display', 'serif'],
+            body: ['Source Sans 3', 'sans-serif'],
+          },
+          colors: {
+            primary: {
+              50: '#f0f4f8',
+              100: '#d9e2ec',
+              200: '#bcccdc',
+              300: '#9fb3c8',
+              400: '#829ab1',
+              500: '#627d98',
+              600: '#486581',
+              700: '#334e68',
+              800: '#243b53',
+              900: '#102a43',
+            },
+            accent: {
+              50: '#fffbeb',
+              100: '#fef3c7',
+              200: '#fde68a',
+              300: '#fcd34d',
+              400: '#fbbf24',
+              500: '#f59e0b',
+              600: '#d97706',
+              700: '#b45309',
+              800: '#92400e',
+              900: '#78350f',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    body {
+      font-family: 'Source Sans 3', 'Noto Color Emoji', sans-serif;
+    }
+    .emoji {
+      font-family: 'Noto Color Emoji', sans-serif;
+      font-size: 1.2em;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      font-family: 'Playfair Display', serif;
+    }
+    
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f0f4f8;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #bcccdc;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #9fb3c8;
+    }
+    
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.4s ease-out forwards;
+    }
+    
+    @keyframes slideInLeft {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .animate-slide-in {
+      animation: slideInLeft 0.3s ease-out forwards;
+    }
+    
+    /* Card Hover Effect */
+    .module-card {
+      transition: all 0.3s ease;
+    }
+    .module-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.15);
+    }
+    
+    /* Progress Ring */
+    .progress-ring {
+      transform: rotate(-90deg);
+    }
+    
+    /* Markdown Content Styles for Custom Modules */
+    .markdown-content {
+      line-height: 1.6;
+    }
+    .markdown-content h1, .markdown-content h2, .markdown-content h3, 
+    .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+      font-family: 'Source Sans 3', sans-serif;
+      font-weight: 600;
+      margin: 0.75em 0 0.5em 0;
+      color: #334e68;
+    }
+    .markdown-content h1 { font-size: 1.25rem; }
+    .markdown-content h2 { font-size: 1.125rem; }
+    .markdown-content h3 { font-size: 1rem; }
+    .markdown-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.5em 0;
+      font-size: 0.875rem;
+    }
+    .markdown-content th, .markdown-content td {
+      border: 1px solid #d9e2ec;
+      padding: 0.5em 0.75em;
+      text-align: left;
+    }
+    .markdown-content th {
+      background: #f0f4f8;
+      font-weight: 600;
+      color: #334e68;
+    }
+    .markdown-content tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .markdown-content ul, .markdown-content ol {
+      margin: 0.5em 0;
+      padding-left: 1.5em;
+    }
+    .markdown-content li {
+      margin: 0.25em 0;
+    }
+    .markdown-content code {
+      background: #f0f4f8;
+      padding: 0.125em 0.375em;
+      border-radius: 0.25rem;
+      font-family: monospace;
+      font-size: 0.875em;
+    }
+    .markdown-content pre {
+      background: #f0f4f8;
+      padding: 0.75em;
+      border-radius: 0.5rem;
+      overflow-x: auto;
+      font-size: 0.875rem;
+    }
+    .markdown-content blockquote {
+      border-left: 3px solid #627d98;
+      margin: 0.5em 0;
+      padding-left: 0.75em;
+      color: #486581;
+    }
+    .markdown-content strong {
+      font-weight: 600;
+      color: #102a43;
+    }
+    .markdown-content hr {
+      border: none;
+      border-top: 1px solid #d9e2ec;
+      margin: 1em 0;
+    }
+    
+    /* 复习卡片中的 Markdown 内容滚动条样式 */
+    .max-h-60::-webkit-scrollbar {
+      width: 6px;
+    }
+    .max-h-60::-webkit-scrollbar-track {
+      background: #e2e8f0;
+      border-radius: 3px;
+    }
+    .max-h-60::-webkit-scrollbar-thumb {
+      background: #94a3b8;
+      border-radius: 3px;
+    }
+    .max-h-60::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+    
+    /* Prompt Preview Styles */
+    .prompt-type-word { border-left: 3px solid #3b82f6; }
+    .prompt-type-phrase { border-left: 3px solid #22c55e; }
+    .prompt-type-sentence { border-left: 3px solid #a855f7; }
+    
+    /* Resizable Modal Styles */
+    #add-module-modal-content {
+      resize: both;
+      overflow: auto;
+      position: relative;
+    }
+    #add-module-modal-content::-webkit-resizer {
+      background-color: transparent;
+    }
+    .resize-handle {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 20px;
+      height: 20px;
+      cursor: nwse-resize;
+      background: linear-gradient(135deg, transparent 40%, #bcccdc 40%, #bcccdc 45%, transparent 45%,
+                                  transparent 55%, #bcccdc 55%, #bcccdc 60%, transparent 60%);
+      z-index: 10;
+    }
+    .resize-handle:hover {
+      background: linear-gradient(135deg, transparent 40%, #627d98 40%, #627d98 45%, transparent 45%,
+                                  transparent 55%, #627d98 55%, #627d98 60%, transparent 60%);
+    }
+    
+    /* Streak Animation */
+    @keyframes pulse-fire {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+    .streak-active {
+      animation: pulse-fire 1.5s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="bg-primary-50 text-primary-900 min-h-screen">
+  <div id="app" class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-primary-900 text-white flex flex-col shadow-2xl">
+      <!-- Logo -->
+      <div class="p-6 border-b border-primary-700">
+        <h1 class="text-2xl font-bold tracking-tight">
+          <span class="text-accent-400">Poly</span>Lingo
+        </h1>
+        <p class="text-xs text-primary-300 mt-1">语言学习助手</p>
+      </div>
+      
+      <!-- Navigation -->
+      <nav class="flex-1 overflow-y-auto py-4">
+        <div class="px-4 mb-2 text-xs uppercase tracking-wider text-primary-400 font-semibold">学习模块</div>
+        
+        <!-- Default Modules -->
+        <div id="default-modules-nav">
+          <button onclick="app.switchModule('german')" id="nav-german" class="nav-item w-full px-4 py-3 flex items-center gap-3 hover:bg-primary-800 transition-colors">
+            <span class="fi fi-de w-8 h-6 rounded shadow-sm flex-shrink-0"></span>
+            <div class="text-left">
+              <div class="font-medium">德语</div>
+              <div class="text-xs text-primary-400" id="german-count">0 条目</div>
+            </div>
+          </button>
+          
+          <button onclick="app.switchModule('japanese')" id="nav-japanese" class="nav-item w-full px-4 py-3 flex items-center gap-3 hover:bg-primary-800 transition-colors">
+            <span class="fi fi-jp w-8 h-6 rounded shadow-sm flex-shrink-0"></span>
+            <div class="text-left">
+              <div class="font-medium">日语</div>
+              <div class="text-xs text-primary-400" id="japanese-count">0 条目</div>
+            </div>
+          </button>
+          
+          <button onclick="app.switchModule('english')" id="nav-english" class="nav-item w-full px-4 py-3 flex items-center gap-3 hover:bg-primary-800 transition-colors">
+            <span class="fi fi-gb w-8 h-6 rounded shadow-sm flex-shrink-0"></span>
+            <div class="text-left">
+              <div class="font-medium">英语</div>
+              <div class="text-xs text-primary-400" id="english-count">0 条目</div>
+            </div>
+          </button>
+        </div>
+        
+        <!-- Dynamic Custom Modules -->
+        <div id="custom-modules-nav"></div>
+        
+        <button onclick="app.showAddModuleModal()" class="nav-item w-full px-4 py-3 flex items-center gap-3 hover:bg-primary-800 transition-colors border-t border-primary-700 mt-2">
+          <div class="w-8 h-8 rounded bg-primary-700 flex items-center justify-center text-accent-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+          </div>
+          <span class="text-primary-300">添加语言</span>
+        </button>
+        
+        <div class="px-4 mt-6 mb-2 text-xs uppercase tracking-wider text-primary-400 font-semibold">功能</div>
+        
+        <button onclick="app.showCalendar()" class="nav-item w-full px-4 py-3 flex items-center gap-3 hover:bg-primary-800 transition-colors">
+          <svg class="w-5 h-5 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+          </svg>
+          <span>学习日历</span>
+        </button>
+        
+        <button onclick="app.showStats()" class="nav-item w-full px-4 py-3 flex items-center gap-3 hover:bg-primary-800 transition-colors">
+          <svg class="w-5 h-5 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+          </svg>
+          <span>数据统计</span>
+        </button>
+        
+        <button onclick="app.showSettings()" class="nav-item w-full px-4 py-3 flex items-center gap-3 hover:bg-primary-800 transition-colors">
+          <svg class="w-5 h-5 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+          </svg>
+          <span>设置</span>
+        </button>
+      </nav>
+      
+      <!-- User Stats -->
+      <div class="p-4 border-t border-primary-700 bg-primary-800">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm text-primary-300">今日学习</span>
+          <span class="text-accent-400 font-bold" id="today-minutes">0分钟</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-primary-300">连续打卡</span>
+          <div class="flex items-center gap-1">
+            <span class="text-xl">🔥</span>
+            <span class="text-accent-400 font-bold" id="streak-days">0天</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+    
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto">
+      <!-- Top Bar -->
+      <header class="bg-white shadow-sm px-8 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div class="flex items-center gap-4">
+          <button onclick="app.loadDashboard()" class="p-2 hover:bg-primary-100 rounded-lg transition-colors" title="返回主页">
+            <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+            </svg>
+          </button>
+          <h2 id="page-title" class="text-2xl font-bold text-primary-900">仪表盘</h2>
+          <span id="module-badge" class="hidden flex items-center gap-2 px-3 py-1 bg-accent-100 text-accent-700 rounded-full text-sm font-medium">
+            <span id="module-flag" class="fi fi-de"></span>
+            <span id="module-lang"></span>
+          </span>
+        </div>
+        <div class="flex items-center gap-4">
+          <button onclick="app.startReview()" id="review-btn" class="hidden px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+            </svg>
+            开始复习
+          </button>
+          <button onclick="app.showTestModal()" id="test-btn" class="hidden px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+            </svg>
+            生成测试
+          </button>
+        </div>
+      </header>
+      
+      <!-- Content Area -->
+      <div id="content-area" class="p-8">
+        <!-- Dashboard View -->
+        <div id="dashboard-view" class="animate-fade-in">
+          <!-- Welcome Banner -->
+          <div class="bg-gradient-to-r from-primary-600 to-primary-800 rounded-2xl p-8 text-white mb-8">
+            <h3 class="text-3xl font-bold mb-2">欢迎回来！</h3>
+            <p class="text-primary-200 mb-4">坚持学习，每天进步一点点。今天已完成 <span id="due-count" class="text-accent-400 font-bold">0/20</span> 个复习任务。</p>
+            <div class="flex gap-4">
+              <button onclick="app.startReview()" class="px-6 py-3 bg-accent-500 hover:bg-accent-600 rounded-lg font-semibold transition-colors">
+                立即开始复习
+              </button>
+              <button onclick="app.showQuickTestModal()" class="px-6 py-3 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition-colors">
+                立即开始测试
+              </button>
+            </div>
+          </div>
+          
+          <!-- Module Cards -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <!-- German Card -->
+            <div onclick="app.switchModule('german')" class="module-card bg-white rounded-xl p-6 shadow-lg cursor-pointer border border-primary-100">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-16 h-12 rounded-lg shadow-lg overflow-hidden">
+                  <span class="fi fi-de w-full h-full"></span>
+                </div>
+                <div class="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
+                  <span class="text-primary-600 font-bold text-sm" id="german-progress">0%</span>
+                </div>
+              </div>
+              <h4 class="text-xl font-bold mb-1">德语</h4>
+              <p class="text-sm text-primary-500 mb-3">German</p>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-primary-600"><span id="german-entries">0</span> 条目</span>
+                <span class="text-accent-600"><span id="german-due">0</span> 待复习</span>
+              </div>
+              <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
+                <div id="german-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+              </div>
+            </div>
+            
+            <!-- Japanese Card -->
+            <div onclick="app.switchModule('japanese')" class="module-card bg-white rounded-xl p-6 shadow-lg cursor-pointer border border-primary-100">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-16 h-12 rounded-lg shadow-lg overflow-hidden">
+                  <span class="fi fi-jp w-full h-full"></span>
+                </div>
+                <div class="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
+                  <span class="text-primary-600 font-bold text-sm" id="japanese-progress">0%</span>
+                </div>
+              </div>
+              <h4 class="text-xl font-bold mb-1">日语</h4>
+              <p class="text-sm text-primary-500 mb-3">Japanese</p>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-primary-600"><span id="japanese-entries">0</span> 条目</span>
+                <span class="text-accent-600"><span id="japanese-due">0</span> 待复习</span>
+              </div>
+              <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
+                <div id="japanese-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+              </div>
+            </div>
+            
+            <!-- English Card -->
+            <div onclick="app.switchModule('english')" class="module-card bg-white rounded-xl p-6 shadow-lg cursor-pointer border border-primary-100">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-16 h-12 rounded-lg shadow-lg overflow-hidden">
+                  <span class="fi fi-gb w-full h-full"></span>
+                </div>
+                <div class="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
+                  <span class="text-primary-600 font-bold text-sm" id="english-progress">0%</span>
+                </div>
+              </div>
+              <h4 class="text-xl font-bold mb-1">英语</h4>
+              <p class="text-sm text-primary-500 mb-3">English</p>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-primary-600"><span id="english-entries">0</span> 条目</span>
+                <span class="text-accent-600"><span id="english-due">0</span> 待复习</span>
+              </div>
+              <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
+                <div id="english-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+              </div>
+            </div>
+            
+          </div>
+          
+          <!-- Recent Activity -->
+          <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
+            <h4 class="text-lg font-bold mb-4">最近学习记录</h4>
+            <div id="recent-activity" class="space-y-3">
+              <p class="text-primary-500 text-center py-4">暂无学习记录</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Module View -->
+        <div id="module-view" class="hidden animate-fade-in">
+          <!-- Tabs -->
+          <div class="flex gap-2 mb-6">
+            <button onclick="app.switchModuleTab('upload')" id="tab-upload" class="px-4 py-2 bg-primary-600 text-white rounded-lg transition-colors">
+              📄 上传材料
+            </button>
+            <button onclick="app.switchModuleTab('words')" id="tab-words" class="px-4 py-2 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors">
+              📚 单词 (<span id="count-words">0</span>)
+            </button>
+            <button onclick="app.switchModuleTab('phrases')" id="tab-phrases" class="px-4 py-2 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors">
+              💬 短语 (<span id="count-phrases">0</span>)
+            </button>
+            <button onclick="app.switchModuleTab('sentences')" id="tab-sentences" class="px-4 py-2 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors">
+              📝 语句 (<span id="count-sentences">0</span>)
+            </button>
+          </div>
+          
+          <!-- Upload Tab -->
+          <div id="panel-upload" class="block">
+            <!-- File Upload -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6 border-2 border-dashed border-primary-200">
+              <div class="text-center py-8" ondrop="app.handleDrop(event)" ondragover="app.handleDragOver(event)">
+                <svg class="w-16 h-16 mx-auto text-primary-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+                <h4 class="text-lg font-bold mb-2">上传学习材料</h4>
+                <p class="text-primary-500 mb-2">PDF、DOCX、Markdown 格式 · AI自动提取单词/短语/语句</p>
+                <p class="text-xs text-amber-600 mb-4 bg-amber-50 px-3 py-2 rounded-lg">
+                  <span class="font-bold">💡 PDF建议：</span>请使用<span class="font-bold">非扫描型（可选中文字的）PDF</span>。如果是图片型PDF，建议先用 <a href="https://github.com/opendatalab/MinerU" target="_blank" class="text-blue-600 hover:underline font-bold">MinerU</a> 转换为Markdown并校正后再上传。
+                </p>
+                <input type="file" id="file-upload" class="hidden" accept=".pdf,.docx,.md,.txt" multiple onchange="app.handleFileSelect(event)">
+                <button onclick="document.getElementById('file-upload').click()" class="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors">
+                  选择文件
+                </button>
+              </div>
+            </div>
+            
+            <!-- 动态新闻源导入 -->
+            <div id="news-import-container" class="mb-6"></div>
+            
+            <!-- Bulk Import -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6 border border-primary-100">
+              <h4 class="text-lg font-bold mb-4">📋 批量导入单词</h4>
+              <p class="text-sm text-primary-500 mb-3">只需粘贴单词列表，AI将自动按照你的要求补充</p>
+              <textarea id="bulk-import-text" rows="6" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent" placeholder="粘贴单词列表，每行一个或空格分隔，AI将自动识别词性并补全信息"></textarea>
+              <div class="flex flex-wrap gap-3 mt-3 items-center">
+                <button onclick="app.bulkImportVocabulary()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors">
+                  🔄 AI补全并导入
+                </button>
+                <span id="ai-hint-text" class="text-xs text-primary-400 bg-primary-50 px-2 py-1 rounded">💡 AI将自动识别词性（如名词der/die/das、动词等）并生成中文翻译和例句</span>
+              </div>
+              <div id="bulk-import-progress" class="hidden mt-3">
+                <div class="flex items-center gap-2 text-sm text-primary-600">
+                  <svg class="animate-spin h-4 w-4 text-accent-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span id="bulk-import-status">正在使用AI补全词条信息...</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Materials List -->
+            <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
+              <h4 class="text-lg font-bold mb-4">已上传的材料</h4>
+              <div id="materials-list" class="space-y-2">
+                <p class="text-primary-500 text-center py-8">暂无材料</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Words Tab -->
+          <div id="panel-words" class="hidden">
+            <div class="bg-white rounded-xl shadow-lg border border-primary-100">
+              <div class="p-4 border-b border-primary-100 flex justify-between items-center">
+                <h4 class="text-lg font-bold">📚 单词积累</h4>
+                <div class="flex gap-2 items-center">
+                  <span id="words-selection-info" class="text-sm text-primary-600 hidden">已选 <span id="words-selected-count">0</span> 项</span>
+                  <button onclick="app.toggleBatchMode('word')" id="words-batch-btn" class="px-3 py-1.5 bg-primary-100 text-primary-700 hover:bg-primary-200 rounded-lg text-sm">
+                    ☐ 批量选择
+                  </button>
+                  <button onclick="app.batchDeleteEntries('word')" id="words-delete-btn" class="px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm hidden">
+                    🗑️ 删除选中
+                  </button>
+                  <button onclick="app.deduplicateEntries('word')" class="px-3 py-1.5 bg-primary-100 text-primary-700 hover:bg-primary-200 rounded-lg text-sm" title="删除重复条目并排序">
+                    🔍 查重
+                  </button>
+                  <button onclick="app.addManualEntry('word')" class="px-3 py-1.5 bg-accent-500 text-white rounded-lg text-sm">
+                    + 添加单词
+                  </button>
+                </div>
+              </div>
+              <div id="entries-words" class="divide-y divide-primary-100 max-h-[600px] overflow-y-auto">
+                <p class="text-primary-500 text-center py-8">暂无单词，请上传材料或手动添加</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Phrases Tab -->
+          <div id="panel-phrases" class="hidden">
+            <div class="bg-white rounded-xl shadow-lg border border-primary-100">
+              <div class="p-4 border-b border-primary-100 flex justify-between items-center">
+                <h4 class="text-lg font-bold">💬 短语积累</h4>
+                <div class="flex gap-2 items-center">
+                  <span id="phrases-selection-info" class="text-sm text-primary-600 hidden">已选 <span id="phrases-selected-count">0</span> 项</span>
+                  <button onclick="app.toggleBatchMode('phrase')" id="phrases-batch-btn" class="px-3 py-1.5 bg-primary-100 text-primary-700 hover:bg-primary-200 rounded-lg text-sm">
+                    ☐ 批量选择
+                  </button>
+                  <button onclick="app.batchDeleteEntries('phrase')" id="phrases-delete-btn" class="px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm hidden">
+                    🗑️ 删除选中
+                  </button>
+                  <button onclick="app.deduplicateEntries('phrase')" class="px-3 py-1.5 bg-primary-100 text-primary-700 hover:bg-primary-200 rounded-lg text-sm" title="删除重复条目并排序">
+                    🔍 查重
+                  </button>
+                  <button onclick="app.addManualEntry('phrase')" class="px-3 py-1.5 bg-accent-500 text-white rounded-lg text-sm">
+                    + 添加短语
+                  </button>
+                </div>
+              </div>
+              <div id="entries-phrases" class="divide-y divide-primary-100 max-h-[600px] overflow-y-auto">
+                <p class="text-primary-500 text-center py-8">暂无短语，请上传材料或手动添加</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Sentences Tab -->
+          <div id="panel-sentences" class="hidden">
+            <div class="bg-white rounded-xl shadow-lg border border-primary-100">
+              <div class="p-4 border-b border-primary-100 flex justify-between items-center">
+                <h4 class="text-lg font-bold">📝 语句积累</h4>
+                <div class="flex gap-2 items-center">
+                  <span id="sentences-selection-info" class="text-sm text-primary-600 hidden">已选 <span id="sentences-selected-count">0</span> 项</span>
+                  <button onclick="app.toggleBatchMode('sentence')" id="sentences-batch-btn" class="px-3 py-1.5 bg-primary-100 text-primary-700 hover:bg-primary-200 rounded-lg text-sm">
+                    ☐ 批量选择
+                  </button>
+                  <button onclick="app.batchDeleteEntries('sentence')" id="sentences-delete-btn" class="px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm hidden">
+                    🗑️ 删除选中
+                  </button>
+                  <button onclick="app.deduplicateEntries('sentence')" class="px-3 py-1.5 bg-primary-100 text-primary-700 hover:bg-primary-200 rounded-lg text-sm" title="删除重复条目并排序">
+                    🔍 查重
+                  </button>
+                  <button onclick="app.addManualEntry('sentence')" class="px-3 py-1.5 bg-accent-500 text-white rounded-lg text-sm">
+                    + 添加语句
+                  </button>
+                </div>
+              </div>
+              <div id="entries-sentences" class="divide-y divide-primary-100 max-h-[600px] overflow-y-auto">
+                <p class="text-primary-500 text-center py-8">暂无语句，请上传材料或手动添加</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Review View -->
+        <div id="review-view" class="hidden animate-fade-in">
+          <div class="max-w-3xl mx-auto">
+            <!-- Progress -->
+            <div class="flex items-center justify-between mb-6">
+              <div class="flex items-center gap-2">
+                <span class="text-sm text-primary-500">复习进度</span>
+                <span id="review-progress" class="font-bold text-primary-900">1/10</span>
+              </div>
+              <button onclick="app.exitReview()" class="text-primary-500 hover:text-primary-700">
+                退出复习
+              </button>
+            </div>
+            
+            <!-- Card -->
+            <div id="review-card" class="bg-white rounded-2xl shadow-xl p-8 min-h-[400px] flex flex-col justify-center items-center text-center border border-primary-100">
+              <div id="review-content" class="mb-8">
+                <p class="text-primary-500 mb-4" id="review-context">加载中...</p>
+                <h3 class="text-2xl font-bold text-primary-900 mb-4" id="review-question"></h3>
+                <p class="text-lg text-primary-700" id="review-answer" class="hidden"></p>
+              </div>
+              
+              <div id="review-controls" class="flex gap-4">
+                <button onclick="app.flipCard()" id="flip-btn" class="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors">
+                  显示答案
+                </button>
+              </div>
+              
+              <div id="rating-controls" class="hidden flex gap-3">
+                <button onclick="app.rateCard(1)" class="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-medium transition-colors">
+                  困难
+                </button>
+                <button onclick="app.rateCard(2)" class="px-4 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-lg font-medium transition-colors">
+                  一般
+                </button>
+                <button onclick="app.rateCard(3)" class="px-4 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg font-medium transition-colors">
+                  简单
+                </button>
+                <button onclick="app.rateCard(4)" class="px-4 py-2 bg-accent-100 hover:bg-accent-200 text-accent-700 rounded-lg font-medium transition-colors">
+                  太简单
+                </button>
+              </div>
+            </div>
+            
+            <!-- SRS Info -->
+            <div class="mt-4 text-center text-sm text-primary-500">
+              基于间隔重复算法 (SRS) 智能安排复习
+            </div>
+          </div>
+        </div>
+        
+        <!-- Test View -->
+        <div id="test-view" class="hidden animate-fade-in">
+          <div class="max-w-3xl mx-auto">
+            <div id="test-container">
+              <!-- Test questions will be rendered here -->
+            </div>
+          </div>
+        </div>
+        
+        <!-- Calendar View -->
+        <div id="calendar-view" class="hidden animate-fade-in">
+          <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
+            <div id="calendar"></div>
+          </div>
+          
+          <!-- Study Log -->
+          <div class="mt-6 bg-white rounded-xl shadow-lg p-6 border border-primary-100">
+            <h4 class="text-lg font-bold mb-4">学习日志</h4>
+            <div id="study-log" class="space-y-2">
+              <p class="text-primary-500 text-center py-4">暂无记录</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Stats View -->
+        <div id="stats-view" class="hidden animate-fade-in">
+          <!-- Summary Cards -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-xl p-6 shadow-lg border border-primary-100">
+              <div class="text-sm text-primary-500 mb-1">总学习时长</div>
+              <div class="text-3xl font-bold text-primary-900" id="stat-total-time">0小时</div>
+            </div>
+            <div class="bg-white rounded-xl p-6 shadow-lg border border-primary-100">
+              <div class="text-sm text-primary-500 mb-1">累计打卡</div>
+              <div class="text-3xl font-bold text-primary-900" id="stat-total-days">0天</div>
+            </div>
+            <div class="bg-white rounded-xl p-6 shadow-lg border border-primary-100">
+              <div class="text-sm text-primary-500 mb-1">条目总数</div>
+              <div class="text-3xl font-bold text-primary-900" id="stat-total-entries">0</div>
+            </div>
+            <div class="bg-white rounded-xl p-6 shadow-lg border border-primary-100">
+              <div class="text-sm text-primary-500 mb-1">测试平均正确率</div>
+              <div class="text-3xl font-bold text-accent-600" id="stat-avg-score">0%</div>
+            </div>
+          </div>
+          
+          <!-- Charts -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 学习趋势 -->
+            <div class="bg-white rounded-xl p-6 shadow-lg border border-primary-100">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h4 class="text-lg font-bold">学习趋势</h4>
+                <div class="flex flex-wrap gap-2">
+                  <select id="trend-module-select" onchange="app.updateTrendChart()" class="text-sm px-2 py-1 border border-primary-200 rounded-lg">
+                    <option value="all">全部模块</option>
+                  </select>
+                  <select id="trend-view-select" onchange="app.updateTrendChart()" class="text-sm px-2 py-1 border border-primary-200 rounded-lg">
+                    <option value="week">近7天</option>
+                    <option value="weeks">连续数周</option>
+                    <option value="months">连续数月</option>
+                  </select>
+                </div>
+              </div>
+              <canvas id="study-trend-chart"></canvas>
+            </div>
+            
+            <!-- 各模块学习时长分布 -->
+            <div class="bg-white rounded-xl p-6 shadow-lg border border-primary-100">
+              <h4 class="text-lg font-bold mb-4">各模块学习时长分布</h4>
+              <canvas id="module-distribution-chart"></canvas>
+            </div>
+            
+            <!-- 测试成绩趋势 -->
+            <div class="bg-white rounded-xl p-6 shadow-lg border border-primary-100">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-lg font-bold">测试成绩趋势</h4>
+                <select id="test-score-module-select" onchange="app.updateTestScoreChart()" class="text-sm px-2 py-1 border border-primary-200 rounded-lg">
+                  <option value="all">全部模块</option>
+                </select>
+              </div>
+              <canvas id="test-score-chart"></canvas>
+            </div>
+            
+            <!-- 各语言学习进度 -->
+            <div class="bg-white rounded-xl p-6 shadow-lg border border-primary-100">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-lg font-bold">各语言学习进度</h4>
+              </div>
+              <canvas id="review-progress-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <!-- Add Module Modal -->
+  <div id="add-module-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div id="add-module-modal-content" class="bg-white rounded-2xl p-8 w-full mx-4 animate-fade-in overflow-y-auto relative" style="max-width: 800px; min-width: 400px; min-height: 500px; max-height: 90vh; resize: both;">
+      <h3 class="text-2xl font-bold mb-4">添加新语言</h3>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-primary-700 mb-2">语言名称</label>
+          <input type="text" id="new-module-name" placeholder="例如：韩语" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-primary-700 mb-2">英文名称</label>
+          <input type="text" id="new-module-lang" placeholder="例如：Korean" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-primary-700 mb-2">缩写代码</label>
+          <input type="text" id="new-module-code" placeholder="例如：KR" maxlength="3" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+        </div>
+        <!-- AI提取要求配置 -->
+        <div class="border-t border-primary-200 pt-4">
+          <label class="block text-sm font-medium text-primary-700 mb-2">AI提取要求配置（可选）</label>
+          <p class="text-xs text-primary-500 mb-3">分别描述对三类条目的提取要求，系统将生成标准化Prompt，您可以预览并修改</p>
+          
+          <div class="space-y-3">
+            <div class="bg-blue-50 rounded-lg p-3">
+              <label class="block text-xs font-medium text-blue-700 mb-1">📖 单词（word）提取要求</label>
+              <textarea id="new-module-word-prompt" rows="2" placeholder="例如：提取韩语名词和动词，标注汉字词源和助词搭配" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"></textarea>
+            </div>
+            
+            <div class="bg-green-50 rounded-lg p-3">
+              <label class="block text-xs font-medium text-green-700 mb-1">📗 短语（phrase）提取要求</label>
+              <textarea id="new-module-phrase-prompt" rows="2" placeholder="例如：提取固定搭配和常用表达" class="w-full px-3 py-2 border border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm bg-white"></textarea>
+            </div>
+            
+            <div class="bg-purple-50 rounded-lg p-3">
+              <label class="block text-xs font-medium text-purple-700 mb-1">📘 语句（sentence）提取要求</label>
+              <textarea id="new-module-sentence-prompt" rows="2" placeholder="例如：提取实用对话和重要句型" class="w-full px-3 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"></textarea>
+            </div>
+          </div>
+          
+          <!-- 生成按钮 -->
+          <button onclick="app.generatePromptPreview()" class="mt-3 w-full px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors text-sm">
+            💡 生成并预览AI Prompt
+          </button>
+          
+          <!-- Prompt预览/编辑区 -->
+          <div id="prompt-preview-container" class="hidden mt-3 border border-primary-200 rounded-lg p-3 bg-primary-50">
+            <div class="flex justify-between items-center mb-2">
+              <label class="text-xs font-medium text-primary-700">📋 AI Prompt预览（可编辑）</label>
+              <button onclick="app.copyPromptToClipboard()" class="text-xs text-accent-600 hover:text-accent-700">📋 复制</button>
+            </div>
+            <textarea id="new-module-final-prompt" rows="6" class="w-full px-3 py-2 border border-primary-300 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent text-sm font-mono text-xs" placeholder="点击上方按钮生成Prompt..."></textarea>
+            
+            <!-- 占位符助手 -->
+            <div class="mt-3 border-t border-primary-200 pt-3">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-medium text-primary-700">🎨 通用占位符库（点击插入）</label>
+                <button onclick="app.togglePlaceholderHelp()" class="text-xs text-accent-600 hover:text-accent-700">展开/折叠</button>
+              </div>
+              <div id="placeholder-help-panel" class="grid grid-cols-1 gap-1.5 text-xs max-h-64 overflow-y-auto">
+                <!-- 基础字段 -->
+                <div class="col-span-1 font-medium text-primary-600 mt-1 text-xs bg-primary-100 px-2 py-0.5 rounded">基础字段</div>
+                <button onclick="app.insertPlaceholder('{{original}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="条目的原文">
+                  <span class="w-16 text-gray-500">原文</span>
+                  <code class="text-accent-600 font-mono">{{original}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{translation}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="中文翻译">
+                  <span class="w-16 text-gray-500">翻译</span>
+                  <code class="text-accent-600 font-mono">{{translation}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{wordType}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="词性标注（名词/动词/形容词等）">
+                  <span class="w-16 text-gray-500">词性</span>
+                  <code class="text-accent-600 font-mono">{{wordType}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{gender}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="语法性别（阴性/阳性/中性等）">
+                  <span class="w-16 text-gray-500">语法性别</span>
+                  <code class="text-accent-600 font-mono">{{gender}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{pluralForm}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="复数形式">
+                  <span class="w-16 text-gray-500">复数形式</span>
+                  <code class="text-accent-600 font-mono">{{pluralForm}}</code>
+                </button>
+                
+                <!-- 音标发音 -->
+                <div class="col-span-1 font-medium text-primary-600 mt-2 text-xs bg-primary-100 px-2 py-0.5 rounded">音标与发音</div>
+                <button onclick="app.insertPlaceholder('{{romanization}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="罗马音拼写">
+                  <span class="w-16 text-gray-500">罗马音</span>
+                  <code class="text-accent-600 font-mono">{{romanization}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{IPA}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="国际音标">
+                  <span class="w-16 text-gray-500">IPA音标</span>
+                  <code class="text-accent-600 font-mono">{{IPA}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{pronunciation}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="发音要点提示">
+                  <span class="w-16 text-gray-500">发音要点</span>
+                  <code class="text-accent-600 font-mono">{{pronunciation}}</code>
+                </button>
+                
+                <!-- 词源语域 -->
+                <div class="col-span-1 font-medium text-primary-600 mt-2 text-xs bg-primary-100 px-2 py-0.5 rounded">词源与语域</div>
+                <button onclick="app.insertPlaceholder('{{wordSource}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="词汇来源分类">
+                  <span class="w-16 text-gray-500">词源分类</span>
+                  <code class="text-accent-600 font-mono">{{wordSource}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{etymology}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="词源历史解释">
+                  <span class="w-16 text-gray-500">词源解释</span>
+                  <code class="text-accent-600 font-mono">{{etymology}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{register}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="语域等级">
+                  <span class="w-16 text-gray-500">语域等级</span>
+                  <code class="text-accent-600 font-mono">{{register}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{speechLevel}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="语体/敬语等级">
+                  <span class="w-16 text-gray-500">语体等级</span>
+                  <code class="text-accent-600 font-mono">{{speechLevel}}</code>
+                </button>
+                
+                <!-- 变化形式 -->
+                <div class="col-span-1 font-medium text-primary-600 mt-2 text-xs bg-primary-100 px-2 py-0.5 rounded">变化形式</div>
+                <button onclick="app.insertPlaceholder('{{conjugation}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="活用或变位规则">
+                  <span class="w-16 text-gray-500">变位规则</span>
+                  <code class="text-accent-600 font-mono">{{conjugation}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{tenseMood}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="时态和语气">
+                  <span class="w-16 text-gray-500">时态语气</span>
+                  <code class="text-accent-600 font-mono">{{tenseMood}}</code>
+                </button>
+                
+                <!-- 例句变体 -->
+                <div class="col-span-1 font-medium text-primary-600 mt-2 text-xs bg-primary-100 px-2 py-0.5 rounded">例句变体</div>
+                <button onclick="app.insertPlaceholder('{{exampleFormal}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="正式场合例句">
+                  <span class="w-16 text-gray-500">正式例句</span>
+                  <code class="text-accent-600 font-mono">{{exampleFormal}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{exampleInformal}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="非正式场合例句">
+                  <span class="w-16 text-gray-500">非正式例句</span>
+                  <code class="text-accent-600 font-mono">{{exampleInformal}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{exampleWritten}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="书面语例句">
+                  <span class="w-16 text-gray-500">书面例句</span>
+                  <code class="text-accent-600 font-mono">{{exampleWritten}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{exampleSpoken}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="口语化例句">
+                  <span class="w-16 text-gray-500">口语例句</span>
+                  <code class="text-accent-600 font-mono">{{exampleSpoken}}</code>
+                </button>
+                
+                <!-- 含义解析 -->
+                <div class="col-span-1 font-medium text-primary-600 mt-2 text-xs bg-primary-100 px-2 py-0.5 rounded">含义解析</div>
+                <button onclick="app.insertPlaceholder('{{literalMeaning}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="字面意思">
+                  <span class="w-16 text-gray-500">字面意思</span>
+                  <code class="text-accent-600 font-mono">{{literalMeaning}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{actualMeaning}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="实际含义">
+                  <span class="w-16 text-gray-500">实际含义</span>
+                  <code class="text-accent-600 font-mono">{{actualMeaning}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{nuance}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="语义微妙差别">
+                  <span class="w-16 text-gray-500">语义差别</span>
+                  <code class="text-accent-600 font-mono">{{nuance}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{usageContext}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="使用场景">
+                  <span class="w-16 text-gray-500">使用场景</span>
+                  <code class="text-accent-600 font-mono">{{usageContext}}</code>
+                </button>
+                
+                <!-- 语法成分 -->
+                <div class="col-span-1 font-medium text-primary-600 mt-2 text-xs bg-primary-100 px-2 py-0.5 rounded">语法成分</div>
+                <button onclick="app.insertPlaceholder('{{subject}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="句子主语">
+                  <span class="w-16 text-gray-500">主语</span>
+                  <code class="text-accent-600 font-mono">{{subject}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{predicate}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="句子谓语">
+                  <span class="w-16 text-gray-500">谓语</span>
+                  <code class="text-accent-600 font-mono">{{predicate}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{structure}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="句子结构">
+                  <span class="w-16 text-gray-500">句子结构</span>
+                  <code class="text-accent-600 font-mono">{{structure}}</code>
+                </button>
+                
+                <!-- 文化近义 -->
+                <div class="col-span-1 font-medium text-primary-600 mt-2 text-xs bg-primary-100 px-2 py-0.5 rounded">文化与近义</div>
+                <button onclick="app.insertPlaceholder('{{culturalNote}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="文化背景注释">
+                  <span class="w-16 text-gray-500">文化注释</span>
+                  <code class="text-accent-600 font-mono">{{culturalNote}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{synonym}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="近义词">
+                  <span class="w-16 text-gray-500">近义词</span>
+                  <code class="text-accent-600 font-mono">{{synonym}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{antonym}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="反义词">
+                  <span class="w-16 text-gray-500">反义词</span>
+                  <code class="text-accent-600 font-mono">{{antonym}}</code>
+                </button>
+                <button onclick="app.insertPlaceholder('{{commonMistake}}')" class="px-2 py-1.5 bg-white border border-primary-200 rounded hover:bg-primary-50 text-left flex items-center gap-2" title="常见错误">
+                  <span class="w-16 text-gray-500">常见错误</span>
+                  <code class="text-accent-600 font-mono">{{commonMistake}}</code>
+                </button>
+              </div>
+              <p class="text-xs text-primary-500 mt-2">💡 点击上述占位符可快捷插入到Prompt中，所有占位符均为通用格式，适用于任何语言</p>
+            </div>
+          </div>
+          
+          <input type="hidden" id="new-module-prompt" value="">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-primary-700 mb-2">选择国家/地区旗帜</label>
+          <div class="grid grid-cols-6 gap-2 max-h-32 overflow-y-auto">
+            <button onclick="app.selectModuleFlag('kr')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="kr"><span class="fi fi-kr w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('fr')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="fr"><span class="fi fi-fr w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('es')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="es"><span class="fi fi-es w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('it')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="it"><span class="fi fi-it w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('ru')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="ru"><span class="fi fi-ru w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('pt')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="pt"><span class="fi fi-pt w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('nl')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="nl"><span class="fi fi-nl w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('se')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="se"><span class="fi fi-se w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('no')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="no"><span class="fi fi-no w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('dk')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="dk"><span class="fi fi-dk w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('fi')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="fi"><span class="fi fi-fi w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('pl')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="pl"><span class="fi fi-pl w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('tr')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="tr"><span class="fi fi-tr w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('gr')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="gr"><span class="fi fi-gr w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('cz')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="cz"><span class="fi fi-cz w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('hu')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="hu"><span class="fi fi-hu w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('ro')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="ro"><span class="fi fi-ro w-full h-6"></span></button>
+            <button onclick="app.selectModuleFlag('cn')" class="module-flag-btn p-2 rounded hover:bg-primary-100 transition-all" data-flag="cn"><span class="fi fi-cn w-full h-6"></span></button>
+          </div>
+          <input type="hidden" id="new-module-flag" value="kr">
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button onclick="app.closeAddModuleModal()" class="flex-1 px-4 py-2 border border-primary-300 rounded-lg hover:bg-primary-50 transition-colors">
+            取消
+          </button>
+          <button onclick="app.addCustomModule()" class="flex-1 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors">
+            添加
+          </button>
+        </div>
+        
+        <!-- 窗口调整提示 -->
+        <div class="absolute bottom-2 right-2 text-xs text-primary-400 flex items-center gap-1 pointer-events-none select-none">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>
+          </svg>
+          <span>拖拽边缘调整大小</span>
+        </div>
+        
+        <!-- 调整大小的handle -->
+        <div class="resize-handle absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize flex items-end justify-end p-1" style="background: linear-gradient(135deg, transparent 50%, #d9e2ec 50%);">
+          <svg class="w-3 h-3 text-primary-400" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M14.5 14.5L19 19M10.5 14.5L14.5 14.5M14.5 10.5L14.5 14.5"></path>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Test Modal -->
+  <div id="test-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 animate-fade-in">
+      <h3 class="text-2xl font-bold mb-4">生成测试</h3>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-primary-700 mb-2">题型数量设置</label>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between p-3 bg-primary-50 rounded-lg">
+              <label class="flex items-center gap-2">
+                <input type="checkbox" id="test-type-choice" class="test-type-toggle" value="choice" checked onchange="app.toggleTestType('choice')">
+                <span class="font-medium">选择题</span>
+              </label>
+              <input type="number" id="test-count-choice" value="5" min="0" max="20" class="w-16 px-2 py-1 border border-primary-200 rounded text-center" oninput="app.updateTestTotalCount()">
+            </div>
+            <div class="flex items-center justify-between p-3 bg-primary-50 rounded-lg">
+              <label class="flex items-center gap-2">
+                <input type="checkbox" id="test-type-fill" class="test-type-toggle" value="fill" onchange="app.toggleTestType('fill')">
+                <span class="font-medium">填空题</span>
+              </label>
+              <input type="number" id="test-count-fill" value="3" min="0" max="20" disabled class="w-16 px-2 py-1 border border-primary-200 rounded text-center bg-primary-100" oninput="app.updateTestTotalCount()">
+            </div>
+            <div class="flex items-center justify-between p-3 bg-primary-50 rounded-lg">
+              <label class="flex items-center gap-2">
+                <input type="checkbox" id="test-type-translation" class="test-type-toggle" value="translation" onchange="app.toggleTestType('translation')">
+                <span class="font-medium">翻译题</span>
+                <span class="text-xs text-primary-400">(不计分)</span>
+              </label>
+              <input type="number" id="test-count-translation" value="2" min="0" max="20" disabled class="w-16 px-2 py-1 border border-primary-200 rounded text-center bg-primary-100" oninput="app.updateTestTotalCount()">
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-2 border-t border-primary-200">
+          <span class="text-primary-600">总计</span>
+          <span id="test-total-count" class="text-xl font-bold text-accent-600">5题</span>
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button onclick="app.closeTestModal()" class="flex-1 px-4 py-2 border border-primary-300 rounded-lg hover:bg-primary-50 transition-colors">
+            取消
+          </button>
+          <button onclick="app.generateTest()" class="flex-1 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors">
+            生成
+          </button>
+        </div>
+        <div class="mt-4 text-center">
+          <button onclick="app.closeTestModal(); app.showTestHistory()" class="text-sm text-primary-500 hover:text-accent-500 underline">
+            查看历史测试
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-2xl p-8 max-w-lg w-full mx-4 animate-fade-in max-h-[90vh] overflow-y-auto">
+      <h3 class="text-2xl font-bold mb-6">设置</h3>
+      
+      <div class="space-y-6">
+        <!-- AI Settings -->
+        <div>
+          <h4 class="text-lg font-semibold mb-3">AI 配置</h4>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-primary-700 mb-1">API Base URL</label>
+              <input type="text" id="setting-api-url" value="https://api.openai.com/v1" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+              <p class="text-xs text-primary-500 mt-1">GLM用户请填写: https://open.bigmodel.cn/api/paas/v4/</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-primary-700 mb-1">API Key</label>
+              <input type="password" id="setting-api-key" placeholder="sk-..." class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+              <p class="text-xs text-primary-500 mt-1">支持OpenAI格式API：OpenAI、智谱AI(GLM)、DeepSeek、通义千问等兼容OpenAI接口的服务</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-primary-700 mb-1">模型</label>
+              <input type="text" id="setting-model" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+              <p class="text-xs text-primary-500 mt-1">测试时使用glm-4-plus效果稳定且性价比高，可依据需求选择其他模型。</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-primary-700 mb-1">Max Tokens（AI输出长度限制）</label>
+              <input type="number" id="setting-max-tokens" value="8000" min="1000" max="32000" step="1000" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+              <p class="text-xs text-primary-500 mt-1">如果AI补全失败或内容被截断，请增加此值</p>
+              <p class="text-xs text-amber-600 mt-1">💡 建议设置：日语 16000，德语/英语 8000</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- SRS Settings -->
+        <div>
+          <h4 class="text-lg font-semibold mb-3">复习设置</h4>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-primary-700 mb-1">每日复习量</label>
+              <input type="number" id="setting-daily-limit" value="20" min="5" max="100" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+            </div>
+          </div>
+        </div>
+        
+        <!-- Proxy Settings -->
+        <div>
+          <h4 class="text-lg font-semibold mb-3">代理服务器配置（高级）</h4>
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+            <p class="text-xs text-amber-700">💡 提示：默认代理部署在海外（Vercel），国内用户访问新闻功能时可能需要开启 VPN。</p>
+          </div>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-primary-700 mb-1">代理服务器地址</label>
+              <input type="text" id="setting-proxy-url" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+              <p class="text-xs text-primary-500 mt-1">用于获取新闻 RSS 和文章内容。请自行部署（不提供公共代理）。</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Data Management -->
+        <div>
+          <h4 class="text-lg font-semibold mb-3">数据管理</h4>
+          <div class="flex gap-3">
+            <button onclick="app.exportData()" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg transition-colors">
+              导出数据
+            </button>
+            <button onclick="document.getElementById('import-file').click()" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg transition-colors">
+              导入数据
+            </button>
+            <input type="file" id="import-file" class="hidden" accept=".json" onchange="app.importData(event)">
+          </div>
+        </div>
+      </div>
+      
+      <div class="flex gap-3 mt-6 pt-6 border-t border-primary-200">
+        <button onclick="app.closeSettings()" class="flex-1 px-4 py-2 border border-primary-300 rounded-lg hover:bg-primary-50 transition-colors">
+          关闭
+        </button>
+        <button onclick="app.saveSettings()" class="flex-1 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors">
+          保存
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Test Result Modal -->
+  <div id="test-result-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-2xl p-8 max-w-lg w-full mx-4 animate-fade-in">
+      <h3 class="text-2xl font-bold mb-4">测试完成！</h3>
+      <div class="text-center mb-6">
+        <div class="text-5xl font-bold text-accent-600 mb-2" id="test-result-score">0%</div>
+        <p class="text-primary-500">正确率</p>
+      </div>
+      <div class="space-y-2 mb-6">
+        <div class="flex justify-between">
+          <span class="text-primary-600">总题数</span>
+          <span id="test-result-total" class="font-semibold">0</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-primary-600">正确</span>
+          <span id="test-result-correct" class="font-semibold text-green-600">0</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-primary-600">错误</span>
+          <span id="test-result-wrong" class="font-semibold text-red-600">0</span>
+        </div>
+      </div>
+      <button onclick="app.closeTestResult()" class="w-full px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors">
+        查看详细解析
+      </button>
+    </div>
+  </div>
+  
+  <!-- Test History Modal -->
+  <div id="test-history-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-2xl p-8 max-w-2xl w-full mx-4 animate-fade-in max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-2xl font-bold">测试历史</h3>
+        <button onclick="app.closeTestHistory()" class="text-primary-400 hover:text-primary-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="flex items-center justify-between mb-4 pb-3 border-b border-primary-200">
+        <button onclick="app.toggleSelectAllTests()" class="text-sm text-primary-600 hover:text-primary-800 font-medium">
+          全选/取消全选
+        </button>
+        <button onclick="app.deleteSelectedTests()" class="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm font-medium transition-colors">
+          删除选中
+        </button>
+      </div>
+      <div id="test-history-list" class="flex-1 overflow-y-auto space-y-3">
+        <!-- Test history items will be rendered here -->
+      </div>
+    </div>
+  </div>
+  
+  <!-- Test Review Modal -->
+  <div id="test-review-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-2xl p-8 max-w-3xl w-full mx-4 animate-fade-in max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-2xl font-bold">测试回顾</h3>
+        <button onclick="app.closeTestReview()" class="text-primary-400 hover:text-primary-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="text-center mb-4 pb-4 border-b border-primary-200">
+        <span class="text-3xl font-bold text-accent-600" id="review-score">0%</span>
+        <span class="text-primary-500 ml-2">正确率</span>
+      </div>
+      <div id="test-review-content" class="flex-1 overflow-y-auto space-y-4">
+        <!-- Review content will be rendered here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Mixed Review Language Selection Modal -->
+  <div id="mixed-review-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 animate-fade-in">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-2xl font-bold text-primary-800">选择复习语言</h3>
+        <button onclick="app.closeMixedReviewModal()" class="text-primary-400 hover:text-primary-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <p class="text-primary-600 mb-4">请选择今天要复习的语言（多选）：</p>
+      <div id="mixed-review-modules" class="space-y-3 mb-6">
+        <!-- Module checkboxes will be rendered here -->
+      </div>
+      <div class="flex gap-3">
+        <button onclick="app.selectAllModules()" class="flex-1 px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg font-medium transition-colors">
+          全选
+        </button>
+        <button onclick="app.startMixedReview()" class="flex-1 px-4 py-3 bg-accent-500 hover:bg-accent-600 text-white rounded-lg font-semibold transition-colors">
+          开始复习
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Test Language Selection Modal -->
+  <div id="quick-test-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 animate-fade-in">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-2xl font-bold text-primary-800">选择测试语言</h3>
+        <button onclick="app.closeQuickTestModal()" class="text-primary-400 hover:text-primary-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <p class="text-primary-600 mb-4">请选择要测试的语言（多选）：</p>
+      <div id="quick-test-modules" class="space-y-3 mb-6">
+        <!-- Module checkboxes will be rendered here -->
+      </div>
+      <div class="border-t border-primary-200 pt-4 mb-4">
+        <p class="text-sm text-primary-600 mb-3">题型设置：</p>
+        <div class="space-y-2">
+          <label class="flex items-center">
+            <input type="checkbox" id="quick-test-choice" checked class="w-4 h-4 text-accent-500 rounded border-primary-300 focus:ring-accent-500 mr-2">
+            <span class="text-sm text-primary-700">选择题</span>
+            <input type="number" id="quick-test-choice-count" value="5" min="1" max="20" class="ml-2 w-16 px-2 py-1 text-sm border border-primary-300 rounded">
+          </label>
+          <label class="flex items-center">
+            <input type="checkbox" id="quick-test-fill" checked class="w-4 h-4 text-accent-500 rounded border-primary-300 focus:ring-accent-500 mr-2">
+            <span class="text-sm text-primary-700">填空题</span>
+            <input type="number" id="quick-test-fill-count" value="5" min="1" max="20" class="ml-2 w-16 px-2 py-1 text-sm border border-primary-300 rounded">
+          </label>
+          <label class="flex items-center">
+            <input type="checkbox" id="quick-test-translation" class="w-4 h-4 text-accent-500 rounded border-primary-300 focus:ring-accent-500 mr-2">
+            <span class="text-sm text-primary-700">翻译题</span>
+            <input type="number" id="quick-test-translation-count" value="5" min="1" max="20" class="ml-2 w-16 px-2 py-1 text-sm border border-primary-300 rounded">
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="app.selectAllQuickTestModules()" class="flex-1 px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg font-medium transition-colors">
+          全选
+        </button>
+        <button onclick="app.startQuickTest()" class="flex-1 px-4 py-3 bg-accent-500 hover:bg-accent-600 text-white rounded-lg font-semibold transition-colors">
+          开始测试
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 清理可能的重复渲染问题（针对 Edge 浏览器）
+    (function() {
+      // 检查是否是页面刷新
+      if (performance.navigation && performance.navigation.type === 1) {
+        console.log('Page reloaded, resetting app state...');
+        // 页面刷新时重置 app 状态
+        if (window.app) {
+          window.app.isInitialized = false;
+          window.app.customModulesRendered = false;
+        }
+      }
+      
+      // 检查是否已经有一个 init 在运行
+      if (window.appInitStarted) {
+        console.log('App init already started, preventing duplicate...');
+        return;
+      }
+      window.appInitStarted = true;
+    })();
+  </script>
+  <script src="app.js?v=9"></script>
+</body>
+</html>

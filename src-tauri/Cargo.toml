@@ -1,0 +1,31 @@
+[package]
+name = "easylingo"
+version = "1.0.0"
+description = "A desktop language learning app powered by AI and SRS"
+authors = ["ReoNa0216"]
+edition = "2021"
+rust-version = "1.75"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "easylingo"
+path = "src/main.rs"
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+tauri-plugin-dialog = "2.0"
+tauri-plugin-fs = "2.0"
+tauri-plugin-http = { version = "2.0", features = ["reqwest-rustls-tls"] }
+tauri-plugin-sql = { version = "2.0", features = ["sqlite"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
