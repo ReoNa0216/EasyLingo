@@ -2823,16 +2823,17 @@ ${chunk.substring(0, 8000)}
       
       progressDiv.classList.add('hidden');
       
-      // 添加模块ID
+      // 添加模块ID和字符串ID（与学习材料提取保持一致）
       entries.forEach(entry => {
         entry.moduleId = this.currentModule;
+        entry.id = `entry_${this.currentModule}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       });
       
-      // 保存到数据库 - 逐个添加以获取ID
+      // 保存到数据库
       console.log('Saving entries to DB:', entries.length);
       for (let i = 0; i < entries.length; i++) {
         try {
-          entries[i].id = await db.entries.add(entries[i]);
+          await db.entries.put(entries[i]);
         } catch (err) {
           console.error('Failed to add entry:', entries[i], err);
         }
