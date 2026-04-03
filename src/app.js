@@ -5484,6 +5484,20 @@ Requirements:
   
   closeTestResult() {
     document.getElementById('test-result-modal').classList.add('hidden');
+    
+    // 滚动到第一个错误的题目（如果有的话）
+    setTimeout(() => {
+      const firstWrong = document.querySelector('.border-red-300');
+      if (firstWrong) {
+        firstWrong.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        // 如果没有错误，滚动到第一题
+        const firstQuestion = document.getElementById('question-0');
+        if (firstQuestion) {
+          firstQuestion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }, 100);
   },
   
   // 退出测试
