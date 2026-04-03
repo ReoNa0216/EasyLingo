@@ -6821,10 +6821,10 @@ Requirements:
     console.log('Debug fetching raw HTML from:', url);
     
     try {
-      const proxy = 'https://api.allorigins.win/get?url=';
+      // 尝试使用 corsproxy.io
+      const proxy = 'https://corsproxy.io/?';
       const response = await fetch(`${proxy}${encodeURIComponent(url)}`);
-      const json = await response.json();
-      const html = json.contents;
+      const html = await response.text();
       
       console.log('Raw HTML length:', html.length);
       
@@ -6836,7 +6836,8 @@ Requirements:
       let extractedText = '';
       paragraphs.forEach((p, i) => {
         const text = p.textContent?.trim();
-        if (text && text.length > 20 && text.length < 2000) {
+        // 只保留德语段落
+        if (text && text.length > 30 && /[\u00e4\u00f6\u00fc\u00df]|der|die|das|und|ist|von/i.test(text)) {
           extractedText += `[${i}] ${text}\n\n`;
         }
       });
@@ -6854,7 +6855,7 @@ Requirements:
           </div>
           <div class="p-4 overflow-y-auto flex-1">
             <p class="text-sm text-gray-500 mb-2">HTML长度: ${html.length} | 段落数: ${paragraphs.length}</p>
-            <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap">${this.escapeHtml(extractedText.substring(0, 5000))}</div>
+            <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap">${this.escapeHtml(extractedText.substring(0, 8000))}</div>
           </div>
         </div>`;
       document.body.appendChild(modal);

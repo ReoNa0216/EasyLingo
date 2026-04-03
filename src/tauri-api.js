@@ -214,31 +214,31 @@ class TauriNewsAPI {
       content = doc.querySelector('#storytext')?.innerText || 
                 doc.querySelector('article')?.innerText || '';
     } else if (url.includes('zdf.de')) {
-      // ZDF 内容提取 - 简化版
+      // ZDF 内容提取 - 使用段落提取
       console.log('Starting ZDF extraction...');
       
-      // 直接尝试获取 main 标签
-      const main = doc.querySelector('main');
-      if (main) {
-        content = main.innerText || '';
-        console.log(`Main content length: ${content.length}`);
-      }
+      // 方法1: 收集所有段落
+      const allParagraphs = doc.querySelectorAll('p');
+      console.log(`Found ${allParagraphs.length} paragraphs`);
       
-      // 如果 main 没有内容或太短，尝试获取所有段落
+      let paragraphText = '';
+      allParagraphs.forEach((p, i) => {
+        const text = p.textContent?.trim() || '';
+        // 只保留德语段落（包含德语字符）
+        if (text.length > 30 && /[\u00e4\u00f6\u00fc\u00df]|der|die|das|und|ist|von/i.test(text)) {
+          paragraphText += text + '\n\n';
+        }
+      });
+      
+      console.log(`Paragraph text length: ${paragraphText.length}`);
+      content = paragraphText;
+      
+      // 方法2: 如果段落太少，尝试获取 main 标签
       if (!content || content.length < 500) {
-        console.log('Trying paragraphs...');
-        const allParagraphs = doc.querySelectorAll('p');
-        let paragraphText = '';
-        allParagraphs.forEach(p => {
-          const text = p.textContent || p.innerText || '';
-          if (text.trim().length > 20) {
-            paragraphText += text.trim() + '\n\n';
-          }
-        });
-        
-        if (paragraphText.length > (content?.length || 0)) {
-          content = paragraphText;
-          console.log(`Paragraphs content length: ${content.length}`);
+        const main = doc.querySelector('main');
+        if (main) {
+          content = main.innerText || '';
+          console.log(`Using main tag, length: ${content.length}`);
         }
       }
       
