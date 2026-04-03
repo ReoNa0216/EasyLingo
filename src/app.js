@@ -3757,26 +3757,28 @@ ${wordsList}
     const confirmed = await this.confirmDialog('确定要删除这个条目吗？');
     if (!confirmed) return;
     
-    console.log('Deleting entry:', entryId);
-    
     try {
       // 检查 entryId 是否有效
       if (!entryId || entryId === 'undefined') {
-        console.error('Invalid entryId:', entryId);
         await this.alertDialog('删除失败：条目ID无效');
         return;
       }
       
-      // 尝试获取条目确认存在
-      const entry = await db.entries.get(entryId);
+      // 尝试获取条目（处理数字/字符串 ID 兼容）
+      let entry = await db.entries.get(entryId);
+      
+      // 如果找不到且是字符串数字，尝试数字形式
+      if (!entry && typeof entryId === 'string' && !isNaN(entryId)) {
+        entry = await db.entries.get(parseInt(entryId));
+      }
+      
       if (!entry) {
-        console.error('Entry not found:', entryId);
         await this.alertDialog('删除失败：条目不存在或已被删除');
         return;
       }
       
-      await db.entries.delete(entryId);
-      console.log('Entry deleted successfully:', entryId);
+      // 使用实际找到的 ID 删除
+      await db.entries.delete(entry.id);
       this.loadEntries();
     } catch (error) {
       console.error('Delete entry failed:', error);
@@ -3818,15 +3820,13 @@ ${wordsList}
   toggleEntrySelection(type, entryId) {
     const selected = this.selectedEntries[type];
     
-    console.log(`[Toggle Selection] Type: ${type}, EntryId:`, entryId, 'Type:', typeof entryId);
-    console.log(`[Toggle Selection] Current selected:`, Array.from(selected));
+    // 处理遗留的数字 ID（兼容旧数据）
+    const numericId = !isNaN(entryId) && !isNaN(parseFloat(entryId)) ? parseInt(entryId) : entryId;
     
-    if (selected.has(entryId)) {
-      selected.delete(entryId);
-      console.log(`[Toggle Selection] Removed:`, entryId);
+    if (selected.has(numericId)) {
+      selected.delete(numericId);
     } else {
-      selected.add(entryId);
-      console.log(`[Toggle Selection] Added:`, entryId);
+      selected.add(numericId);
     }
     
     this.updateSelectionCount(type);
@@ -3834,7 +3834,7 @@ ${wordsList}
     // 更新复选框状态
     const checkbox = document.getElementById(`checkbox-${type}-${entryId}`);
     if (checkbox) {
-      checkbox.checked = selected.has(entryId);
+      checkbox.checked = selected.has(numericId);
     }
   },
   
@@ -3860,8 +3860,6 @@ ${wordsList}
   async batchDeleteEntries(type) {
     const selected = this.selectedEntries[type];
     
-    console.log(`[Batch Delete] Type: ${type}, Selected:`, Array.from(selected));
-    
     if (selected.size === 0) {
       await this.alertDialog('请先选择要删除的条目');
       return;
@@ -3875,19 +3873,28 @@ ${wordsList}
       const failedIds = [];
       
       for (const entryId of selected) {
-        console.log(`[Batch Delete] Deleting entry:`, entryId, 'Type:', typeof entryId);
         try {
-          // 先检查条目是否存在
-          const entry = await db.entries.get(entryId);
+          // 尝试用原始 ID 删除
+          let entry = await db.entries.get(entryId);
+          
+          // 如果找不到且是数字，尝试字符串形式
+          if (!entry && typeof entryId === 'number') {
+            entry = await db.entries.get(String(entryId));
+          }
+          
+          // 如果找不到且是字符串数字，尝试数字形式
+          if (!entry && typeof entryId === 'string' && !isNaN(entryId)) {
+            entry = await db.entries.get(parseInt(entryId));
+          }
+          
           if (!entry) {
             console.warn(`[Batch Delete] Entry not found:`, entryId);
             failedIds.push(entryId);
             continue;
           }
-          console.log(`[Batch Delete] Found entry:`, entry.original, 'ID:', entry.id);
           
-          await db.entries.delete(entryId);
-          console.log(`[Batch Delete] Successfully deleted:`, entryId);
+          // 使用实际找到的 ID 删除
+          await db.entries.delete(entry.id);
           deletedCount++;
         } catch (err) {
           console.error(`[Batch Delete] Failed to delete ${entryId}:`, err);
@@ -3903,7 +3910,7 @@ ${wordsList}
       await this.loadEntries();
       
       if (failedIds.length > 0) {
-        await this.alertDialog(`⚠️ 成功删除 ${deletedCount} 个条目，${failedIds.length} 个删除失败\n失败ID: ${failedIds.join(', ')}`);
+        await this.alertDialog(`⚠️ 成功删除 ${deletedCount} 个条目，${failedIds.length} 个删除失败`);
       } else {
         await this.alertDialog(`✅ 已删除 ${deletedCount} 个条目`);
       }
