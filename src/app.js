@@ -2521,23 +2521,33 @@ ${chunk.substring(0, 8000)}
       let fullContent = selectedArticle.description;
       let rawContent = selectedArticle.description;
       
+      console.log('RSS description 长度:', selectedArticle.description?.length || 0);
+      console.log('RSS contentEncoded 长度:', selectedArticle.contentEncoded?.length || 0);
+      
       // 1. 首先尝试使用 RSS 中的 content:encoded
-      if (selectedArticle.contentEncoded && selectedArticle.contentEncoded.length > selectedArticle.description.length) {
+      if (selectedArticle.contentEncoded && selectedArticle.contentEncoded.length > 200) {
         console.log(`使用 RSS 中的 content:encoded, 长度: ${selectedArticle.contentEncoded.length}`);
         // 清理 HTML 标签
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = selectedArticle.contentEncoded;
         rawContent = tempDiv.innerText || tempDiv.textContent || selectedArticle.description;
         fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
+        console.log('清理后内容长度:', fullContent.length);
       } else {
         // 2. 尝试通过网页获取
+        console.log('尝试从网页获取内容:', selectedArticle.link);
         try {
           const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
-          rawContent = articleData.content || selectedArticle.description;
-          fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
-          console.log(`从网页获取内容, 长度: ${rawContent.length}`);
+          console.log('网页提取返回长度:', articleData.content?.length || 0);
+          if (articleData.content && articleData.content.length > selectedArticle.description.length) {
+            rawContent = articleData.content;
+            fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
+            console.log(`从网页获取内容成功, 长度: ${rawContent.length}`);
+          } else {
+            console.log('网页提取内容过短，使用 description');
+          }
         } catch (e) {
-          console.log('无法获取完整内容，使用简介:', e);
+          console.log('无法获取完整内容，使用简介:', e.message);
         }
       }
       

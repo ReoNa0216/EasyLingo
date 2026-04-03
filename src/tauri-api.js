@@ -190,54 +190,80 @@ class TauriNewsAPI {
       content = doc.querySelector('#storytext')?.innerText || 
                 doc.querySelector('article')?.innerText || '';
     } else if (url.includes('zdf.de')) {
-      // ZDF 多种可能的内容容器（按优先级排序）
-      const selectors = [
-        '[data-testid="article-body"]',  // ZDF 新版样式
-        '.article-body',
-        'article[data-testid="article"]',
-        '[class*="ArticleBody"]',
-        '[class*="article-body"]',
-        '[class*="ArticleContent"]',
-        '.article-content',
-        'article[class*="article"]',
-        'article .text',  // 可能的文本容器
-        'main article',
-        'article',
-        '[role="main"]',
-        'main',
-        '.content',
-        '#content'
-      ];
+      // ZDF 内容提取 - 针对 ZDF Heute 网站结构优化
+      content = '';
       
-      let bestContent = '';
-      for (const selector of selectors) {
-        const el = doc.querySelector(selector);
-        if (el && el.innerText.length > bestContent.length) {
-          bestContent = el.innerText;
-          console.log(`ZDF content candidate: ${selector}, length: ${el.innerText.length}`);
-        }
-      }
-      
-      // 如果找到的内容太短，尝试获取整个 body 内容并过滤
-      if (bestContent.length < 500) {
-        const bodyText = doc.body?.innerText || '';
-        // 过滤掉脚本、导航等无关内容
-        const lines = bodyText.split('\n').filter(line => {
-          const trimmed = line.trim();
-          return trimmed.length > 20 && 
-                 !trimmed.startsWith('var ') &&
-                 !trimmed.startsWith('function') &&
-                 !trimmed.includes('cookie') &&
-                 !trimmed.includes('Cookie') &&
-                 !trimmed.includes('ZDF') === false;  // 保留包含 ZDF 的行
+      // 方法1: 尝试找到正文内容区域（排除导航和页脚）
+      const mainContent = doc.querySelector('main');
+      if (mainContent) {
+        // 在 main 内部查找最大的文本区块
+        const textBlocks = mainContent.querySelectorAll('p, div');
+        let maxLength = 0;
+        let bestBlock = null;
+        
+        textBlocks.forEach(block => {
+          const text = block.innerText || '';
+          if (text.length > maxLength && text.length > 200) {
+            maxLength = text.length;
+            bestBlock = block;
+          }
         });
-        if (lines.join('\n').length > bestContent.length) {
-          bestContent = lines.join('\n');
+        
+        if (bestBlock) {
+          // 如果找到了大块文本，尝试获取父元素
+          const parent = bestBlock.parentElement;
+          if (parent && parent.innerText.length > bestBlock.innerText.length * 1.5) {
+            content = parent.innerText;
+          } else {
+            content = bestBlock.innerText;
+          }
+          console.log(`ZDF found content via main > text block, length: ${content.length}`);
         }
       }
       
-      content = bestContent;
-      console.log(`ZDF final content length: ${content.length}`);
+      // 方法2: 尝试其他选择器
+      if (!content || content.length < 500) {
+        const selectors = [
+          '[data-testid="article-body"]',
+          '.article-body',
+          'article[data-testid="article"]',
+          '[class*="ArticleBody"]',
+          '[class*="article-body"]',
+          '[class*="ArticleContent"]',
+          '.article-content',
+          'article[class*="article"]',
+          'main article',
+          'article',
+          '.content',
+          '#content'
+        ];
+        
+        for (const selector of selectors) {
+          const el = doc.querySelector(selector);
+          if (el && el.innerText.length > (content?.length || 0)) {
+            content = el.innerText;
+            console.log(`ZDF content candidate: ${selector}, length: ${el.innerText.length}`);
+          }
+        }
+      }
+      
+      // 方法3: 如果以上都失败，尝试获取 body 中的所有段落
+      if (!content || content.length < 500) {
+        const paragraphs = doc.querySelectorAll('p');
+        const paragraphTexts = [];
+        paragraphs.forEach(p => {
+          const text = p.innerText?.trim();
+          if (text && text.length > 50 && text.length < 2000) {
+            paragraphTexts.push(text);
+          }
+        });
+        if (paragraphTexts.length > 0) {
+          content = paragraphTexts.join('\n\n');
+          console.log(`ZDF content from paragraphs, length: ${content.length}`);
+        }
+      }
+      
+      console.log(`ZDF final content length: ${content?.length || 0}`);
     } else if (url.includes('asahi.com')) {
       // 朝日新闻可能的多种内容容器
       content = doc.querySelector('article')?.innerText || 
