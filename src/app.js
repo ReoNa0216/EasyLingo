@@ -2228,7 +2228,7 @@ ${chunk.substring(0, 8000)}
           </div>
           <div id="zdf-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
-            <div id="zdf-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+            <div id="zdf-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
             <div class="flex flex-wrap gap-2">
               <button onclick="app.processZDFContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
                 🧠 AI提取学习条目
@@ -2267,13 +2267,10 @@ ${chunk.substring(0, 8000)}
           </div>
           <div id="asahi-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
-            <div id="asahi-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+            <div id="asahi-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
             <div class="flex flex-wrap gap-2">
               <button onclick="app.processAsahiContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
                 🧠 AI提取学习条目
-              </button>
-              <button onclick="app.viewExtractedContent('asahi')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
-                👀 查看提取内容
               </button>
             </div>
           </div>
@@ -2332,13 +2329,10 @@ ${chunk.substring(0, 8000)}
             </div>
             <div id="bbc-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
-              <div id="bbc-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+              <div id="bbc-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
               <div class="flex flex-wrap gap-2">
                 <button onclick="app.processBBCContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
                   🧠 AI提取学习条目
-                </button>
-                <button onclick="app.viewExtractedContent('bbc')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
-                  👀 查看提取内容
                 </button>
               </div>
             </div>
@@ -2375,13 +2369,10 @@ ${chunk.substring(0, 8000)}
             </div>
             <div id="npr-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
-              <div id="npr-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+              <div id="npr-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
               <div class="flex flex-wrap gap-2">
                 <button onclick="app.processNPRContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
                   🧠 AI提取学习条目
-                </button>
-                <button onclick="app.viewExtractedContent('npr')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
-                  👀 查看提取内容
                 </button>
               </div>
             </div>
@@ -2418,13 +2409,10 @@ ${chunk.substring(0, 8000)}
             </div>
             <div id="guardian-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
-              <div id="guardian-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+              <div id="guardian-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
               <div class="flex flex-wrap gap-2">
                 <button onclick="app.processGuardianContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
                   🧠 AI提取学习条目
-                </button>
-                <button onclick="app.viewExtractedContent('guardian')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
-                  👀 查看提取内容
                 </button>
               </div>
             </div>
@@ -2531,53 +2519,32 @@ ${chunk.substring(0, 8000)}
       let fullContent = selectedArticle.description;
       let rawContent = selectedArticle.description;
       
-      console.log('RSS description 长度:', selectedArticle.description?.length || 0);
-      console.log('RSS contentEncoded 长度:', selectedArticle.contentEncoded?.length || 0);
-      
-      // 1. 首先尝试使用 RSS 中的 content:encoded
-      if (selectedArticle.contentEncoded && selectedArticle.contentEncoded.length > 200) {
-        console.log(`使用 RSS 中的 content:encoded, 长度: ${selectedArticle.contentEncoded.length}`);
-        // 清理 HTML 标签
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = selectedArticle.contentEncoded;
-        rawContent = tempDiv.innerText || tempDiv.textContent || selectedArticle.description;
-        fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
-        console.log('清理后内容长度:', fullContent.length);
-      } else {
-        // 2. 尝试通过网页获取（直接使用段落提取，与调试功能一致）
-        console.log('尝试从网页获取内容:', selectedArticle.link);
-        try {
-          const proxy = 'https://corsproxy.io/?';
-          const response = await fetch(`${proxy}${encodeURIComponent(selectedArticle.link)}`);
-          const html = await response.text();
-          console.log('网页HTML长度:', html.length);
-          
-          // 直接解析段落（与调试功能一致）
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(html, 'text/html');
-          const paragraphs = doc.querySelectorAll('p');
-          
-          let extractedText = '';
-          paragraphs.forEach(p => {
-            const text = p.textContent?.trim() || '';
-            // 只保留德语段落
-            if (text.length > 30 && /[\u00e4\u00f6\u00fc\u00df]|der|die|das|und|ist|von|mit|auf|f\u00fcr|den|dem|im|zu/i.test(text)) {
-              extractedText += text + '\n\n';
-            }
-          });
-          
-          console.log('提取段落长度:', extractedText.length);
-          
-          if (extractedText.length > selectedArticle.description.length) {
-            rawContent = extractedText;
-            fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
-            console.log(`从网页获取内容成功, 长度: ${rawContent.length}`);
-          } else {
-            console.log('网页提取内容过短，使用 description');
+      // 尝试从网页获取完整内容
+      try {
+        const proxy = 'https://corsproxy.io/?';
+        const response = await fetch(`${proxy}${encodeURIComponent(selectedArticle.link)}`);
+        const html = await response.text();
+        
+        // 直接解析段落
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const paragraphs = doc.querySelectorAll('p');
+        
+        let extractedText = '';
+        paragraphs.forEach(p => {
+          const text = p.textContent?.trim() || '';
+          // 只保留德语段落
+          if (text.length > 30 && /[\u00e4\u00f6\u00fc\u00df]|der|die|das|und|ist|von|mit|auf|f\u00fcr|den|dem|im|zu/i.test(text)) {
+            extractedText += text + '\n\n';
           }
-        } catch (e) {
-          console.log('无法获取完整内容，使用简介:', e.message);
+        });
+        
+        if (extractedText.length > selectedArticle.description.length) {
+          rawContent = extractedText;
+          fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
         }
+      } catch (e) {
+        // 使用 description 作为后备
       }
       
       // 解析日期
