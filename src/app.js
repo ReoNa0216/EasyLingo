@@ -76,6 +76,40 @@ const app = {
   // SRS Intervals (in days) - SM-2 Algorithm
   srsIntervals: [1, 3, 7, 14, 30, 90, 180],
   
+  // 使用 Tauri Dialog API 的异步确认对话框（解决 WebView confirm 不阻塞的问题）
+  async confirmDialog(message) {
+    // 优先使用 Tauri Dialog API
+    if (window.__TAURI__ && window.__TAURI__.dialog) {
+      try {
+        const result = await window.__TAURI__.dialog.ask(message, {
+          title: 'EasyLingo',
+          type: 'warning'
+        });
+        return result === true;
+      } catch (e) {
+        console.warn('Tauri dialog failed, falling back to native confirm:', e);
+      }
+    }
+    // 降级使用原生 confirm
+    return confirm(message);
+  },
+  
+  // 异步 alert（统一风格）
+  async alertDialog(message) {
+    if (window.__TAURI__ && window.__TAURI__.dialog) {
+      try {
+        await window.__TAURI__.dialog.message(message, {
+          title: 'EasyLingo',
+          type: 'info'
+        });
+        return;
+      } catch (e) {
+        console.warn('Tauri dialog failed, falling back to native alert:', e);
+      }
+    }
+    alert(message);
+  },
+  
   // Initialize
   async init() {
     // 防止重复初始化 - 多重保护
@@ -501,7 +535,8 @@ ${placeholderText}`;
   },
   
   async deleteRecord(recordId) {
-    if (!confirm('确定要删除这条学习记录吗？')) return;
+    const confirmed = await this.confirmDialog('确定要删除这条学习记录吗？');
+    if (!confirmed) return;
     
     try {
       await db.records.delete(recordId);
@@ -509,7 +544,7 @@ ${placeholderText}`;
       await this.updateSidebarStats();
     } catch (error) {
       console.error('Delete record failed:', error);
-      alert('删除失败: ' + error.message);
+      await this.alertDialog('删除失败: ' + error.message);
     }
   },
   
@@ -1557,12 +1592,12 @@ ${chunk.substring(0, 8000)}
   },
   
   // 清空ZDF抓取历史
-  clearZDFHistory() {
-    if (confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。')) {
-      this.fetchedZDFFeeds = [];
-      localStorage.removeItem('zdf_fetched_history');
-      alert('已清空抓取记录');
-    }
+  async clearZDFHistory() {
+    const confirmed = await this.confirmDialog('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。');
+    if (!confirmed) return;
+    this.fetchedZDFFeeds = [];
+    localStorage.removeItem('zdf_fetched_history');
+    await this.alertDialog('已清空抓取记录');
   },
   
   // ==================== BBC News 功能 ====================
@@ -1591,11 +1626,12 @@ ${chunk.substring(0, 8000)}
   },
   
   // 清空 BBC 抓取历史
-  clearBBCHistory() {
-    if (!confirm('确定要清空 BBC 抓取记录吗？')) return;
+  async clearBBCHistory() {
+    const confirmed = await this.confirmDialog('确定要清空 BBC 抓取记录吗？');
+    if (!confirmed) return;
     this.fetchedBBCFeeds = [];
     localStorage.removeItem('bbc_fetched_history');
-    alert('BBC 抓取记录已清空');
+    await this.alertDialog('BBC 抓取记录已清空');
   },
   
   // 获取 BBC 新闻
@@ -1773,11 +1809,12 @@ ${chunk.substring(0, 8000)}
   },
   
   // 清空 The Guardian 抓取历史
-  clearGuardianHistory() {
-    if (!confirm('确定要清空 The Guardian 抓取记录吗？')) return;
+  async clearGuardianHistory() {
+    const confirmed = await this.confirmDialog('确定要清空 The Guardian 抓取记录吗？');
+    if (!confirmed) return;
     this.fetchedGuardianFeeds = [];
     localStorage.removeItem('guardian_fetched_history');
-    alert('The Guardian 抓取记录已清空');
+    await this.alertDialog('The Guardian 抓取记录已清空');
   },
   
   // 获取 The Guardian 新闻
@@ -1945,11 +1982,12 @@ ${chunk.substring(0, 8000)}
   },
   
   // 清空 NPR 抓取历史
-  clearNPRHistory() {
-    if (!confirm('确定要清空 NPR 抓取记录吗？')) return;
+  async clearNPRHistory() {
+    const confirmed = await this.confirmDialog('确定要清空 NPR 抓取记录吗？');
+    if (!confirmed) return;
     this.fetchedNPRFeeds = [];
     localStorage.removeItem('npr_fetched_history');
-    alert('NPR 抓取记录已清空');
+    await this.alertDialog('NPR 抓取记录已清空');
   },
   
   // 获取 NPR 新闻
@@ -2547,12 +2585,12 @@ ${chunk.substring(0, 8000)}
   },
   
   // 清空朝日新聞抓取历史
-  clearAsahiHistory() {
-    if (confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。')) {
-      this.fetchedAsahiFeeds = [];
-      localStorage.removeItem('asahi_fetched_history');
-      alert('已清空抓取记录');
-    }
+  async clearAsahiHistory() {
+    const confirmed = await this.confirmDialog('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。');
+    if (!confirmed) return;
+    this.fetchedAsahiFeeds = [];
+    localStorage.removeItem('asahi_fetched_history');
+    await this.alertDialog('已清空抓取记录');
   },
   
   // 从朝日新聞获取新闻
@@ -3723,7 +3761,8 @@ ${wordsList}
   
   // 删除条目
   async deleteEntry(entryId) {
-    if (!confirm('确定要删除这个条目吗？')) return;
+    const confirmed = await this.confirmDialog('确定要删除这个条目吗？');
+    if (!confirmed) return;
     
     console.log('Deleting entry:', entryId);
     
@@ -3731,7 +3770,7 @@ ${wordsList}
       // 检查 entryId 是否有效
       if (!entryId || entryId === 'undefined') {
         console.error('Invalid entryId:', entryId);
-        alert('删除失败：条目ID无效');
+        await this.alertDialog('删除失败：条目ID无效');
         return;
       }
       
@@ -3739,7 +3778,7 @@ ${wordsList}
       const entry = await db.entries.get(entryId);
       if (!entry) {
         console.error('Entry not found:', entryId);
-        alert('删除失败：条目不存在或已被删除');
+        await this.alertDialog('删除失败：条目不存在或已被删除');
         return;
       }
       
@@ -3748,7 +3787,7 @@ ${wordsList}
       this.loadEntries();
     } catch (error) {
       console.error('Delete entry failed:', error);
-      alert('删除失败: ' + error.message);
+      await this.alertDialog('删除失败: ' + error.message);
     }
   },
   
@@ -3824,13 +3863,12 @@ ${wordsList}
     const selected = this.selectedEntries[type];
     
     if (selected.size === 0) {
-      alert('请先选择要删除的条目');
+      await this.alertDialog('请先选择要删除的条目');
       return;
     }
     
-    if (!confirm(`确定要删除选中的 ${selected.size} 个${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}吗？`)) {
-      return;
-    }
+    const confirmed = await this.confirmDialog(`确定要删除选中的 ${selected.size} 个${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}吗？`);
+    if (!confirmed) return;
     
     try {
       let deletedCount = 0;
@@ -5404,13 +5442,12 @@ Requirements:
     const selectedIds = Array.from(checkboxes).map(cb => cb.value).filter(id => id);
     
     if (selectedIds.length === 0) {
-      alert('请先选择要删除的测试记录');
+      await this.alertDialog('请先选择要删除的测试记录');
       return;
     }
     
-    if (!confirm(`确定要删除选中的 ${selectedIds.length} 条测试记录吗？`)) {
-      return;
-    }
+    const confirmed = await this.confirmDialog(`确定要删除选中的 ${selectedIds.length} 条测试记录吗？`);
+    if (!confirmed) return;
     
     try {
       // 使用循环单独删除
@@ -5418,10 +5455,10 @@ Requirements:
         await db.tests.delete(id);
       }
       await this.showTestHistory();
-      alert('删除成功');
+      await this.alertDialog('删除成功');
     } catch (error) {
       console.error('删除失败:', error);
-      alert('删除失败: ' + error.message);
+      await this.alertDialog('删除失败: ' + error.message);
     }
   },
   
