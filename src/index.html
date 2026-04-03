@@ -22,6 +22,18 @@
   <!-- Marked.js for Markdown rendering (custom modules only) -->
   <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
   
+  <!-- Import Map for Tauri Plugins -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@tauri-apps/api/core": "/node_modules/@tauri-apps/api/core.js",
+      "@tauri-apps/plugin-sql": "/node_modules/@tauri-apps/plugin-sql/dist-js/index.js",
+      "@tauri-apps/plugin-dialog": "/node_modules/@tauri-apps/plugin-dialog/dist-js/index.js",
+      "@tauri-apps/plugin-fs": "/node_modules/@tauri-apps/plugin-fs/dist-js/index.js"
+    }
+  }
+  </script>
+  
   <!-- EasyLingo Database (Tauri SQL) -->
   <script type="module" src="db-tauri.js"></script>
   <script type="module" src="tauri-api.js"></script>
@@ -1331,6 +1343,6 @@
       window.appInitStarted = true;
     })();
   </script>
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

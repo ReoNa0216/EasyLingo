@@ -178,7 +178,7 @@ const app = {
           name: mod.name,
           language: mod.language,
           isDefault: true,
-          createdAt: new Date()
+          created_at: new Date()
         });
       }
     }
@@ -439,7 +439,7 @@ ${placeholderText}`;
   },
   
   async loadRecentActivity() {
-    const records = await db.records.orderBy('createdAt').reverse().limit(10).toArray();
+    const records = await db.records.orderBy('created_at').reverse().limit(10).toArray();
     const container = document.getElementById('recent-activity');
     
     if (records.length === 0) {
@@ -458,7 +458,7 @@ ${placeholderText}`;
         </div>
         <div class="flex items-center gap-3">
           <div class="text-right text-sm text-primary-500">
-            <div>${new Date(r.createdAt).toLocaleDateString()}</div>
+            <div>${new Date(r.created_at).toLocaleDateString()}</div>
             <div>${r.duration}分钟</div>
           </div>
           <button onclick="app.deleteRecord('${r.id}')" class="opacity-0 group-hover:opacity-100 text-primary-400 hover:text-red-500 transition-all" title="删除记录">
@@ -522,7 +522,15 @@ ${placeholderText}`;
     
     for (const file of files) {
       try {
-        const content = await handler.parseFile(file);
+        // 包装原生 File 对象为统一格式
+        const fileObj = {
+          name: file.name,
+          file: file,  // 浏览器环境的实际文件对象
+          extension: file.name.split('.').pop().toLowerCase(),
+          size: file.size,
+          isTauri: false
+        };
+        const content = await handler.parseFile(fileObj);
         await this.saveMaterial(file.name, content);
       } catch (error) {
         console.error('Error parsing file:', error);
@@ -722,11 +730,11 @@ ${placeholderText}`;
     const material = {
       id: `${this.currentModule}_${Date.now()}`,
       moduleId: this.currentModule,
-      title: filename,
+      name: filename,
       content: content.substring(0, 50000), // Store more content for AI processing
       sourceFile: filename,
       status: 'pending', // pending, processing, completed
-      createdAt: new Date()
+      created_at: new Date()
     };
     
     await db.materials.put(material);
@@ -759,7 +767,7 @@ ${placeholderText}`;
         chunks.push(content.substring(i, i + chunkSize));
       }
       
-      console.log(`Processing ${chunks.length} chunks for ${material.title}, total ${content.length} chars`);
+      console.log(`Processing ${chunks.length} chunks for ${material.name}, total ${content.length} chars`);
       
       if (settings.apiKey) {
         // 对每个块使用AI处理
@@ -830,7 +838,7 @@ ${placeholderText}`;
             srsLevel: 0,
             nextReview: new Date(),
             interval: 0,
-            createdAt: new Date()
+            created_at: new Date()
           });
           savedCount++;
         } catch (saveError) {
@@ -845,6 +853,7 @@ ${placeholderText}`;
       });
       
       await this.loadModuleMaterials();
+      await this.updateSidebarStats();
       
       console.log(`Processing completed: ${savedCount} entries saved from ${allEntries.length} extracted`);
       alert(`已成功提取 ${savedCount} 个学习条目（原文共 ${allEntries.length} 条）！`);
@@ -881,7 +890,10 @@ ${mod.customPrompt}
     const germanPrompt = isGerman ? `特别注意：这是德语学习材料，请积极、尽可能多地提取学习条目，严格按照以下三类分类：
 
 1. 【单词 word】：所有名词、动词、形容词、副词、介词、连词等
-   - 必须标注性别：m.阳性 / f.阴性 / n.中性 / pl.复数（若可确定）
+   - 【强制要求】所有名词必须标注性别：m.（阳性der）/ f.（阴性die）/ n.（中性das）/ pl.（复数）
+   - 标注形式：只写 "m." "f." "n." "pl." 四种之一
+   - 如果不确定性别，应该根据词尾特征推断（如 -ung/-heit/-keit/-schaft/-tion 通常是 f.，-chen/-lein 通常是 n.）
+   - 动词、形容词等非名词的 gender 字段留空
    - 包含：原文、中文翻译、用法解释、例句
    - 目标：每1000字符至少提取15-25个单词
 
@@ -894,6 +906,8 @@ ${mod.customPrompt}
    - 只需要：原文、中文翻译
    - 不需要解释和例句
    - 目标：每1000字符至少提取3-5个语句
+
+【性别标注验证】提交前请检查：所有名词的 gender 字段是否已填写（m./f./n./pl.）
 
 重要提示：
 - 不要过滤“简单”或“复杂”的词汇，只要是有学习价值的词都要提取
@@ -1699,9 +1713,14 @@ ${chunk.substring(0, 8000)}
           dateStr = pubDate.toLocaleDateString('zh-CN');
         }
         
+        // 清理文章内容
+        const rawContent = articleData.content;
+        const cleanedContent = this.cleanArticleContent(rawContent, articleData.title || selectedArticle.title);
+        
         this.bbcCurrentArticle = {
           title: articleData.title || selectedArticle.title,
-          content: articleData.content,
+          content: cleanedContent,
+          rawContent: rawContent,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
@@ -1745,11 +1764,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `bbc_${Date.now()}`,
         moduleId: this.currentModule,
-        title: `BBC: ${this.bbcCurrentArticle.title.substring(0, 50)}...`,
+        name: `BBC: ${this.bbcCurrentArticle.title.substring(0, 50)}...`,
         content: this.bbcCurrentArticle.content,
         sourceFile: this.bbcCurrentArticle.link,
         source: this.bbcCurrentArticle.source,
-        createdAt: new Date()
+        created_at: new Date()
       };
       
       await db.materials.put(material);
@@ -1870,9 +1889,14 @@ ${chunk.substring(0, 8000)}
         const pubDate = new Date(selectedArticle.pubDate);
         const dateStr = pubDate.toLocaleDateString('zh-CN');
         
+        // 清理文章内容
+        const rawContent = articleData.content;
+        const cleanedContent = this.cleanArticleContent(rawContent, articleData.title || selectedArticle.title);
+        
         this.guardianCurrentArticle = {
           title: articleData.title || selectedArticle.title,
-          content: articleData.content,
+          content: cleanedContent,
+          rawContent: rawContent,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
@@ -1916,11 +1940,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `guardian_${Date.now()}`,
         moduleId: this.currentModule,
-        title: `The Guardian: ${this.guardianCurrentArticle.title.substring(0, 50)}...`,
+        name: `The Guardian: ${this.guardianCurrentArticle.title.substring(0, 50)}...`,
         content: this.guardianCurrentArticle.content,
         sourceFile: this.guardianCurrentArticle.link,
         source: this.guardianCurrentArticle.source,
-        createdAt: new Date()
+        created_at: new Date()
       };
       
       await db.materials.put(material);
@@ -2051,9 +2075,14 @@ ${chunk.substring(0, 8000)}
           dateStr = pubDate.toLocaleDateString('zh-CN');
         }
         
+        // 清理文章内容
+        const rawContent = articleData.content;
+        const cleanedContent = this.cleanArticleContent(rawContent, articleData.title || selectedArticle.title);
+        
         this.nprCurrentArticle = {
           title: articleData.title || selectedArticle.title,
-          content: articleData.content,
+          content: cleanedContent,
+          rawContent: rawContent,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
@@ -2097,11 +2126,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `npr_${Date.now()}`,
         moduleId: this.currentModule,
-        title: `NPR: ${this.nprCurrentArticle.title.substring(0, 50)}...`,
+        name: `NPR: ${this.nprCurrentArticle.title.substring(0, 50)}...`,
         content: this.nprCurrentArticle.content,
         sourceFile: this.nprCurrentArticle.link,
         source: this.nprCurrentArticle.source,
-        createdAt: new Date()
+        created_at: new Date()
       };
       
       await db.materials.put(material);
@@ -2187,9 +2216,14 @@ ${chunk.substring(0, 8000)}
           <div id="zdf-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
             <div id="zdf-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-            <button onclick="app.processZDFContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-              🧠 AI提取学习条目
-            </button>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="app.processZDFContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                🧠 AI提取学习条目
+              </button>
+              <button onclick="app.viewExtractedContent('zdf')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
+                👀 查看提取内容
+              </button>
+            </div>
           </div>
         </div>
       `;
@@ -2224,9 +2258,14 @@ ${chunk.substring(0, 8000)}
           <div id="asahi-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
             <div id="asahi-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-            <button onclick="app.processAsahiContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-              🧠 AI提取学习条目
-            </button>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="app.processAsahiContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                🧠 AI提取学习条目
+              </button>
+              <button onclick="app.viewExtractedContent('asahi')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
+                👀 查看提取内容
+              </button>
+            </div>
           </div>
         </div>
       `;
@@ -2284,9 +2323,14 @@ ${chunk.substring(0, 8000)}
             <div id="bbc-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="bbc-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-              <button onclick="app.processBBCContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
-              </button>
+              <div class="flex flex-wrap gap-2">
+                <button onclick="app.processBBCContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                  🧠 AI提取学习条目
+                </button>
+                <button onclick="app.viewExtractedContent('bbc')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
+                  👀 查看提取内容
+                </button>
+              </div>
             </div>
           </div>
           
@@ -2322,9 +2366,14 @@ ${chunk.substring(0, 8000)}
             <div id="npr-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="npr-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-              <button onclick="app.processNPRContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
-              </button>
+              <div class="flex flex-wrap gap-2">
+                <button onclick="app.processNPRContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                  🧠 AI提取学习条目
+                </button>
+                <button onclick="app.viewExtractedContent('npr')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
+                  👀 查看提取内容
+                </button>
+              </div>
             </div>
           </div>
           
@@ -2360,9 +2409,14 @@ ${chunk.substring(0, 8000)}
             <div id="guardian-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="guardian-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-              <button onclick="app.processGuardianContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
-              </button>
+              <div class="flex flex-wrap gap-2">
+                <button onclick="app.processGuardianContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                  🧠 AI提取学习条目
+                </button>
+                <button onclick="app.viewExtractedContent('guardian')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
+                  👀 查看提取内容
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2412,10 +2466,16 @@ ${chunk.substring(0, 8000)}
       for (const item of items) {
         const link = item.querySelector('link')?.textContent;
         if (link && !this.fetchedZDFFeeds.includes(link)) {
+          // ZDF RSS 可能包含 content:encoded 字段
+          const contentEncoded = item.querySelector('content\\:encoded')?.textContent || 
+                                item.getElementsByTagNameNS('*', 'encoded')[0]?.textContent || '';
+          const description = item.querySelector('description')?.textContent || '';
+          
           selectedArticle = {
             title: item.querySelector('title')?.textContent || '',
             link: link,
-            description: item.querySelector('description')?.textContent || '',
+            description: description,
+            contentEncoded: contentEncoded,  // 保存完整内容
             pubDate: item.querySelector('pubDate')?.textContent || ''
           };
           break;
@@ -2436,10 +2496,13 @@ ${chunk.substring(0, 8000)}
           this.fetchedZDFFeeds = [];
           // 重新尝试获取第一篇
           const firstItem = items[0];
+          const contentEncoded = firstItem.querySelector('content\\:encoded')?.textContent || 
+                                firstItem.getElementsByTagNameNS('*', 'encoded')[0]?.textContent || '';
           selectedArticle = {
             title: firstItem.querySelector('title')?.textContent || '',
             link: firstItem.querySelector('link')?.textContent || '',
             description: firstItem.querySelector('description')?.textContent || '',
+            contentEncoded: contentEncoded,
             pubDate: firstItem.querySelector('pubDate')?.textContent || ''
           };
         } else {
@@ -2454,14 +2517,28 @@ ${chunk.substring(0, 8000)}
       // 获取正文内容（通过全文 RSS 或简介）
       status.textContent = '正在解析文章内容...';
       
-      // 尝试获取完整内容
+      // 尝试获取完整内容（优先使用 RSS 中的 content:encoded）
       let fullContent = selectedArticle.description;
-      try {
-        const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
-        // 后端已经提取好正文内容
-        fullContent = articleData.content || selectedArticle.description;
-      } catch (e) {
-        console.log('无法获取完整内容，使用简介');
+      let rawContent = selectedArticle.description;
+      
+      // 1. 首先尝试使用 RSS 中的 content:encoded
+      if (selectedArticle.contentEncoded && selectedArticle.contentEncoded.length > selectedArticle.description.length) {
+        console.log(`使用 RSS 中的 content:encoded, 长度: ${selectedArticle.contentEncoded.length}`);
+        // 清理 HTML 标签
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = selectedArticle.contentEncoded;
+        rawContent = tempDiv.innerText || tempDiv.textContent || selectedArticle.description;
+        fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
+      } else {
+        // 2. 尝试通过网页获取
+        try {
+          const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
+          rawContent = articleData.content || selectedArticle.description;
+          fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
+          console.log(`从网页获取内容, 长度: ${rawContent.length}`);
+        } catch (e) {
+          console.log('无法获取完整内容，使用简介:', e);
+        }
       }
       
       // 解析日期
@@ -2478,6 +2555,7 @@ ${chunk.substring(0, 8000)}
       this.zdfCurrentArticle = {
         title: selectedArticle.title,
         content: fullContent,
+        rawContent: rawContent, // 保存原始内容供调试
         link: selectedArticle.link,
         pubDate: dateStr,
         source: 'ZDF Heute'
@@ -2519,11 +2597,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `zdf_${Date.now()}`,
         moduleId: this.currentModule,
-        title: `ZDF: ${this.zdfCurrentArticle.title.substring(0, 50)}...`,
+        name: `ZDF: ${this.zdfCurrentArticle.title.substring(0, 50)}...`,
         content: this.zdfCurrentArticle.content,
         sourceFile: this.zdfCurrentArticle.link,
         source: this.zdfCurrentArticle.source,
-        createdAt: new Date()
+        created_at: new Date()
       };
       
       await db.materials.put(material);
@@ -2651,25 +2729,48 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
+      let fullContent = '';
+      let rawContent = '';
+      let articleTitle = selectedArticle.title;
       
-      if (articleData.content) {
-        // 处理日期 - 朝日 RSS 使用 dc:date 格式
-        let dateStr = '日期未知';
-        if (selectedArticle.pubDate) {
-          const pubDate = new Date(selectedArticle.pubDate);
-          if (!isNaN(pubDate)) {
-            dateStr = pubDate.toLocaleDateString('ja-JP');
-          }
+      try {
+        const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
+        // 后端已经提取好正文内容
+        rawContent = articleData.content || '';
+        fullContent = rawContent;
+        articleTitle = articleData.title || selectedArticle.title;
+      } catch (e) {
+        console.log('无法获取完整内容，使用RSS简介', e);
+      }
+      
+      // 如果无法获取完整内容，使用RSS描述作为后备
+      if (!fullContent && selectedArticle.description) {
+        fullContent = selectedArticle.description;
+        rawContent = selectedArticle.description;
+        if (status) status.textContent = '使用RSS简介（无法获取完整内容）';
+      }
+      
+      // 清理文章内容
+      fullContent = this.cleanArticleContent(fullContent, articleTitle);
+      
+      // 处理日期 - 朝日 RSS 使用 dc:date 格式
+      let dateStr = '日期未知';
+      if (selectedArticle.pubDate) {
+        const pubDate = new Date(selectedArticle.pubDate);
+        if (!isNaN(pubDate)) {
+          dateStr = pubDate.toLocaleDateString('ja-JP');
         }
-        
+      }
+      
+      if (fullContent) {
         this.asahiCurrentArticle = {
-          title: articleData.title || selectedArticle.title,
-          content: articleData.content,
+          title: articleTitle,
+          content: fullContent,
+          rawContent: rawContent,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
-          source: articleData.source || '朝日新聞'
+          source: '朝日新聞'
         };
         
         if (contentDiv) {
@@ -2682,7 +2783,9 @@ ${chunk.substring(0, 8000)}
         }
         
         if (preview) preview.classList.remove('hidden');
-        if (status) status.textContent = '获取成功！';
+        if (status && !status.textContent.includes('RSS简介')) {
+          status.textContent = '获取成功！';
+        }
       } else {
         throw new Error('无法解析文章内容');
       }
@@ -2713,11 +2816,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `asahi_${Date.now()}`,
         moduleId: this.currentModule,
-        title: `朝日: ${this.asahiCurrentArticle.title.substring(0, 50)}...`,
+        name: `朝日: ${this.asahiCurrentArticle.title.substring(0, 50)}...`,
         content: this.asahiCurrentArticle.content,
         sourceFile: this.asahiCurrentArticle.link,
         source: this.asahiCurrentArticle.source,
-        createdAt: new Date()
+        created_at: new Date()
       };
       
       await db.materials.put(material);
@@ -3303,7 +3406,7 @@ ${wordsList}
       }
     }
   },
-  
+
   // 修复AI返回的JSON中的格式问题
   fixMalformedJSON(jsonStr) {
     // 处理AI返回的JSON中未转义的中文引号
@@ -3434,10 +3537,10 @@ ${wordsList}
           <span class="text-2xl">📄</span>
           <div>
             <div class="font-medium flex items-center gap-2">
-              ${m.title}
+              ${m.name}
               ${statusBadge}
             </div>
-            <div class="text-xs text-primary-500">${new Date(m.createdAt).toLocaleDateString()}</div>
+            <div class="text-xs text-primary-500">${new Date(m.created_at).toLocaleDateString()}</div>
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -3600,7 +3703,7 @@ ${wordsList}
         <input type="checkbox" 
                id="checkbox-${type}-${entry.id}" 
                ${isSelected ? 'checked' : ''} 
-               onclick="app.toggleEntrySelection('${type}', ${entry.id})"
+               onclick="app.toggleEntrySelection('${type}', ${JSON.stringify(entry.id).replace(/"/g, '&quot;')})"
                class="w-5 h-5 rounded border-primary-300 text-accent-600 focus:ring-accent-500 cursor-pointer">
       </div>
     ` : '';
@@ -3992,7 +4095,7 @@ ${wordsList}
       srsLevel: 0,
       nextReview: new Date(),
       interval: 0,
-      createdAt: new Date()
+      created_at: new Date()
     };
     
     const explanationEl = document.getElementById('new-explanation');
@@ -4428,7 +4531,7 @@ ${wordsList}
               duration: durationMinutes,
               count: reviewedCount, // 记录本次复习的条目数量
               action: 'review',
-              createdAt: new Date()
+              created_at: new Date()
             });
           }
         }
@@ -5329,7 +5432,7 @@ Requirements:
       results: results,
       score: score,
       duration: duration > 0 ? duration : this.testData.questions.length * 2,
-      createdAt: new Date()
+      created_at: new Date()
     });
     
     // 记录学习时长
@@ -5376,7 +5479,7 @@ Requirements:
   // Test History
   async showTestHistory() {
     const container = document.getElementById('test-history-list');
-    const tests = await db.tests.orderBy('createdAt').reverse().toArray();
+    const tests = await db.tests.orderBy('created_at').reverse().toArray();
     
     if (tests.length === 0) {
       container.innerHTML = '<p class="text-center text-primary-500 py-8">暂无测试记录</p>';
@@ -5389,7 +5492,7 @@ Requirements:
               <div class="flex items-center justify-between">
                 <div>
                   <div class="font-medium">${(this.modules[t.moduleId] && this.modules[t.moduleId].name) || '未知模块'}</div>
-                  <div class="text-sm text-primary-500">${new Date(t.createdAt).toLocaleString()}</div>
+                  <div class="text-sm text-primary-500">${new Date(t.created_at).toLocaleString()}</div>
                 </div>
                 <div class="text-right">
                   <div class="text-2xl font-bold ${t.score >= 80 ? 'text-green-600' : t.score >= 60 ? 'text-yellow-600' : 'text-red-600'}">${t.score}%</div>
@@ -5556,7 +5659,7 @@ Requirements:
     const dateMap = {};
     
     records.forEach(r => {
-      const date = new Date(r.createdAt).toISOString().split('T')[0];
+      const date = new Date(r.created_at).toISOString().split('T')[0];
       if (!dateMap[date]) {
         dateMap[date] = { duration: 0, actions: new Set() };
       }
@@ -5573,7 +5676,7 @@ Requirements:
   },
   
   async loadStudyLog() {
-    const records = await db.records.orderBy('createdAt').reverse().limit(20).toArray();
+    const records = await db.records.orderBy('created_at').reverse().limit(20).toArray();
     const container = document.getElementById('study-log');
     
     if (records.length === 0) {
@@ -5592,7 +5695,7 @@ Requirements:
         </div>
         <div class="text-right text-sm">
           <div class="text-primary-900 font-medium">${r.duration}分钟</div>
-          <div class="text-primary-500">${new Date(r.createdAt).toLocaleDateString()}</div>
+          <div class="text-primary-500">${new Date(r.created_at).toLocaleDateString()}</div>
         </div>
       </div>
     `).join('');
@@ -5615,7 +5718,7 @@ Requirements:
     document.getElementById('stat-total-time').textContent = `${Math.round(totalMinutes / 60 * 10) / 10}小时`;
     
     // Total days (unique dates with activity)
-    const uniqueDates = new Set(records.map(r => new Date(r.createdAt).toDateString()));
+    const uniqueDates = new Set(records.map(r => new Date(r.created_at).toDateString()));
     document.getElementById('stat-total-days').textContent = `${uniqueDates.size}天`;
     
     // Total entries
@@ -5707,7 +5810,7 @@ Requirements:
     
     const dailyMinutes = {};
     filteredRecords.forEach(r => {
-      const date = new Date(r.createdAt);
+      const date = new Date(r.created_at);
       let key;
       if (viewType === 'months') {
         key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -5836,13 +5939,13 @@ Requirements:
   async updateTestScoreChart() {
     const moduleId = document.getElementById('test-score-module-select')?.value || 'all';
     
-    const tests = await db.tests.orderBy('createdAt').toArray();
+    const tests = await db.tests.orderBy('created_at').toArray();
     const filteredTests = this.getFilteredTests(tests, moduleId);
     
     // Group by date and add sequence number for same day
     const testGroups = {};
     filteredTests.forEach(t => {
-      const date = new Date(t.createdAt).toISOString().split('T')[0];
+      const date = new Date(t.created_at).toISOString().split('T')[0];
       if (!testGroups[date]) testGroups[date] = [];
       testGroups[date].push(t);
     });
@@ -6190,7 +6293,7 @@ Requirements:
   async updateTodayMinutesDisplay() {
     const today = new Date().toISOString().split('T')[0];
     const todayRecords = await db.records.filter(r => 
-      new Date(r.createdAt).toISOString().split('T')[0] === today
+      new Date(r.created_at).toISOString().split('T')[0] === today
     ).toArray();
     const recordedMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
     const totalMinutes = recordedMinutes + this.currentStudyMinutes;
@@ -6209,7 +6312,7 @@ Requirements:
       duration: duration,
       count: count,
       action: action,
-      createdAt: new Date()
+      created_at: new Date()
     });
     
     await this.updateSidebarStats();
@@ -6219,7 +6322,7 @@ Requirements:
     // Today's minutes
     const today = new Date().toISOString().split('T')[0];
     const todayRecords = await db.records.filter(r => 
-      new Date(r.createdAt).toISOString().split('T')[0] === today
+      new Date(r.created_at).toISOString().split('T')[0] === today
     ).toArray();
     const todayMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
     document.getElementById('today-minutes').textContent = `${todayMinutes}分钟`;
@@ -6238,7 +6341,7 @@ Requirements:
   
   async calculateStreak() {
     const records = await db.records.toArray();
-    const dates = [...new Set(records.map(r => new Date(r.createdAt).toDateString()))]
+    const dates = [...new Set(records.map(r => new Date(r.created_at).toDateString()))]
       .map(d => new Date(d))
       .sort((a, b) => b - a);
     
@@ -6269,7 +6372,7 @@ Requirements:
   async previewMaterial(id) {
     const material = await db.materials.get(id);
     if (material) {
-      alert(`预览: ${material.title}\n\n${material.content.substring(0, 500)}...`);
+      alert(`预览: ${material.name}\n\n${material.content.substring(0, 500)}...`);
     }
   },
   
@@ -6288,6 +6391,70 @@ Requirements:
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  },
+  
+  // 辅助方法：清理文章内容，移除不必要的前缀和重复信息
+  cleanArticleContent(content, title) {
+    if (!content) return '';
+    
+    let cleaned = content;
+    
+    // 先进行基本清理：合并多个空格和换行
+    cleaned = cleaned.replace(/\n+/g, ' ');
+    cleaned = cleaned.replace(/\s+/g, ' ');
+    
+    // 移除常见的新闻标签前缀（德语）- 更积极的匹配
+    cleaned = cleaned.replace(/^\s*(Eilmeldung|EILMELDUNG)\s*:?\s*/i, '');
+    cleaned = cleaned.replace(/^\s*(Breaking News|BREAKING)\s*:?\s*/i, '');
+    cleaned = cleaned.replace(/^\s*(Liveblog|LIVEBLOG)\s*:?\s*/i, '');
+    
+    // 移除 "Wegen X:" 或 "WegenX:" 这种前缀（处理连写情况）
+    cleaned = cleaned.replace(/^\s*Wegen\s*\w+\s*:/i, '');
+    cleaned = cleaned.replace(/^\s*Wegen\w+\s*:/i, '');
+    cleaned = cleaned.replace(/^\s*Wegen\s+/i, '');
+    
+    // 移除 "Update:" 或 "UPDATE:" 前缀
+    cleaned = cleaned.replace(/^\s*Update\s*:?\s*/i, '');
+    cleaned = cleaned.replace(/^\s*UPDATE\s*:?\s*/i, '');
+    
+    // 如果内容以标题开头（重复），移除标题部分
+    if (title) {
+      // 清理标题中的特殊字符用于匹配
+      const cleanTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const titleRegex = new RegExp(`^\\s*${cleanTitle}\\s*:?\\s*`, 'i');
+      cleaned = cleaned.replace(titleRegex, '');
+    }
+    
+    // 移除开头的日期时间戳（多种格式）
+    // 格式: 02.04.2026 | 14:35| 或 02.04.2026 | 14:35
+    cleaned = cleaned.replace(/^\s*\d{2}[\.\/]\d{2}[\.\/]\d{4}\s*\|\s*\d{2}:\d{2}\|?\s*/, '');
+    // 格式: 2026/4/2 14:35 或 2026-04-02 14:35
+    cleaned = cleaned.replace(/^\s*\d{4}[\.\/\-]\d{1,2}[\.\/\-]\d{1,2}\s*\d{2}:\d{2}\s*/, '');
+    // 格式: 02.04.2026, 14:35
+    cleaned = cleaned.replace(/^\s*\d{2}[\.\/]\d{2}[\.\/]\d{4}\s*,?\s*\d{2}:\d{2}\s*/, '');
+    
+    // 移除 "Quelle: xxx" 来源标记
+    cleaned = cleaned.replace(/\(Archiv\)/gi, '');
+    cleaned = cleaned.replace(/Quelle:\s*\w+/gi, '');
+    cleaned = cleaned.replace(/\b(dpa|AP|Reuters|AFP)\b/gi, '');
+    
+    // 移除常见的图片说明文字（德语）
+    cleaned = cleaned.replace(/\(Foto:[^)]+\)/gi, '');
+    cleaned = cleaned.replace(/\(Bild:[^)]+\)/gi, '');
+    cleaned = cleaned.replace(/Bild:\s*[^.]+\./gi, '');
+    
+    // 清理多余的空格和换行（再次）
+    cleaned = cleaned.replace(/\n+/g, ' ');
+    cleaned = cleaned.replace(/\s+/g, ' ');
+    cleaned = cleaned.trim();
+    
+    // 移除开头常见的无意义词汇
+    const meaninglessPrefixes = ['|', ':', '-', '·', '•'];
+    while (meaninglessPrefixes.some(p => cleaned.startsWith(p))) {
+      cleaned = cleaned.substring(1).trim();
+    }
+    
+    return cleaned;
   },
   
   // Custom Module Functions
@@ -6486,7 +6653,7 @@ Requirements:
       flag: flag,
       customPrompt: customPrompt,
       isDefault: false,
-      createdAt: new Date()
+      created_at: new Date()
     });
     
     // Add to modules object
@@ -6607,6 +6774,27 @@ Requirements:
       return;
     }
     this.showTestModal();
+  },
+
+  // 通用：查看提取的原始内容
+  viewExtractedContent(source) {
+    const article = this[`${source}CurrentArticle`];
+    if (!article) { alert('请先获取新闻文章'); return; }
+    
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+    modal.innerHTML = `
+      <div class="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <div class="p-4 border-b flex justify-between items-center">
+          <h3 class="font-bold text-lg">提取内容</h3>
+          <button onclick="this.closest('.fixed').remove()" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm">✕ 关闭</button>
+        </div>
+        <div class="p-4 overflow-y-auto flex-1">
+          <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap">${this.escapeHtml(article.rawContent || article.content)}</div>
+        </div>
+        <div class="p-4 border-t text-sm text-gray-500">字数: ${(article.rawContent || article.content).length}</div>
+      </div>`;
+    document.body.appendChild(modal);
   }
 };
 

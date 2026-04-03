@@ -3,24 +3,11 @@
  * 封装 Tauri 原生功能
  */
 
+import { invoke } from '@tauri-apps/api/core';
+
 // 检查是否在 Tauri 环境中
 const checkIsTauri = () => {
-  return (
-    typeof window !== 'undefined' &&
-    (window.__TAURI__ !== undefined ||
-     window.__TAURI_INTERNALS__ !== undefined)
-  );
-};
-
-// 获取 invoke 函数
-const getInvoke = () => {
-  if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
-    return window.__TAURI__.core.invoke;
-  }
-  if (window.__TAURI__ && window.__TAURI__.invoke) {
-    return window.__TAURI__.invoke;
-  }
-  return null;
+  return typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
 };
 
 /**
@@ -28,35 +15,18 @@ const getInvoke = () => {
  */
 class TauriFileAPI {
   constructor() {
-    this.dialog = null;
-    this.fs = null;
-    this.invoke = null;
-  }
-
-  async init() {
-    if (!checkIsTauri()) {
-      console.warn('Not in Tauri environment');
-      return;
-    }
-    
-    this.invoke = getInvoke();
-    
-    // 尝试加载 dialog 插件
-    try {
-      if (window.__TAURI__ && window.__TAURI__.dialog) {
-        this.dialog = window.__TAURI__.dialog;
-      }
-    } catch (e) {
-      console.warn('Dialog plugin not available:', e);
-    }
+    this.isTauri = checkIsTauri();
   }
 
   async openFile(options = {}) {
-    if (!this.dialog) await this.init();
-    if (!this.dialog) return null;
+    if (!this.isTauri) {
+      console.warn('Not in Tauri environment');
+      return null;
+    }
     
     try {
-      return await this.dialog.open({
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      return await open({
         multiple: false,
         filters: options.filters || [
           { name: '文本文件', extensions: ['txt', 'md'] },
@@ -72,11 +42,14 @@ class TauriFileAPI {
   }
 
   async saveFile(options = {}) {
-    if (!this.dialog) await this.init();
-    if (!this.dialog) return null;
+    if (!this.isTauri) {
+      console.warn('Not in Tauri environment');
+      return null;
+    }
     
     try {
-      return await this.dialog.save({
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      return await save({
         defaultPath: options.defaultPath || 'untitled.txt',
         filters: options.filters || [{ name: '文本文件', extensions: ['txt'] }]
       });
@@ -92,30 +65,108 @@ class TauriFileAPI {
  */
 class TauriNewsAPI {
   constructor() {
-    this.invoke = null;
-  }
-
-  async init() {
-    if (!checkIsTauri()) {
-      console.warn('Not in Tauri environment');
-      return;
-    }
-    this.invoke = getInvoke();
+    this.isTauri = checkIsTauri();
+    
+    // RSS 源配置
+    this.rssSources = {
+      bbc: 'https://feeds.bbci.co.uk/news/rss.xml',
+      guardian: 'https://www.theguardian.com/uk/rss',
+      npr: 'https://feeds.npr.org/1001/rss.xml',
+      zdf: 'https://www.zdf.de/rss/zdf/nachrichten',
+      asahi: 'https://www.asahi.com/rss/asahi/newsheadlines.rdf'
+    };
   }
 
   async fetchRSS(source) {
-    if (!this.invoke) await this.init();
-    if (!this.invoke) throw new Error('Tauri not available');
+    if (!this.isTauri) {
+      console.warn('Tauri not available, using CORS proxy');
+      return this.fetchRSSViaProxy(source);
+    }
     
-    return await this.invoke('fetch_news_rss', { source });
+    try {
+      // 使用 Tauri 原生 HTTP
+      return await invoke('fetch_news_rss', { source });
+    } catch (e) {
+      console.error('Tauri fetch failed, falling back to proxy:', e);
+      return this.fetchRSSViaProxy(source);
+    }
+  }
+
+  async fetchRSSViaProxy(source) {
+    const rssUrl = this.rssSources[source];
+    if (!rssUrl) throw new Error(`Unknown source: ${source}`);
+    
+    // CORS 代理列表
+    const corsProxies = [
+      'https://api.allorigins.win/get?url=',
+      'https://corsproxy.io/?'
+    ];
+    
+    for (const proxy of corsProxies) {
+      try {
+        const response = await fetch(`${proxy}${encodeURIComponent(rssUrl)}`);
+        if (!response.ok) continue;
+        
+        const data = await response.text();
+        
+        // allorigins 返回 JSON 格式
+        if (proxy.includes('allorigins')) {
+          const json = JSON.parse(data);
+          return json.contents;
+        }
+        
+        return data;
+      } catch (e) {
+        console.warn(`Proxy ${proxy} failed:`, e.message);
+        continue;
+      }
+    }
+    
+    throw new Error('All CORS proxies failed');
   }
 
   async fetchArticle(url) {
-    if (!this.invoke) await this.init();
-    if (!this.invoke) throw new Error('Tauri not available');
+    if (!this.isTauri) {
+      console.warn('Tauri not available, using CORS proxy');
+      return this.fetchArticleViaProxy(url);
+    }
     
-    const html = await this.invoke('fetch_article_content', { url });
-    return this.extractArticleText(html, url);
+    try {
+      const html = await invoke('fetch_article_content', { url });
+      return this.extractArticleText(html, url);
+    } catch (e) {
+      console.error('Tauri fetch failed, falling back to proxy:', e);
+      return this.fetchArticleViaProxy(url);
+    }
+  }
+
+  async fetchArticleViaProxy(url) {
+    const corsProxies = [
+      'https://api.allorigins.win/get?url=',
+      'https://corsproxy.io/?'
+    ];
+    
+    for (const proxy of corsProxies) {
+      try {
+        const response = await fetch(`${proxy}${encodeURIComponent(url)}`);
+        if (!response.ok) continue;
+        
+        let html = await response.text();
+        
+        // allorigins 返回 JSON 格式
+        if (proxy.includes('allorigins')) {
+          const json = JSON.parse(html);
+          html = json.contents;
+        }
+        
+        return this.extractArticleText(html, url);
+      } catch (e) {
+        console.warn(`Proxy ${proxy} failed:`, e.message);
+        continue;
+      }
+    }
+    
+    throw new Error('All CORS proxies failed');
   }
 
   extractArticleText(html, url) {
@@ -139,89 +190,141 @@ class TauriNewsAPI {
       content = doc.querySelector('#storytext')?.innerText || 
                 doc.querySelector('article')?.innerText || '';
     } else if (url.includes('zdf.de')) {
-      content = doc.querySelector('article')?.innerText || '';
+      // ZDF 多种可能的内容容器（按优先级排序）
+      const selectors = [
+        '[data-testid="article-body"]',  // ZDF 新版样式
+        '.article-body',
+        'article[data-testid="article"]',
+        '[class*="ArticleBody"]',
+        '[class*="article-body"]',
+        '[class*="ArticleContent"]',
+        '.article-content',
+        'article[class*="article"]',
+        'article .text',  // 可能的文本容器
+        'main article',
+        'article',
+        '[role="main"]',
+        'main',
+        '.content',
+        '#content'
+      ];
+      
+      let bestContent = '';
+      for (const selector of selectors) {
+        const el = doc.querySelector(selector);
+        if (el && el.innerText.length > bestContent.length) {
+          bestContent = el.innerText;
+          console.log(`ZDF content candidate: ${selector}, length: ${el.innerText.length}`);
+        }
+      }
+      
+      // 如果找到的内容太短，尝试获取整个 body 内容并过滤
+      if (bestContent.length < 500) {
+        const bodyText = doc.body?.innerText || '';
+        // 过滤掉脚本、导航等无关内容
+        const lines = bodyText.split('\n').filter(line => {
+          const trimmed = line.trim();
+          return trimmed.length > 20 && 
+                 !trimmed.startsWith('var ') &&
+                 !trimmed.startsWith('function') &&
+                 !trimmed.includes('cookie') &&
+                 !trimmed.includes('Cookie') &&
+                 !trimmed.includes('ZDF') === false;  // 保留包含 ZDF 的行
+        });
+        if (lines.join('\n').length > bestContent.length) {
+          bestContent = lines.join('\n');
+        }
+      }
+      
+      content = bestContent;
+      console.log(`ZDF final content length: ${content.length}`);
     } else if (url.includes('asahi.com')) {
+      // 朝日新闻可能的多种内容容器
       content = doc.querySelector('article')?.innerText || 
-                doc.querySelector('.main-text')?.innerText || '';
+                doc.querySelector('.article')?.innerText ||
+                doc.querySelector('.Article')?.innerText ||
+                doc.querySelector('[class*="article"]')?.innerText ||
+                doc.querySelector('.main')?.innerText ||
+                doc.querySelector('.content')?.innerText ||
+                doc.querySelector('#main')?.innerText ||
+                doc.body?.innerText || '';
     } else {
-      content = doc.querySelector('article')?.innerText || 
+      // 通用提取
+      content = doc.querySelector('article')?.innerText ||
+                doc.querySelector('main')?.innerText ||
+                doc.querySelector('.content')?.innerText ||
                 doc.body?.innerText || '';
     }
     
-    return { 
-      title: title.replace(/\s+/g, ' ').trim(), 
-      content: content.replace(/\s+/g, ' ').trim() 
+    // 清理文本
+    content = content
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/\t/g, ' ')
+      .trim();
+    
+    return {
+      title: title.trim(),
+      content: content,
+      url: url
     };
-  }
-
-  getSources() {
-    return [
-      { id: 'bbc', name: 'BBC News', language: 'english', icon: '🇬🇧' },
-      { id: 'guardian', name: 'The Guardian', language: 'english', icon: '🇬🇧' },
-      { id: 'npr', name: 'NPR', language: 'english', icon: '🇺🇸' },
-      { id: 'zdf', name: 'ZDF', language: 'german', icon: '🇩🇪' },
-      { id: 'asahi', name: '朝日新聞', language: 'japanese', icon: '🇯🇵' }
-    ];
   }
 }
 
 /**
- * 数据导出/导入 API
+ * 文件处理 API
  */
-class TauriDataAPI {
+class TauriFileHandler {
   constructor() {
-    this.fileAPI = new TauriFileAPI();
-    this.invoke = null;
+    this.isTauri = checkIsTauri();
   }
 
-  async init() {
-    await this.fileAPI.init();
-    this.invoke = getInvoke();
-  }
-
-  async exportData() {
-    const data = await window.db.exportData();
-    
-    const filePath = await this.fileAPI.saveFile({
-      defaultPath: `easylingo-backup-${new Date().toISOString().split('T')[0]}.json`,
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }]
-    });
-
-    if (filePath && this.invoke) {
-      await this.invoke('write_file_text', { path: filePath, content: data });
+  async readFile(path) {
+    if (!this.isTauri) {
+      throw new Error('File reading requires Tauri environment');
     }
-
-    return filePath;
+    
+    try {
+      const { readFile } = await import('@tauri-apps/plugin-fs');
+      const contents = await readFile(path);
+      return new TextDecoder().decode(contents);
+    } catch (e) {
+      // 回退到 Tauri 命令
+      return await invoke('read_file_text', { path });
+    }
   }
 
-  async importData() {
-    const filePath = await this.fileAPI.openFile({
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }]
-    });
+  async readFileBytes(path) {
+    if (!this.isTauri) {
+      throw new Error('File reading requires Tauri environment');
+    }
+    
+    try {
+      const { readFile } = await import('@tauri-apps/plugin-fs');
+      return await readFile(path);
+    } catch (e) {
+      // 回退到 Tauri 命令
+      const result = await invoke('read_file_bytes', { path });
+      return new Uint8Array(result);
+    }
+  }
 
-    if (!filePath) return null;
-
-    const content = await this.invoke('read_file_text', { path: filePath });
-    await window.db.importData(content);
-
-    return filePath;
+  async getFileInfo(path) {
+    if (!this.isTauri) {
+      throw new Error('File info requires Tauri environment');
+    }
+    
+    return await invoke('get_file_info', { path });
   }
 }
 
-// 创建实例
-const tauriFile = new TauriFileAPI();
-const tauriNews = new TauriNewsAPI();
-const tauriData = new TauriDataAPI();
+// 导出单例实例
+export const tauriFile = new TauriFileAPI();
+export const tauriNews = new TauriNewsAPI();
+export const tauriFileHandler = new TauriFileHandler();
+export { invoke, checkIsTauri };
 
-// 全局暴露
-try {
-  window.tauriFile = tauriFile;
-  window.tauriNews = tauriNews;
-  window.tauriData = tauriData;
-  window.isTauriEnv = checkIsTauri;
-} catch (e) {
-  console.warn('Failed to expose Tauri API:', e);
-}
-
-// 导出
-export { tauriFile, tauriNews, tauriData, checkIsTauri };
+// 全局暴露（用于非模块脚本）
+window.tauriFile = tauriFile;
+window.tauriNews = tauriNews;
+window.tauriFileHandler = tauriFileHandler;
+window.checkIsTauri = checkIsTauri;
