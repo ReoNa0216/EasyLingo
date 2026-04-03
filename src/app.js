@@ -3818,10 +3818,15 @@ ${wordsList}
   toggleEntrySelection(type, entryId) {
     const selected = this.selectedEntries[type];
     
+    console.log(`[Toggle Selection] Type: ${type}, EntryId:`, entryId, 'Type:', typeof entryId);
+    console.log(`[Toggle Selection] Current selected:`, Array.from(selected));
+    
     if (selected.has(entryId)) {
       selected.delete(entryId);
+      console.log(`[Toggle Selection] Removed:`, entryId);
     } else {
       selected.add(entryId);
+      console.log(`[Toggle Selection] Added:`, entryId);
     }
     
     this.updateSelectionCount(type);
@@ -3855,6 +3860,8 @@ ${wordsList}
   async batchDeleteEntries(type) {
     const selected = this.selectedEntries[type];
     
+    console.log(`[Batch Delete] Type: ${type}, Selected:`, Array.from(selected));
+    
     if (selected.size === 0) {
       await this.alertDialog('请先选择要删除的条目');
       return;
@@ -3865,9 +3872,27 @@ ${wordsList}
     
     try {
       let deletedCount = 0;
+      const failedIds = [];
+      
       for (const entryId of selected) {
-        await db.entries.delete(entryId);
-        deletedCount++;
+        console.log(`[Batch Delete] Deleting entry:`, entryId, 'Type:', typeof entryId);
+        try {
+          // 先检查条目是否存在
+          const entry = await db.entries.get(entryId);
+          if (!entry) {
+            console.warn(`[Batch Delete] Entry not found:`, entryId);
+            failedIds.push(entryId);
+            continue;
+          }
+          console.log(`[Batch Delete] Found entry:`, entry.original, 'ID:', entry.id);
+          
+          await db.entries.delete(entryId);
+          console.log(`[Batch Delete] Successfully deleted:`, entryId);
+          deletedCount++;
+        } catch (err) {
+          console.error(`[Batch Delete] Failed to delete ${entryId}:`, err);
+          failedIds.push(entryId);
+        }
       }
       
       // 清空选择
@@ -3877,10 +3902,14 @@ ${wordsList}
       // 刷新列表
       await this.loadEntries();
       
-      alert(`✅ 已删除 ${deletedCount} 个条目`);
+      if (failedIds.length > 0) {
+        await this.alertDialog(`⚠️ 成功删除 ${deletedCount} 个条目，${failedIds.length} 个删除失败\n失败ID: ${failedIds.join(', ')}`);
+      } else {
+        await this.alertDialog(`✅ 已删除 ${deletedCount} 个条目`);
+      }
     } catch (error) {
       console.error('Batch delete failed:', error);
-      alert('批量删除失败: ' + error.message);
+      await this.alertDialog('批量删除失败: ' + error.message);
     }
   },
   
