@@ -1592,6 +1592,7 @@ ${chunk.substring(0, 8000)}
   
   // 清空 BBC 抓取历史
   clearBBCHistory() {
+    if (!confirm('确定要清空 BBC 抓取记录吗？')) return;
     this.fetchedBBCFeeds = [];
     localStorage.removeItem('bbc_fetched_history');
     alert('BBC 抓取记录已清空');
@@ -1773,6 +1774,7 @@ ${chunk.substring(0, 8000)}
   
   // 清空 The Guardian 抓取历史
   clearGuardianHistory() {
+    if (!confirm('确定要清空 The Guardian 抓取记录吗？')) return;
     this.fetchedGuardianFeeds = [];
     localStorage.removeItem('guardian_fetched_history');
     alert('The Guardian 抓取记录已清空');
@@ -1944,6 +1946,7 @@ ${chunk.substring(0, 8000)}
   
   // 清空 NPR 抓取历史
   clearNPRHistory() {
+    if (!confirm('确定要清空 NPR 抓取记录吗？')) return;
     this.fetchedNPRFeeds = [];
     localStorage.removeItem('npr_fetched_history');
     alert('NPR 抓取记录已清空');
@@ -3577,7 +3580,7 @@ ${wordsList}
         <input type="checkbox" 
                id="checkbox-${type}-${entry.id}" 
                ${isSelected ? 'checked' : ''} 
-               onclick="app.toggleEntrySelection('${type}', ${entry.id})"
+               onclick="app.toggleEntrySelection('${type}', '${entry.id}')"
                class="w-5 h-5 rounded border-primary-300 text-accent-600 focus:ring-accent-500 cursor-pointer">
       </div>
     ` : '';
