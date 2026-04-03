@@ -3035,7 +3035,7 @@ ${wordsList}
     const userRequirement = !isDefaultModule && mod.customPrompt ? mod.customPrompt : '';
     
     const genderDesc = isGerman 
-      ? '- gender: 性别标记 m./f./n./pl. 或空（必须为名词标注der/die/das）'
+      ? '- gender: 德语名词的性别标记，必须是 "der"、"die"、"das" 或 "pl."，非名词则留空，严禁使用 "feminine"、"neuter"、"中"、"无" 等英文或中文描述'
       : '- gender: 非德语语言此字段留空（英语等语言无需性别标记）';
     
     // 日语特殊处理
@@ -3112,15 +3112,17 @@ ${wordsList}
       : `
 ${userRequirement || `你是一位专业的${mod.name}教学专家。请为以下${mod.language}单词识别并补全完整信息。`}
 
-【基础约束】
+【重要格式约束】
 - 返回格式：合法JSON数组
-- 必填字段：type(word/phrase/sentence)、original、translation、wordType
+- wordType字段：必须是中文词性，如"名词"、"动词"、"形容词"、"副词"、"介词"、"连词"、"冠词"等，严禁使用"word"、"feminine"、"neuter"或德文词性
+- gender字段：德语名词必须是"der"、"die"、"das"或"pl."，非名词必须留空，严禁使用"feminine"、"neuter"、"中"、"无"等描述
 - explanation支持Markdown格式
+- 对于既是副词又是形容词的词，选择最主要的一个词性填写即可
 
 请为以下单词补全信息：
 ${wordsList}
 
-返回格式：[{"original": "...", "translation": "...", "wordType": "...", "gender": "...", "explanation": "...", "example": ""}]`;
+返回格式：[{"original": "...", "translation": "...", "wordType": "中文词性(如:名词/动词/形容词)", "gender": "der/die/das或留空", "explanation": "...", "example": ""}]`
 
     let retries = 0;
     const maxRetries = 2;
@@ -5249,6 +5251,11 @@ Requirements:
         `;
       } else if (isCorrect) {
         questionEl.classList.add('border-green-300', 'bg-green-50');
+        questionEl.innerHTML += `
+          <div class="mt-4 p-3 bg-green-100 rounded-lg">
+            <div class="font-medium text-green-700">✅ 回答正确！</div>
+          </div>
+        `;
       } else {
         // 错误题目显示用户答案和正确答案
         questionEl.classList.add('border-red-300', 'bg-red-50');
