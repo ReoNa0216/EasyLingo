@@ -1576,10 +1576,14 @@ ${chunk.substring(0, 8000)}
   
   // 清空ZDF抓取历史
   clearZDFHistory() {
-    if (confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。')) {
+    const confirmed = confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。');
+    if (confirmed) {
       this.fetchedZDFFeeds = [];
       localStorage.removeItem('zdf_fetched_history');
-      alert('已清空抓取记录');
+      // 延迟显示成功提示，确保在确认对话框关闭后显示
+      setTimeout(() => {
+        alert('已清空抓取记录');
+      }, 100);
     }
   },
   
@@ -1610,9 +1614,12 @@ ${chunk.substring(0, 8000)}
   
   // 清空 BBC 抓取历史
   clearBBCHistory() {
-    this.fetchedBBCFeeds = [];
-    localStorage.removeItem('bbc_fetched_history');
-    alert('BBC 抓取记录已清空');
+    const confirmed = confirm('确定要清空 BBC 抓取记录吗？');
+    if (confirmed) {
+      this.fetchedBBCFeeds = [];
+      localStorage.removeItem('bbc_fetched_history');
+      setTimeout(() => alert('BBC 抓取记录已清空'), 100);
+    }
   },
   
   // EasyLingo: Tauri 新闻抓取适配方法
@@ -1816,9 +1823,12 @@ ${chunk.substring(0, 8000)}
   
   // 清空 The Guardian 抓取历史
   clearGuardianHistory() {
-    this.fetchedGuardianFeeds = [];
-    localStorage.removeItem('guardian_fetched_history');
-    alert('The Guardian 抓取记录已清空');
+    const confirmed = confirm('确定要清空 The Guardian 抓取记录吗？');
+    if (confirmed) {
+      this.fetchedGuardianFeeds = [];
+      localStorage.removeItem('guardian_fetched_history');
+      setTimeout(() => alert('The Guardian 抓取记录已清空'), 100);
+    }
   },
   
   // 获取 The Guardian 新闻
@@ -1992,9 +2002,12 @@ ${chunk.substring(0, 8000)}
   
   // 清空 NPR 抓取历史
   clearNPRHistory() {
-    this.fetchedNPRFeeds = [];
-    localStorage.removeItem('npr_fetched_history');
-    alert('NPR 抓取记录已清空');
+    const confirmed = confirm('确定要清空 NPR 抓取记录吗？');
+    if (confirmed) {
+      this.fetchedNPRFeeds = [];
+      localStorage.removeItem('npr_fetched_history');
+      setTimeout(() => alert('NPR 抓取记录已清空'), 100);
+    }
   },
   
   // 获取 NPR 新闻
@@ -2219,12 +2232,6 @@ ${chunk.substring(0, 8000)}
             <div class="flex flex-wrap gap-2">
               <button onclick="app.processZDFContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
                 🧠 AI提取学习条目
-              </button>
-              <button onclick="app.viewExtractedContent('zdf')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
-                👀 查看提取内容
-              </button>
-              <button onclick="app.debugFetchRawHTML()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors">
-                🔧 调试提取
               </button>
             </div>
           </div>
@@ -2537,13 +2544,32 @@ ${chunk.substring(0, 8000)}
         fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
         console.log('清理后内容长度:', fullContent.length);
       } else {
-        // 2. 尝试通过网页获取
+        // 2. 尝试通过网页获取（直接使用段落提取，与调试功能一致）
         console.log('尝试从网页获取内容:', selectedArticle.link);
         try {
-          const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
-          console.log('网页提取返回长度:', articleData.content?.length || 0);
-          if (articleData.content && articleData.content.length > selectedArticle.description.length) {
-            rawContent = articleData.content;
+          const proxy = 'https://corsproxy.io/?';
+          const response = await fetch(`${proxy}${encodeURIComponent(selectedArticle.link)}`);
+          const html = await response.text();
+          console.log('网页HTML长度:', html.length);
+          
+          // 直接解析段落（与调试功能一致）
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const paragraphs = doc.querySelectorAll('p');
+          
+          let extractedText = '';
+          paragraphs.forEach(p => {
+            const text = p.textContent?.trim() || '';
+            // 只保留德语段落
+            if (text.length > 30 && /[\u00e4\u00f6\u00fc\u00df]|der|die|das|und|ist|von|mit|auf|f\u00fcr|den|dem|im|zu/i.test(text)) {
+              extractedText += text + '\n\n';
+            }
+          });
+          
+          console.log('提取段落长度:', extractedText.length);
+          
+          if (extractedText.length > selectedArticle.description.length) {
+            rawContent = extractedText;
             fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
             console.log(`从网页获取内容成功, 长度: ${rawContent.length}`);
           } else {
@@ -2574,11 +2600,11 @@ ${chunk.substring(0, 8000)}
         source: 'ZDF Heute'
       };
       
-      // 显示预览
+      // 显示预览（可滚动的完整内容）
       contentDiv.innerHTML = `
         <div class="font-bold mb-1">${selectedArticle.title}</div>
-        <div class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</div>
-        <div class="text-gray-600">${fullContent.substring(0, 500)}...</div>
+        <div class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr} | 字数：${fullContent.length}</div>
+        <div class="text-gray-600 max-h-48 overflow-y-auto whitespace-pre-wrap text-sm">${this.escapeHtml(fullContent)}</div>
       `;
       preview.classList.remove('hidden');
       status.textContent = '获取成功！';
@@ -2662,10 +2688,11 @@ ${chunk.substring(0, 8000)}
   
   // 清空朝日新聞抓取历史
   clearAsahiHistory() {
-    if (confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。')) {
+    const confirmed = confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。');
+    if (confirmed) {
       this.fetchedAsahiFeeds = [];
       localStorage.removeItem('asahi_fetched_history');
-      alert('已清空抓取记录');
+      setTimeout(() => alert('已清空抓取记录'), 100);
     }
   },
   
