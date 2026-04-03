@@ -2827,6 +2827,23 @@ ${chunk.substring(0, 8000)}
       entries.forEach(entry => {
         entry.moduleId = this.currentModule;
         entry.id = `entry_${this.currentModule}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // 处理日语例句格式：移除注音括号，确保有空格+中文翻译
+        if (isJapanese && entry.example) {
+          // 移除注音格式：汉字(假名) → 汉字
+          entry.example = entry.example.replace(/([\u4e00-\u9fa5])\([\u3040-\u309f\u30a0-\u30ff]+\)/g, '$1');
+          
+          // 检查是否已有中文翻译（包含中文字符）
+          const hasChinese = /[\u4e00-\u9fa5]/.test(entry.example);
+          const hasSpace = entry.example.includes(' ');
+          
+          // 如果没有空格分隔的中文翻译，尝试添加
+          if (!hasSpace || !hasChinese) {
+            // 如果 example 只有日语，尝试用 translation 作为参考
+            // 但为了保持格式统一，这里只清理不自动添加（避免翻译不准）
+            console.warn('Example missing Chinese translation:', entry.example);
+          }
+        }
       });
       
       // 保存到数据库
@@ -2894,29 +2911,34 @@ ${chunk.substring(0, 8000)}
       ? `你是一位专业的日语教学专家。请为以下日语词汇补全完整信息。
 
 【重要 - 格式规则】
-1. 单词读音（original）：
+
+1. 单词读音（original字段）：
    - 含汉字的词汇：整体标注读音，如"学生(がくせい)"
    - 片假名外来语：标注来源，如"アイスクリーム(ice cream)"
 
-2. 例句格式（example）- 关键规则：
-   - 例句中的汉字不需要注音
-   - 格式：日语句子 中文翻译（空格分隔）
+2. 例句（example字段）- 严格规范：
+   - 例句必须是完整的日语句子，汉字绝对不能注音
+   - 格式：日语句子 空格 中文翻译
    - ✅ 正确示例："私は学生です。 我是学生。"
-   - ✅ 正确示例："日本語を勉強しています。 正在学习日语。"
-   - ❌ 错误示例："私(わたし)は学生(がくせい)です。"（不需要注音）
-   - ❌ 错误示例："私は学生です。"（缺少中文翻译）
+   - ✅ 正确示例："駅から家まで歩いて10分です。 从车站到家步行10分钟。"
+   - ❌ 严重错误："私(わたし)は学生(がくせい)です。"（example字段禁止注音）
+   - ❌ 严重错误："私は学生です。"（缺少中文翻译）
 
-3. 常见错误纠正：
-   - "大人" → original用"大人(おとな)"，但例句中直接写"大人"
-   - 例句必须包含中文翻译，用空格分隔
+3. 字段对比示例（必须区分）：
+   - original: "学生(がくせい)" ← 单词需要注音
+   - example: "私は学生です。 我是学生。" ← 例句禁止注音，必须带中文翻译
 
-请严格按照以下格式返回JSON数组，每个词条包含：
-- original: 原词（含读音标注，如"学生(がくせい)"）
+4. 常见错误纠正：
+   - ❌ 错误：original="私(わたし)" example="私(わたし)は学生(がくせい)です。"
+   - ✅ 正确：original="私(わたし)" example="私は学生です。 我是学生。"
+
+请严格按照以下格式返回JSON数组：
+- original: 原词（含读音标注）
 - translation: 中文翻译
-- wordType: 词性（名词、他动词·五段/一段、自动词·五段/一段、い形容词、な形容动词等）
+- wordType: 词性
 - gender: 留空
 - explanation: 用法说明
-- example: 示例句子（汉字不注音，格式：日语句子 中文翻译）
+- example: 日语句子 空格 中文翻译（汉字绝对不注音）
 
 请为以下词汇补全信息：
 ${wordsList}
