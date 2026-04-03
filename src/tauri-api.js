@@ -214,67 +214,35 @@ class TauriNewsAPI {
       content = doc.querySelector('#storytext')?.innerText || 
                 doc.querySelector('article')?.innerText || '';
     } else if (url.includes('zdf.de')) {
-      // ZDF 内容提取 - 针对 ZDF Heute 网站结构优化
-      content = '';
+      // ZDF 内容提取 - 简化版
+      console.log('Starting ZDF extraction...');
       
-      // 方法1: 直接获取 main 标签内的内容
+      // 直接尝试获取 main 标签
       const main = doc.querySelector('main');
       if (main) {
-        content = main.innerText;
-        console.log(`ZDF method 1 - main tag, length: ${content.length}`);
+        content = main.innerText || '';
+        console.log(`Main content length: ${content.length}`);
       }
       
-      // 方法2: 尝试其他选择器（如果 main 内容太短或没有 main）
-      if (!content || content.length < 1000) {
-        const selectors = [
-          'article',
-          '[class*="article"]',
-          '[class*="content"]',
-          '.content',
-          '#content',
-          'main article',
-          '[data-testid="article-body"]',
-          '[class*="ArticleBody"]'
-        ];
-        
-        for (const selector of selectors) {
-          const el = doc.querySelector(selector);
-          if (el && el.innerText.length > (content?.length || 0)) {
-            content = el.innerText;
-            console.log(`ZDF method 2 - ${selector}, length: ${content.length}`);
-          }
-        }
-      }
-      
-      // 方法3: 收集所有段落文本
-      if (!content || content.length < 1000) {
-        const paragraphs = doc.querySelectorAll('p');
-        const texts = [];
-        paragraphs.forEach(p => {
-          const text = p.innerText?.trim();
-          // 过滤掉太短的段落
-          if (text && text.length > 30) {
-            texts.push(text);
+      // 如果 main 没有内容或太短，尝试获取所有段落
+      if (!content || content.length < 500) {
+        console.log('Trying paragraphs...');
+        const allParagraphs = doc.querySelectorAll('p');
+        let paragraphText = '';
+        allParagraphs.forEach(p => {
+          const text = p.textContent || p.innerText || '';
+          if (text.trim().length > 20) {
+            paragraphText += text.trim() + '\n\n';
           }
         });
-        if (texts.length > 0) {
-          content = texts.join('\n\n');
-          console.log(`ZDF method 3 - paragraphs, count: ${texts.length}, length: ${content.length}`);
+        
+        if (paragraphText.length > (content?.length || 0)) {
+          content = paragraphText;
+          console.log(`Paragraphs content length: ${content.length}`);
         }
       }
       
-      // 方法4: 如果以上都失败，尝试从 body 获取所有文本
-      if (!content || content.length < 500) {
-        const bodyText = doc.body?.innerText || '';
-        if (bodyText.length > content.length) {
-          // 过滤掉太短的行
-          const lines = bodyText.split('\n').filter(line => line.trim().length > 20);
-          content = lines.join('\n');
-          console.log(`ZDF method 4 - body filtered, lines: ${lines.length}, length: ${content.length}`);
-        }
-      }
-      
-      console.log(`ZDF final content length: ${content?.length || 0}`);
+      console.log(`ZDF final: ${content?.length || 0} chars`);
     } else if (url.includes('asahi.com')) {
       // 朝日新闻可能的多种内容容器
       content = doc.querySelector('article')?.innerText || 

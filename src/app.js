@@ -2223,6 +2223,9 @@ ${chunk.substring(0, 8000)}
               <button onclick="app.viewExtractedContent('zdf')" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg text-sm transition-colors">
                 👀 查看提取内容
               </button>
+              <button onclick="app.debugFetchRawHTML()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors">
+                🔧 调试提取
+              </button>
             </div>
           </div>
         </div>
@@ -6805,6 +6808,60 @@ Requirements:
         <div class="p-4 border-t text-sm text-gray-500">字数: ${(article.rawContent || article.content).length}</div>
       </div>`;
     document.body.appendChild(modal);
+  },
+
+  // 调试：直接获取网页HTML并显示
+  async debugFetchRawHTML() {
+    if (!this.zdfCurrentArticle) {
+      alert('请先获取新闻文章');
+      return;
+    }
+    
+    const url = this.zdfCurrentArticle.link;
+    console.log('Debug fetching raw HTML from:', url);
+    
+    try {
+      const proxy = 'https://api.allorigins.win/get?url=';
+      const response = await fetch(`${proxy}${encodeURIComponent(url)}`);
+      const json = await response.json();
+      const html = json.contents;
+      
+      console.log('Raw HTML length:', html.length);
+      
+      // 简单提取段落
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const paragraphs = doc.querySelectorAll('p');
+      
+      let extractedText = '';
+      paragraphs.forEach((p, i) => {
+        const text = p.textContent?.trim();
+        if (text && text.length > 20 && text.length < 2000) {
+          extractedText += `[${i}] ${text}\n\n`;
+        }
+      });
+      
+      console.log('Extracted paragraphs:', extractedText.length);
+      
+      // 显示结果
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+          <div class="p-4 border-b flex justify-between items-center">
+            <h3 class="font-bold text-lg">调试提取</h3>
+            <button onclick="this.closest('.fixed').remove()" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm">✕ 关闭</button>
+          </div>
+          <div class="p-4 overflow-y-auto flex-1">
+            <p class="text-sm text-gray-500 mb-2">HTML长度: ${html.length} | 段落数: ${paragraphs.length}</p>
+            <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap">${this.escapeHtml(extractedText.substring(0, 5000))}</div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+    } catch (e) {
+      console.error('Debug fetch failed:', e);
+      alert('获取失败: ' + e.message);
+    }
   }
 };
 
