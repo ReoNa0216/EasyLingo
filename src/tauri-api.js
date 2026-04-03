@@ -142,8 +142,8 @@ class TauriNewsAPI {
 
   async fetchArticleViaProxy(url) {
     const corsProxies = [
-      'https://api.allorigins.win/get?url=',
-      'https://corsproxy.io/?'
+      'https://corsproxy.io/?',  // 优先使用 corsproxy.io
+      'https://api.allorigins.win/get?url='
     ];
     
     for (const proxy of corsProxies) {
@@ -214,33 +214,24 @@ class TauriNewsAPI {
       content = doc.querySelector('#storytext')?.innerText || 
                 doc.querySelector('article')?.innerText || '';
     } else if (url.includes('zdf.de')) {
-      // ZDF 内容提取 - 使用段落提取
+      // ZDF 内容提取 - 使用段落提取（与调试功能一致）
       console.log('Starting ZDF extraction...');
       
-      // 方法1: 收集所有段落
+      // 收集所有段落
       const allParagraphs = doc.querySelectorAll('p');
       console.log(`Found ${allParagraphs.length} paragraphs`);
       
       let paragraphText = '';
       allParagraphs.forEach((p, i) => {
         const text = p.textContent?.trim() || '';
-        // 只保留德语段落（包含德语字符）
-        if (text.length > 30 && /[\u00e4\u00f6\u00fc\u00df]|der|die|das|und|ist|von/i.test(text)) {
+        // 只保留德语段落（包含德语字符或常见德语词）
+        if (text.length > 30 && /[\u00e4\u00f6\u00fc\u00df]|der|die|das|und|ist|von|mit|auf|f\u00fcr|den|dem|im|zu/i.test(text)) {
           paragraphText += text + '\n\n';
         }
       });
       
       console.log(`Paragraph text length: ${paragraphText.length}`);
       content = paragraphText;
-      
-      // 方法2: 如果段落太少，尝试获取 main 标签
-      if (!content || content.length < 500) {
-        const main = doc.querySelector('main');
-        if (main) {
-          content = main.innerText || '';
-          console.log(`Using main tag, length: ${content.length}`);
-        }
-      }
       
       console.log(`ZDF final: ${content?.length || 0} chars`);
     } else if (url.includes('asahi.com')) {
