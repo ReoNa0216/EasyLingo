@@ -4798,24 +4798,30 @@ ${wordsList}
 2. 语法结构：选择正确的介词搭配或句型
 3. 上下文理解：根据例句语境选择合适的表达
 
-重要规则（必须遵守）：
-- 四个选项 A/B/C/D 必须互不相同，绝对禁止重复
-- 只有且仅有一个正确答案，其他三个干扰项必须在逻辑上错误
-- 干扰项要有迷惑性（如：错误的词形变化、近义词混淆、相似拼写），但不能和正确答案相同
+【关键要求 - 选项唯一性（必须严格遵守）】
+- 四个选项 A/B/C/D 的内容必须完全不同，绝对禁止任何重复
+- 生成选项后，必须自我检查：A≠B, A≠C, A≠D, B≠C, B≠D, C≠D
+- 如果发现有重复，立即重新生成干扰项
+- 干扰项要有足够的迷惑性（如：错误的词形变化、近义词混淆、相似拼写、易混淆语法形式）
+- 干扰项必须是合理的语言形式，不能胡编乱造
+
+其他规则：
+- 只有且仅有一个正确答案
 - 干扰项必须语法上说得通（符合词性、时态规则），只是语义或搭配错误
 - 正确答案字母随机分布
 - 如果条目是名词，可以考虑性别变化的题目
 - 如果条目是动词，可以考虑时态或分词的题目
-- 严格检查：四个选项必须是完全不同的内容，禁止出现两个选项内容相同的情况
 
-禁止的错误示例：
-- 选项重复（如 A. apple / B. apple / C. orange）
-- 两个正确答案（如 "apple" 和 "the apple" 同时正确）
-- 干扰项和题目无关（如题目是水果，干扰项是动词）
+【严重错误示例 - 绝对避免】
+❌ 选项重复：A. gestiegen / B. gesteigert / C. gesteigert / D. gestiegen（B和C重复，A和D重复）
+❌ 两个正确答案（如 "apple" 和 "the apple" 同时正确）
+❌ 干扰项和题目无关（如题目是水果，干扰项是动词）
 
-良好示例：
-- "Sie leidet seit Monaten an _____" (A. Depressionen / B. Depression / C. Depressione / D. Depressiv) → 正确答案：A
-- "Er hat viel _____ um die Prüfung" (A. Sorgen / B. Sorge / C. Sorgt / D. Sorg) → 正确答案：A`,
+【良好示例】
+✓ "Sie leidet seit Monaten an _____" (A. Depressionen / B. Depression / C. Depressive / D. Depressivität) → 正确答案：A
+✓ "Er hat viel _____ um die Prüfung" (A. Sorgen / B. Angst / C. Furcht / D. Bange) → 正确答案：A
+
+请确保生成的四个选项内容完全不同！`,
       fill: `生成${count}道填空题。要求：
 - 优先使用条目中的例句生成题目
 - 选择条目中的一个关键词或短语作为填空答案
@@ -4906,7 +4912,99 @@ ${typePrompts[type]}
     
     // 尝试解析JSON
     try {
-      const questions = JSON.parse(jsonStr);
+      let questions = JSON.parse(jsonStr);
+      
+      // 验证并修复选择题选项唯一性
+      if (type === 'choice') {
+        questions = questions.map(q => {
+          if (q.options && Array.isArray(q.options)) {
+            // 提取选项文本（去除 A. B. C. D. 前缀）
+            const optionTexts = q.options.map(opt => {
+              const match = opt.match(/^[A-D]\.\s*(.+)$/i);
+              return match ? match[1].trim() : opt.trim();
+            });
+            
+            // 检查重复
+            const uniqueTexts = [...new Set(optionTexts)];
+            if (uniqueTexts.length < optionTexts.length) {
+              console.warn('检测到重复选项，进行修复:', q.question);
+              
+              // 找到正确答案的位置和内容
+              const correctLabel = q.answer?.toUpperCase();
+              const correctIndex = ['A', 'B', 'C', 'D'].indexOf(correctLabel);
+              const correctText = correctIndex >= 0 ? optionTexts[correctIndex] : optionTexts[0];
+              
+              // 生成新的唯一干扰项
+              const distractors = new Set();
+              distractors.add(correctText);
+              
+              // 使用条目中其他词作为干扰项基础
+              const otherEntries = entries.filter(e => 
+                e.original !== correctText && 
+                !correctText.includes(e.original) && 
+                !e.original.includes(correctText)
+              );
+              
+              // 尝试从其他条目找干扰项
+              for (const entry of otherEntries.slice(0, 10)) {
+                if (distractors.size >= 4) break;
+                // 使用词形变化或相关形式
+                const variants = [
+                  entry.original,
+                  entry.original.replace(/en$/, 't'),
+                  entry.original.replace(/en$/, 'st'),
+                  entry.original + 'e',
+                  entry.original.replace(/t$/, 'en'),
+                ];
+                for (const v of variants) {
+                  if (v !== correctText && v.length > 2) {
+                    distractors.add(v);
+                    if (distractors.size >= 4) break;
+                  }
+                }
+              }
+              
+              // 如果还不足，添加通用干扰项模式
+              const genericDistractors = [
+                correctText.replace(/en$/, 't'),
+                correctText.replace(/en$/, 'st'),
+                correctText + 'e',
+                correctText.replace(/t$/, 'en'),
+                correctText.replace(/ung$/, 'en'),
+                correctText + 'ung',
+              ];
+              for (const d of genericDistractors) {
+                if (d !== correctText && d.length > 2) {
+                  distractors.add(d);
+                  if (distractors.size >= 4) break;
+                }
+              }
+              
+              // 最终备用方案
+              const finalDistractors = Array.from(distractors);
+              while (finalDistractors.length < 4) {
+                finalDistractors.push(`选项${finalDistractors.length + 1}`);
+              }
+              
+              // 打乱顺序并重新分配标签
+              const shuffled = finalDistractors.sort(() => 0.5 - Math.random());
+              const newOptions = shuffled.slice(0, 4).map((text, idx) => {
+                const label = String.fromCharCode(65 + idx);
+                return `${label}. ${text}`;
+              });
+              
+              // 找到正确答案的新位置
+              const newCorrectIndex = shuffled.findIndex(t => t === correctText);
+              const newAnswer = String.fromCharCode(65 + (newCorrectIndex >= 0 ? newCorrectIndex : 0));
+              
+              q.options = newOptions;
+              q.answer = newAnswer;
+            }
+          }
+          return q;
+        });
+      }
+      
       return questions.map(q => ({ ...q, type }));
     } catch (parseError) {
       console.warn('JSON parse failed, trying to fix...', parseError.message);
@@ -5389,8 +5487,9 @@ Requirements:
   },
   
   // 退出测试
-  exitTest() {
-    if (confirm('确定要退出测试吗？')) {
+  async exitTest() {
+    const confirmed = await this.confirmDialog('确定要退出测试吗？');
+    if (confirmed) {
       this.stopStudyTimer(); // 停止计时（不保存）
       this.loadDashboard();
     }
