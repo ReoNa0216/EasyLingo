@@ -148,18 +148,35 @@ class TauriNewsAPI {
     
     for (const proxy of corsProxies) {
       try {
+        console.log(`Trying proxy: ${proxy} for ${url}`);
         const response = await fetch(`${proxy}${encodeURIComponent(url)}`);
-        if (!response.ok) continue;
+        if (!response.ok) {
+          console.warn(`Proxy ${proxy} returned ${response.status}`);
+          continue;
+        }
         
         let html = await response.text();
+        console.log(`Proxy ${proxy} returned HTML length: ${html.length}`);
+        
+        // 检查是否返回了错误信息
+        if (html.length < 1000) {
+          console.warn(`Proxy ${proxy} returned very short content, may be an error page`);
+        }
         
         // allorigins 返回 JSON 格式
         if (proxy.includes('allorigins')) {
-          const json = JSON.parse(html);
-          html = json.contents;
+          try {
+            const json = JSON.parse(html);
+            html = json.contents;
+            console.log(`AllOrigins content length: ${html?.length || 0}`);
+          } catch (e) {
+            console.warn('Failed to parse AllOrigins JSON:', e.message);
+          }
         }
         
-        return this.extractArticleText(html, url);
+        const result = this.extractArticleText(html, url);
+        console.log(`Extracted content length: ${result.content?.length || 0}`);
+        return result;
       } catch (e) {
         console.warn(`Proxy ${proxy} failed:`, e.message);
         continue;
@@ -170,6 +187,8 @@ class TauriNewsAPI {
   }
 
   extractArticleText(html, url) {
+    console.log(`Extracting article from ${url}, HTML length: ${html.length}`);
+    
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
@@ -177,8 +196,13 @@ class TauriNewsAPI {
                   doc.querySelector('h1')?.textContent || 
                   'Unknown Title';
     
-    // 移除脚本和样式
-    doc.querySelectorAll('script, style, nav, header, footer, aside').forEach(el => el.remove());
+    // 移除脚本、样式和无关元素
+    doc.querySelectorAll('script, style, nav, header, footer, aside, iframe, svg').forEach(el => el.remove());
+    
+    // 移除 ZDF 特定的导航和广告元素
+    if (url.includes('zdf.de')) {
+      doc.querySelectorAll('[class*="navigation"], [class*="breadcrumb"], [class*="meta"], [class*="tag"], [class*="share"], [class*="social"]').forEach(el => el.remove());
+    }
     
     let content = '';
     
@@ -193,73 +217,60 @@ class TauriNewsAPI {
       // ZDF 内容提取 - 针对 ZDF Heute 网站结构优化
       content = '';
       
-      // 方法1: 尝试找到正文内容区域（排除导航和页脚）
-      const mainContent = doc.querySelector('main');
-      if (mainContent) {
-        // 在 main 内部查找最大的文本区块
-        const textBlocks = mainContent.querySelectorAll('p, div');
-        let maxLength = 0;
-        let bestBlock = null;
-        
-        textBlocks.forEach(block => {
-          const text = block.innerText || '';
-          if (text.length > maxLength && text.length > 200) {
-            maxLength = text.length;
-            bestBlock = block;
-          }
-        });
-        
-        if (bestBlock) {
-          // 如果找到了大块文本，尝试获取父元素
-          const parent = bestBlock.parentElement;
-          if (parent && parent.innerText.length > bestBlock.innerText.length * 1.5) {
-            content = parent.innerText;
-          } else {
-            content = bestBlock.innerText;
-          }
-          console.log(`ZDF found content via main > text block, length: ${content.length}`);
-        }
+      // 方法1: 直接获取 main 标签内的内容
+      const main = doc.querySelector('main');
+      if (main) {
+        content = main.innerText;
+        console.log(`ZDF method 1 - main tag, length: ${content.length}`);
       }
       
-      // 方法2: 尝试其他选择器
-      if (!content || content.length < 500) {
+      // 方法2: 尝试其他选择器（如果 main 内容太短或没有 main）
+      if (!content || content.length < 1000) {
         const selectors = [
-          '[data-testid="article-body"]',
-          '.article-body',
-          'article[data-testid="article"]',
-          '[class*="ArticleBody"]',
-          '[class*="article-body"]',
-          '[class*="ArticleContent"]',
-          '.article-content',
-          'article[class*="article"]',
-          'main article',
           'article',
+          '[class*="article"]',
+          '[class*="content"]',
           '.content',
-          '#content'
+          '#content',
+          'main article',
+          '[data-testid="article-body"]',
+          '[class*="ArticleBody"]'
         ];
         
         for (const selector of selectors) {
           const el = doc.querySelector(selector);
           if (el && el.innerText.length > (content?.length || 0)) {
             content = el.innerText;
-            console.log(`ZDF content candidate: ${selector}, length: ${el.innerText.length}`);
+            console.log(`ZDF method 2 - ${selector}, length: ${content.length}`);
           }
         }
       }
       
-      // 方法3: 如果以上都失败，尝试获取 body 中的所有段落
-      if (!content || content.length < 500) {
+      // 方法3: 收集所有段落文本
+      if (!content || content.length < 1000) {
         const paragraphs = doc.querySelectorAll('p');
-        const paragraphTexts = [];
+        const texts = [];
         paragraphs.forEach(p => {
           const text = p.innerText?.trim();
-          if (text && text.length > 50 && text.length < 2000) {
-            paragraphTexts.push(text);
+          // 过滤掉太短的段落
+          if (text && text.length > 30) {
+            texts.push(text);
           }
         });
-        if (paragraphTexts.length > 0) {
-          content = paragraphTexts.join('\n\n');
-          console.log(`ZDF content from paragraphs, length: ${content.length}`);
+        if (texts.length > 0) {
+          content = texts.join('\n\n');
+          console.log(`ZDF method 3 - paragraphs, count: ${texts.length}, length: ${content.length}`);
+        }
+      }
+      
+      // 方法4: 如果以上都失败，尝试从 body 获取所有文本
+      if (!content || content.length < 500) {
+        const bodyText = doc.body?.innerText || '';
+        if (bodyText.length > content.length) {
+          // 过滤掉太短的行
+          const lines = bodyText.split('\n').filter(line => line.trim().length > 20);
+          content = lines.join('\n');
+          console.log(`ZDF method 4 - body filtered, lines: ${lines.length}, length: ${content.length}`);
         }
       }
       
