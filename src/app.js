@@ -2824,25 +2824,15 @@ ${chunk.substring(0, 8000)}
       progressDiv.classList.add('hidden');
       
       // 添加模块ID和字符串ID（与学习材料提取保持一致）
+      const isJapaneseModule = this.currentModule === 'japanese';
       entries.forEach(entry => {
         entry.moduleId = this.currentModule;
         entry.id = `entry_${this.currentModule}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        // 处理日语例句格式：移除注音括号，确保有空格+中文翻译
-        if (isJapanese && entry.example) {
+        // 处理日语例句格式：移除注音括号
+        if (isJapaneseModule && entry.example) {
           // 移除注音格式：汉字(假名) → 汉字
           entry.example = entry.example.replace(/([\u4e00-\u9fa5])\([\u3040-\u309f\u30a0-\u30ff]+\)/g, '$1');
-          
-          // 检查是否已有中文翻译（包含中文字符）
-          const hasChinese = /[\u4e00-\u9fa5]/.test(entry.example);
-          const hasSpace = entry.example.includes(' ');
-          
-          // 如果没有空格分隔的中文翻译，尝试添加
-          if (!hasSpace || !hasChinese) {
-            // 如果 example 只有日语，尝试用 translation 作为参考
-            // 但为了保持格式统一，这里只清理不自动添加（避免翻译不准）
-            console.warn('Example missing Chinese translation:', entry.example);
-          }
         }
       });
       
@@ -3223,7 +3213,7 @@ ${wordsList}
         }
         
         const data = await response.json();
-        const content = data.choices[0].message.content;
+        let content = data.choices[0].message.content;
         
         console.log('AI response for', mod.name, ':', content.substring(0, 500));
         
@@ -3232,6 +3222,13 @@ ${wordsList}
           console.warn('AI response was truncated due to max_tokens limit');
           throw new Error('Response truncated: increase max_tokens setting');
         }
+        
+        // 预处理：替换内容中的中文引号为英文引号（在 JSON 解析之前）
+        content = content
+          .replace(/\u201c/g, '\\"')  // 左双引号
+          .replace(/\u201d/g, '\\"')  // 右双引号
+          .replace(/\u2018/g, "\\'")   // 左单引号
+          .replace(/\u2019/g, "\\'");  // 右单引号
         
         // 解析JSON
         let enrichedData = null;
@@ -3377,10 +3374,28 @@ ${wordsList}
         continue;
       }
       
-      if (inString && (charCode === 0x201c || charCode === 0x201d)) {
-        // 在字符串内部的中文引号，替换为转义的英文引号
-        result += '\\"';
-        continue;
+      // 在字符串内部处理特殊字符
+      if (inString) {
+        // 中文双引号
+        if (charCode === 0x201c || charCode === 0x201d) {
+          result += '\\"';
+          continue;
+        }
+        
+        // 中文单引号（''
+        if (charCode === 0x2018 || charCode === 0x2019) {
+          result += "\\'";
+          continue;
+        }
+        
+        // 其他全角标点符号需要转义
+        // U+FF00-U+FFEF 是全角字符区域，但标点需要处理
+        // 特别是全角括号等
+        if (charCode === 0xFF08 || charCode === 0xFF09) {
+          // 全角括号（）替换为半角
+          result += charCode === 0xFF08 ? '(' : ')';
+          continue;
+        }
       }
       
       result += char;
