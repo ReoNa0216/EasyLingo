@@ -4821,6 +4821,13 @@ ${wordsList}
 ✓ "Sie leidet seit Monaten an _____" (A. Depressionen / B. Depression / C. Depressive / D. Depressivität) → 正确答案：A（干扰项是词形变化错误）
 ✓ "Der Zug fährt _____ Bahnhof" (A. vom / B. am / C. im / D. zum) → 正确答案：A（干扰项是介词搭配错误）
 
+【答案验证 - 必须执行】
+生成题目后，必须验证正确答案的准确性：
+1. 检查正确答案是否真的符合语法规则
+2. 确认其他三个选项确实错误（找出错误原因）
+3. 如果涉及变格/变位，确认格位和词尾正确
+4. ❌ 绝对不能出现：正确答案其实是错误的情况（如把"jeden Tag"判为错，"jeden Tage"判为对）
+
 请确保只有唯一正确答案，干扰项不是同义词！`,
       fill: `生成${count}道填空题。要求：
 - 优先使用条目中的例句生成题目
