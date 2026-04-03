@@ -9,6 +9,7 @@
     "beforeDevCommand": "python -m http.server 1420 --directory ../src"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "fullscreen": false,
