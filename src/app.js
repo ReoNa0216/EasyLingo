@@ -1,14 +1,21 @@
-/**
- * EasyLingo - Language Learning Assistant
- * Main Application Logic (Tauri Desktop Version)
- * 
- * Database: SQLite via Tauri SQL Plugin
- * File Operations: Tauri Native Dialog
- * News Fetching: Tauri Rust Backend (no CORS proxy needed)
+﻿/**
+ * PolyLingo - Language Learning Assistant
+ * Main Application Logic
  */
 
-// Database Setup - EasyLingo uses Tauri SQL (SQLite)
-// db object is initialized in db-tauri.js and exposed as window.db
+// Database Setup
+const db = new Dexie('PolyLingoDB');
+
+// Define database schema - version 5 with auto-increment keys
+db.version(5).stores({
+  modules: '++id, name, language, createdAt',
+  materials: '++id, moduleId, title, content, sourceFile, createdAt',
+  entries: '++id, materialId, moduleId, type, original, translation, srsLevel, nextReview, interval, createdAt',
+  cards: '++id, materialId, content, srsLevel, nextReview, interval, createdAt',
+  tests: '++id, moduleId, questions, answers, results, score, duration, createdAt',
+  records: '++id, date, moduleId, duration, action, createdAt',
+  settings: '++id, value'
+});
 
 // Application State
 const app = {
@@ -87,8 +94,8 @@ const app = {
       // 清理可能的重复元素（针对 Edge 浏览器刷新问题）
       this.cleanupDuplicateElements();
       
-      // 初始化 Tauri SQLite 数据库
-      await db.init();
+      // 尝试打开数据库
+      await db.open();
       
       await this.initModules();
       await this.loadCustomModules();
@@ -178,7 +185,7 @@ const app = {
           name: mod.name,
           language: mod.language,
           isDefault: true,
-          created_at: new Date()
+          createdAt: new Date()
         });
       }
     }
@@ -281,7 +288,15 @@ const app = {
     }
   },
   
-  
+  // Desktop News Adapter (EasyLingo)
+  async desktopFetchRSS(source, category) {
+    const { invoke } = window.__TAURI__.core;
+    return await invoke('fetch_news_rss', { source, category: category || '' });
+  },
+  async desktopFetchArticle(source, url, category) {
+    const { invoke } = window.__TAURI__.core;
+    return await invoke('fetch_news_article', { source, url, category: category || '' });
+  },
   
   // Setup event listeners
   setupEventListeners() {
@@ -439,7 +454,7 @@ ${placeholderText}`;
   },
   
   async loadRecentActivity() {
-    const records = await db.records.orderBy('created_at').reverse().limit(10).toArray();
+    const records = await db.records.orderBy('createdAt').reverse().limit(10).toArray();
     const container = document.getElementById('recent-activity');
     
     if (records.length === 0) {
@@ -458,7 +473,7 @@ ${placeholderText}`;
         </div>
         <div class="flex items-center gap-3">
           <div class="text-right text-sm text-primary-500">
-            <div>${new Date(r.created_at).toLocaleDateString()}</div>
+            <div>${new Date(r.createdAt).toLocaleDateString()}</div>
             <div>${r.duration}分钟</div>
           </div>
           <button onclick="app.deleteRecord('${r.id}')" class="opacity-0 group-hover:opacity-100 text-primary-400 hover:text-red-500 transition-all" title="删除记录">
@@ -517,20 +532,9 @@ ${placeholderText}`;
       return;
     }
     
-    // 使用 EasyLingo 文件处理器
-    const handler = window.fileHandler || new EasyLingoFileHandler();
-    
     for (const file of files) {
       try {
-        // 包装原生 File 对象为统一格式
-        const fileObj = {
-          name: file.name,
-          file: file,  // 浏览器环境的实际文件对象
-          extension: file.name.split('.').pop().toLowerCase(),
-          size: file.size,
-          isTauri: false
-        };
-        const content = await handler.parseFile(fileObj);
+        const content = await this.parseFile(file);
         await this.saveMaterial(file.name, content);
       } catch (error) {
         console.error('Error parsing file:', error);
@@ -541,37 +545,6 @@ ${placeholderText}`;
     await this.loadModuleMaterials();
     await this.updateSidebarStats();
     // 不记录上传时间，只有学习和复习计入学习时间
-  },
-  
-  // EasyLingo: 新的文件选择方法（支持 Tauri 原生对话框）
-  async selectAndProcessFiles() {
-    if (!this.currentModule) {
-      alert('请先选择一个学习模块');
-      return;
-    }
-    
-    try {
-      const handler = window.fileHandler || new EasyLingoFileHandler();
-      const files = await handler.selectFiles();
-      
-      if (files.length === 0) return;
-      
-      for (const file of files) {
-        try {
-          const content = await handler.parseFile(file);
-          await this.saveMaterial(file.name, content);
-        } catch (error) {
-          console.error('Error parsing file:', error);
-          alert(`解析文件 ${file.name} 失败: ${error.message}`);
-        }
-      }
-      
-      await this.loadModuleMaterials();
-      await this.updateSidebarStats();
-    } catch (error) {
-      console.error('Error selecting files:', error);
-      alert('选择文件失败: ' + error.message);
-    }
   },
   
   async parseFile(file) {
@@ -730,11 +703,11 @@ ${placeholderText}`;
     const material = {
       id: `${this.currentModule}_${Date.now()}`,
       moduleId: this.currentModule,
-      name: filename,
+      title: filename,
       content: content.substring(0, 50000), // Store more content for AI processing
       sourceFile: filename,
       status: 'pending', // pending, processing, completed
-      created_at: new Date()
+      createdAt: new Date()
     };
     
     await db.materials.put(material);
@@ -767,7 +740,7 @@ ${placeholderText}`;
         chunks.push(content.substring(i, i + chunkSize));
       }
       
-      console.log(`Processing ${chunks.length} chunks for ${material.name}, total ${content.length} chars`);
+      console.log(`Processing ${chunks.length} chunks for ${material.title}, total ${content.length} chars`);
       
       if (settings.apiKey) {
         // 对每个块使用AI处理
@@ -838,7 +811,7 @@ ${placeholderText}`;
             srsLevel: 0,
             nextReview: new Date(),
             interval: 0,
-            created_at: new Date()
+            createdAt: new Date()
           });
           savedCount++;
         } catch (saveError) {
@@ -853,7 +826,6 @@ ${placeholderText}`;
       });
       
       await this.loadModuleMaterials();
-      await this.updateSidebarStats();
       
       console.log(`Processing completed: ${savedCount} entries saved from ${allEntries.length} extracted`);
       alert(`已成功提取 ${savedCount} 个学习条目（原文共 ${allEntries.length} 条）！`);
@@ -890,10 +862,7 @@ ${mod.customPrompt}
     const germanPrompt = isGerman ? `特别注意：这是德语学习材料，请积极、尽可能多地提取学习条目，严格按照以下三类分类：
 
 1. 【单词 word】：所有名词、动词、形容词、副词、介词、连词等
-   - 【强制要求】所有名词必须标注性别：m.（阳性der）/ f.（阴性die）/ n.（中性das）/ pl.（复数）
-   - 标注形式：只写 "m." "f." "n." "pl." 四种之一
-   - 如果不确定性别，应该根据词尾特征推断（如 -ung/-heit/-keit/-schaft/-tion 通常是 f.，-chen/-lein 通常是 n.）
-   - 动词、形容词等非名词的 gender 字段留空
+   - 必须标注性别：m.阳性 / f.阴性 / n.中性 / pl.复数（若可确定）
    - 包含：原文、中文翻译、用法解释、例句
    - 目标：每1000字符至少提取15-25个单词
 
@@ -906,8 +875,6 @@ ${mod.customPrompt}
    - 只需要：原文、中文翻译
    - 不需要解释和例句
    - 目标：每1000字符至少提取3-5个语句
-
-【性别标注验证】提交前请检查：所有名词的 gender 字段是否已填写（m./f./n./pl.）
 
 重要提示：
 - 不要过滤“简单”或“复杂”的词汇，只要是有学习价值的词都要提取
@@ -1576,14 +1543,10 @@ ${chunk.substring(0, 8000)}
   
   // 清空ZDF抓取历史
   clearZDFHistory() {
-    const confirmed = confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。');
-    if (confirmed) {
+    if (confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。')) {
       this.fetchedZDFFeeds = [];
       localStorage.removeItem('zdf_fetched_history');
-      // 延迟显示成功提示，确保在确认对话框关闭后显示
-      setTimeout(() => {
-        alert('已清空抓取记录');
-      }, 100);
+      alert('已清空抓取记录');
     }
   },
   
@@ -1614,32 +1577,9 @@ ${chunk.substring(0, 8000)}
   
   // 清空 BBC 抓取历史
   clearBBCHistory() {
-    const confirmed = confirm('确定要清空 BBC 抓取记录吗？');
-    if (confirmed) {
-      this.fetchedBBCFeeds = [];
-      localStorage.removeItem('bbc_fetched_history');
-      setTimeout(() => alert('BBC 抓取记录已清空'), 100);
-    }
-  },
-  
-  // EasyLingo: Tauri 新闻抓取适配方法
-  ensureTauriNewsAvailable() {
-    if (!window.isTauri || !window.tauriNews) {
-      throw new Error('新闻抓取仅支持桌面版 EasyLingo（Tauri）');
-    }
-  },
-
-  async fetchNewsWithTauri(source, category = null) {
-    this.ensureTauriNewsAvailable();
-    
-    const rssText = await window.tauriNews.fetchRSS(source);
-    return rssText;
-  },
-  
-  async fetchArticleWithTauri(url) {
-    this.ensureTauriNewsAvailable();
-    
-    return await window.tauriNews.fetchArticle(url);
+    this.fetchedBBCFeeds = [];
+    localStorage.removeItem('bbc_fetched_history');
+    alert('BBC 抓取记录已清空');
   },
   
   // 获取 BBC 新闻
@@ -1660,7 +1600,7 @@ ${chunk.substring(0, 8000)}
     if (status) status.textContent = '正在获取 BBC 新闻...';
     
     try {
-      const rssText = await this.fetchNewsWithTauri('bbc', this.bbcCategory);
+      const rssText = await this.desktopFetchRSS('bbc', this.bbcCategory);
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(rssText, 'text/xml');
       
@@ -1710,7 +1650,7 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
+      const articleData = await this.desktopFetchArticle('bbc', selectedArticle.link, this.bbcCategory);
       
       if (articleData.content) {
         // 解析日期，处理无效日期情况
@@ -1720,14 +1660,9 @@ ${chunk.substring(0, 8000)}
           dateStr = pubDate.toLocaleDateString('zh-CN');
         }
         
-        // 清理文章内容
-        const rawContent = articleData.content;
-        const cleanedContent = this.cleanArticleContent(rawContent, articleData.title || selectedArticle.title);
-        
         this.bbcCurrentArticle = {
           title: articleData.title || selectedArticle.title,
-          content: cleanedContent,
-          rawContent: rawContent,
+          content: articleData.content,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
@@ -1771,11 +1706,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `bbc_${Date.now()}`,
         moduleId: this.currentModule,
-        name: `BBC: ${this.bbcCurrentArticle.title.substring(0, 50)}...`,
+        title: `BBC: ${this.bbcCurrentArticle.title.substring(0, 50)}...`,
         content: this.bbcCurrentArticle.content,
         sourceFile: this.bbcCurrentArticle.link,
         source: this.bbcCurrentArticle.source,
-        created_at: new Date()
+        createdAt: new Date()
       };
       
       await db.materials.put(material);
@@ -1823,12 +1758,9 @@ ${chunk.substring(0, 8000)}
   
   // 清空 The Guardian 抓取历史
   clearGuardianHistory() {
-    const confirmed = confirm('确定要清空 The Guardian 抓取记录吗？');
-    if (confirmed) {
-      this.fetchedGuardianFeeds = [];
-      localStorage.removeItem('guardian_fetched_history');
-      setTimeout(() => alert('The Guardian 抓取记录已清空'), 100);
-    }
+    this.fetchedGuardianFeeds = [];
+    localStorage.removeItem('guardian_fetched_history');
+    alert('The Guardian 抓取记录已清空');
   },
   
   // 获取 The Guardian 新闻
@@ -1849,7 +1781,7 @@ ${chunk.substring(0, 8000)}
     if (status) status.textContent = '正在获取 The Guardian 新闻...';
     
     try {
-      const rssText = await this.fetchNewsWithTauri('guardian', this.guardianCategory);
+      const rssText = await this.desktopFetchRSS('guardian', this.guardianCategory);
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(rssText, 'text/xml');
       
@@ -1893,20 +1825,15 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
+      const articleData = await this.desktopFetchArticle('guardian', selectedArticle.link, this.guardianCategory);
       
       if (articleData.content) {
         const pubDate = new Date(selectedArticle.pubDate);
         const dateStr = pubDate.toLocaleDateString('zh-CN');
         
-        // 清理文章内容
-        const rawContent = articleData.content;
-        const cleanedContent = this.cleanArticleContent(rawContent, articleData.title || selectedArticle.title);
-        
         this.guardianCurrentArticle = {
           title: articleData.title || selectedArticle.title,
-          content: cleanedContent,
-          rawContent: rawContent,
+          content: articleData.content,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
@@ -1950,11 +1877,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `guardian_${Date.now()}`,
         moduleId: this.currentModule,
-        name: `The Guardian: ${this.guardianCurrentArticle.title.substring(0, 50)}...`,
+        title: `The Guardian: ${this.guardianCurrentArticle.title.substring(0, 50)}...`,
         content: this.guardianCurrentArticle.content,
         sourceFile: this.guardianCurrentArticle.link,
         source: this.guardianCurrentArticle.source,
-        created_at: new Date()
+        createdAt: new Date()
       };
       
       await db.materials.put(material);
@@ -2002,12 +1929,9 @@ ${chunk.substring(0, 8000)}
   
   // 清空 NPR 抓取历史
   clearNPRHistory() {
-    const confirmed = confirm('确定要清空 NPR 抓取记录吗？');
-    if (confirmed) {
-      this.fetchedNPRFeeds = [];
-      localStorage.removeItem('npr_fetched_history');
-      setTimeout(() => alert('NPR 抓取记录已清空'), 100);
-    }
+    this.fetchedNPRFeeds = [];
+    localStorage.removeItem('npr_fetched_history');
+    alert('NPR 抓取记录已清空');
   },
   
   // 获取 NPR 新闻
@@ -2028,7 +1952,7 @@ ${chunk.substring(0, 8000)}
     if (status) status.textContent = '正在获取 NPR 新闻...';
     
     try {
-      const rssText = await this.fetchNewsWithTauri('npr', this.nprCategory);
+      const rssText = await this.desktopFetchRSS('npr', this.nprCategory);
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(rssText, 'text/xml');
       
@@ -2078,7 +2002,7 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
+      const articleData = await this.desktopFetchArticle('npr', selectedArticle.link, this.nprCategory);
       
       if (articleData.content) {
         // 解析日期，处理无效日期情况
@@ -2088,14 +2012,9 @@ ${chunk.substring(0, 8000)}
           dateStr = pubDate.toLocaleDateString('zh-CN');
         }
         
-        // 清理文章内容
-        const rawContent = articleData.content;
-        const cleanedContent = this.cleanArticleContent(rawContent, articleData.title || selectedArticle.title);
-        
         this.nprCurrentArticle = {
           title: articleData.title || selectedArticle.title,
-          content: cleanedContent,
-          rawContent: rawContent,
+          content: articleData.content,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
@@ -2139,11 +2058,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `npr_${Date.now()}`,
         moduleId: this.currentModule,
-        name: `NPR: ${this.nprCurrentArticle.title.substring(0, 50)}...`,
+        title: `NPR: ${this.nprCurrentArticle.title.substring(0, 50)}...`,
         content: this.nprCurrentArticle.content,
         sourceFile: this.nprCurrentArticle.link,
         source: this.nprCurrentArticle.source,
-        created_at: new Date()
+        createdAt: new Date()
       };
       
       await db.materials.put(material);
@@ -2228,12 +2147,10 @@ ${chunk.substring(0, 8000)}
           </div>
           <div id="zdf-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
-            <div id="zdf-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
-            <div class="flex flex-wrap gap-2">
-              <button onclick="app.processZDFContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
-              </button>
-            </div>
+            <div id="zdf-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+            <button onclick="app.processZDFContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+              🧠 AI提取学习条目
+            </button>
           </div>
         </div>
       `;
@@ -2267,12 +2184,10 @@ ${chunk.substring(0, 8000)}
           </div>
           <div id="asahi-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
-            <div id="asahi-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
-            <div class="flex flex-wrap gap-2">
-              <button onclick="app.processAsahiContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
-              </button>
-            </div>
+            <div id="asahi-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+            <button onclick="app.processAsahiContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+              🧠 AI提取学习条目
+            </button>
           </div>
         </div>
       `;
@@ -2329,12 +2244,10 @@ ${chunk.substring(0, 8000)}
             </div>
             <div id="bbc-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
-              <div id="bbc-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
-              <div class="flex flex-wrap gap-2">
-                <button onclick="app.processBBCContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                  🧠 AI提取学习条目
-                </button>
-              </div>
+              <div id="bbc-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+              <button onclick="app.processBBCContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                🧠 AI提取学习条目
+              </button>
             </div>
           </div>
           
@@ -2369,12 +2282,10 @@ ${chunk.substring(0, 8000)}
             </div>
             <div id="npr-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
-              <div id="npr-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
-              <div class="flex flex-wrap gap-2">
-                <button onclick="app.processNPRContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                  🧠 AI提取学习条目
-                </button>
-              </div>
+              <div id="npr-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+              <button onclick="app.processNPRContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                🧠 AI提取学习条目
+              </button>
             </div>
           </div>
           
@@ -2409,12 +2320,10 @@ ${chunk.substring(0, 8000)}
             </div>
             <div id="guardian-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
-              <div id="guardian-content" class="text-sm text-primary-600 max-h-48 overflow-y-auto mb-3 whitespace-pre-wrap"></div>
-              <div class="flex flex-wrap gap-2">
-                <button onclick="app.processGuardianContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                  🧠 AI提取学习条目
-                </button>
-              </div>
+              <div id="guardian-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+              <button onclick="app.processGuardianContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                🧠 AI提取学习条目
+              </button>
             </div>
           </div>
         </div>
@@ -2442,13 +2351,11 @@ ${chunk.substring(0, 8000)}
     const contentDiv = document.getElementById('zdf-content');
     
     try {
-      this.ensureTauriNewsAvailable();
-
       btn.disabled = true;
       progress.classList.remove('hidden');
       status.textContent = '正在获取 ZDF Heute 资讯...';
-
-      const rssContent = await this.fetchNewsWithTauri('zdf');
+      
+      const rssContent = await this.desktopFetchRSS('zdf');
       
       // 解析 RSS XML
       const parser = new DOMParser();
@@ -2464,16 +2371,10 @@ ${chunk.substring(0, 8000)}
       for (const item of items) {
         const link = item.querySelector('link')?.textContent;
         if (link && !this.fetchedZDFFeeds.includes(link)) {
-          // ZDF RSS 可能包含 content:encoded 字段
-          const contentEncoded = item.querySelector('content\\:encoded')?.textContent || 
-                                item.getElementsByTagNameNS('*', 'encoded')[0]?.textContent || '';
-          const description = item.querySelector('description')?.textContent || '';
-          
           selectedArticle = {
             title: item.querySelector('title')?.textContent || '',
             link: link,
-            description: description,
-            contentEncoded: contentEncoded,  // 保存完整内容
+            description: item.querySelector('description')?.textContent || '',
             pubDate: item.querySelector('pubDate')?.textContent || ''
           };
           break;
@@ -2494,13 +2395,10 @@ ${chunk.substring(0, 8000)}
           this.fetchedZDFFeeds = [];
           // 重新尝试获取第一篇
           const firstItem = items[0];
-          const contentEncoded = firstItem.querySelector('content\\:encoded')?.textContent || 
-                                firstItem.getElementsByTagNameNS('*', 'encoded')[0]?.textContent || '';
           selectedArticle = {
             title: firstItem.querySelector('title')?.textContent || '',
             link: firstItem.querySelector('link')?.textContent || '',
             description: firstItem.querySelector('description')?.textContent || '',
-            contentEncoded: contentEncoded,
             pubDate: firstItem.querySelector('pubDate')?.textContent || ''
           };
         } else {
@@ -2515,36 +2413,16 @@ ${chunk.substring(0, 8000)}
       // 获取正文内容（通过全文 RSS 或简介）
       status.textContent = '正在解析文章内容...';
       
-      // 尝试获取完整内容（优先使用 RSS 中的 content:encoded）
+      // 尝试获取完整内容
       let fullContent = selectedArticle.description;
-      let rawContent = selectedArticle.description;
-      
-      // 尝试从网页获取完整内容
       try {
-        const proxy = 'https://corsproxy.io/?';
-        const response = await fetch(`${proxy}${encodeURIComponent(selectedArticle.link)}`);
-        const html = await response.text();
-        
-        // 直接解析段落
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const paragraphs = doc.querySelectorAll('p');
-        
-        let extractedText = '';
-        paragraphs.forEach(p => {
-          const text = p.textContent?.trim() || '';
-          // 只保留德语段落
-          if (text.length > 30 && /[\u00e4\u00f6\u00fc\u00df]|der|die|das|und|ist|von|mit|auf|f\u00fcr|den|dem|im|zu/i.test(text)) {
-            extractedText += text + '\n\n';
-          }
-        });
-        
-        if (extractedText.length > selectedArticle.description.length) {
-          rawContent = extractedText;
-          fullContent = this.cleanArticleContent(rawContent, selectedArticle.title);
+        try {
+          const articleData = await this.desktopFetchArticle('zdf', selectedArticle.link);
+          // 后端已经提取好正文内容
+          fullContent = articleData.content || selectedArticle.description;
         }
       } catch (e) {
-        // 使用 description 作为后备
+        console.log('无法获取完整内容，使用简介');
       }
       
       // 解析日期
@@ -2561,17 +2439,16 @@ ${chunk.substring(0, 8000)}
       this.zdfCurrentArticle = {
         title: selectedArticle.title,
         content: fullContent,
-        rawContent: rawContent, // 保存原始内容供调试
         link: selectedArticle.link,
         pubDate: dateStr,
         source: 'ZDF Heute'
       };
       
-      // 显示预览（可滚动的完整内容）
+      // 显示预览
       contentDiv.innerHTML = `
         <div class="font-bold mb-1">${selectedArticle.title}</div>
-        <div class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr} | 字数：${fullContent.length}</div>
-        <div class="text-gray-600 max-h-48 overflow-y-auto whitespace-pre-wrap text-sm">${this.escapeHtml(fullContent)}</div>
+        <div class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</div>
+        <div class="text-gray-600">${fullContent.substring(0, 500)}...</div>
       `;
       preview.classList.remove('hidden');
       status.textContent = '获取成功！';
@@ -2603,11 +2480,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `zdf_${Date.now()}`,
         moduleId: this.currentModule,
-        name: `ZDF: ${this.zdfCurrentArticle.title.substring(0, 50)}...`,
+        title: `ZDF: ${this.zdfCurrentArticle.title.substring(0, 50)}...`,
         content: this.zdfCurrentArticle.content,
         sourceFile: this.zdfCurrentArticle.link,
         source: this.zdfCurrentArticle.source,
-        created_at: new Date()
+        createdAt: new Date()
       };
       
       await db.materials.put(material);
@@ -2655,11 +2532,10 @@ ${chunk.substring(0, 8000)}
   
   // 清空朝日新聞抓取历史
   clearAsahiHistory() {
-    const confirmed = confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。');
-    if (confirmed) {
+    if (confirm('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。')) {
       this.fetchedAsahiFeeds = [];
       localStorage.removeItem('asahi_fetched_history');
-      setTimeout(() => alert('已清空抓取记录'), 100);
+      alert('已清空抓取记录');
     }
   },
   
@@ -2681,7 +2557,7 @@ ${chunk.substring(0, 8000)}
     if (status) status.textContent = '正在获取朝日新聞...';
     
     try {
-      const rssText = await this.fetchNewsWithTauri('asahi');
+      const rssText = await this.desktopFetchRSS('asahi');
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(rssText, 'text/xml');
       
@@ -2736,48 +2612,25 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      let fullContent = '';
-      let rawContent = '';
-      let articleTitle = selectedArticle.title;
+      const articleData = await this.desktopFetchArticle('asahi', selectedArticle.link);
       
-      try {
-        const articleData = await this.fetchArticleWithTauri(selectedArticle.link);
-        // 后端已经提取好正文内容
-        rawContent = articleData.content || '';
-        fullContent = rawContent;
-        articleTitle = articleData.title || selectedArticle.title;
-      } catch (e) {
-        console.log('无法获取完整内容，使用RSS简介', e);
-      }
-      
-      // 如果无法获取完整内容，使用RSS描述作为后备
-      if (!fullContent && selectedArticle.description) {
-        fullContent = selectedArticle.description;
-        rawContent = selectedArticle.description;
-        if (status) status.textContent = '使用RSS简介（无法获取完整内容）';
-      }
-      
-      // 清理文章内容
-      fullContent = this.cleanArticleContent(fullContent, articleTitle);
-      
-      // 处理日期 - 朝日 RSS 使用 dc:date 格式
-      let dateStr = '日期未知';
-      if (selectedArticle.pubDate) {
-        const pubDate = new Date(selectedArticle.pubDate);
-        if (!isNaN(pubDate)) {
-          dateStr = pubDate.toLocaleDateString('ja-JP');
+      if (articleData.content) {
+        // 处理日期 - 朝日 RSS 使用 dc:date 格式
+        let dateStr = '日期未知';
+        if (selectedArticle.pubDate) {
+          const pubDate = new Date(selectedArticle.pubDate);
+          if (!isNaN(pubDate)) {
+            dateStr = pubDate.toLocaleDateString('ja-JP');
+          }
         }
-      }
-      
-      if (fullContent) {
+        
         this.asahiCurrentArticle = {
-          title: articleTitle,
-          content: fullContent,
-          rawContent: rawContent,
+          title: articleData.title || selectedArticle.title,
+          content: articleData.content,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
-          source: '朝日新聞'
+          source: articleData.source || '朝日新聞'
         };
         
         if (contentDiv) {
@@ -2790,9 +2643,7 @@ ${chunk.substring(0, 8000)}
         }
         
         if (preview) preview.classList.remove('hidden');
-        if (status && !status.textContent.includes('RSS简介')) {
-          status.textContent = '获取成功！';
-        }
+        if (status) status.textContent = '获取成功！';
       } else {
         throw new Error('无法解析文章内容');
       }
@@ -2823,11 +2674,11 @@ ${chunk.substring(0, 8000)}
       const material = {
         id: `asahi_${Date.now()}`,
         moduleId: this.currentModule,
-        name: `朝日: ${this.asahiCurrentArticle.title.substring(0, 50)}...`,
+        title: `朝日: ${this.asahiCurrentArticle.title.substring(0, 50)}...`,
         content: this.asahiCurrentArticle.content,
         sourceFile: this.asahiCurrentArticle.link,
         source: this.asahiCurrentArticle.source,
-        created_at: new Date()
+        createdAt: new Date()
       };
       
       await db.materials.put(material);
@@ -3413,7 +3264,7 @@ ${wordsList}
       }
     }
   },
-
+  
   // 修复AI返回的JSON中的格式问题
   fixMalformedJSON(jsonStr) {
     // 处理AI返回的JSON中未转义的中文引号
@@ -3544,10 +3395,10 @@ ${wordsList}
           <span class="text-2xl">📄</span>
           <div>
             <div class="font-medium flex items-center gap-2">
-              ${m.name}
+              ${m.title}
               ${statusBadge}
             </div>
-            <div class="text-xs text-primary-500">${new Date(m.created_at).toLocaleDateString()}</div>
+            <div class="text-xs text-primary-500">${new Date(m.createdAt).toLocaleDateString()}</div>
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -3710,7 +3561,7 @@ ${wordsList}
         <input type="checkbox" 
                id="checkbox-${type}-${entry.id}" 
                ${isSelected ? 'checked' : ''} 
-               onclick="app.toggleEntrySelection('${type}', ${JSON.stringify(entry.id).replace(/"/g, '&quot;')})"
+               onclick="app.toggleEntrySelection('${type}', ${entry.id})"
                class="w-5 h-5 rounded border-primary-300 text-accent-600 focus:ring-accent-500 cursor-pointer">
       </div>
     ` : '';
@@ -4102,7 +3953,7 @@ ${wordsList}
       srsLevel: 0,
       nextReview: new Date(),
       interval: 0,
-      created_at: new Date()
+      createdAt: new Date()
     };
     
     const explanationEl = document.getElementById('new-explanation');
@@ -4538,7 +4389,7 @@ ${wordsList}
               duration: durationMinutes,
               count: reviewedCount, // 记录本次复习的条目数量
               action: 'review',
-              created_at: new Date()
+              createdAt: new Date()
             });
           }
         }
@@ -5439,7 +5290,7 @@ Requirements:
       results: results,
       score: score,
       duration: duration > 0 ? duration : this.testData.questions.length * 2,
-      created_at: new Date()
+      createdAt: new Date()
     });
     
     // 记录学习时长
@@ -5486,7 +5337,7 @@ Requirements:
   // Test History
   async showTestHistory() {
     const container = document.getElementById('test-history-list');
-    const tests = await db.tests.orderBy('created_at').reverse().toArray();
+    const tests = await db.tests.orderBy('createdAt').reverse().toArray();
     
     if (tests.length === 0) {
       container.innerHTML = '<p class="text-center text-primary-500 py-8">暂无测试记录</p>';
@@ -5499,7 +5350,7 @@ Requirements:
               <div class="flex items-center justify-between">
                 <div>
                   <div class="font-medium">${(this.modules[t.moduleId] && this.modules[t.moduleId].name) || '未知模块'}</div>
-                  <div class="text-sm text-primary-500">${new Date(t.created_at).toLocaleString()}</div>
+                  <div class="text-sm text-primary-500">${new Date(t.createdAt).toLocaleString()}</div>
                 </div>
                 <div class="text-right">
                   <div class="text-2xl font-bold ${t.score >= 80 ? 'text-green-600' : t.score >= 60 ? 'text-yellow-600' : 'text-red-600'}">${t.score}%</div>
@@ -5666,7 +5517,7 @@ Requirements:
     const dateMap = {};
     
     records.forEach(r => {
-      const date = new Date(r.created_at).toISOString().split('T')[0];
+      const date = new Date(r.createdAt).toISOString().split('T')[0];
       if (!dateMap[date]) {
         dateMap[date] = { duration: 0, actions: new Set() };
       }
@@ -5683,7 +5534,7 @@ Requirements:
   },
   
   async loadStudyLog() {
-    const records = await db.records.orderBy('created_at').reverse().limit(20).toArray();
+    const records = await db.records.orderBy('createdAt').reverse().limit(20).toArray();
     const container = document.getElementById('study-log');
     
     if (records.length === 0) {
@@ -5702,7 +5553,7 @@ Requirements:
         </div>
         <div class="text-right text-sm">
           <div class="text-primary-900 font-medium">${r.duration}分钟</div>
-          <div class="text-primary-500">${new Date(r.created_at).toLocaleDateString()}</div>
+          <div class="text-primary-500">${new Date(r.createdAt).toLocaleDateString()}</div>
         </div>
       </div>
     `).join('');
@@ -5725,7 +5576,7 @@ Requirements:
     document.getElementById('stat-total-time').textContent = `${Math.round(totalMinutes / 60 * 10) / 10}小时`;
     
     // Total days (unique dates with activity)
-    const uniqueDates = new Set(records.map(r => new Date(r.created_at).toDateString()));
+    const uniqueDates = new Set(records.map(r => new Date(r.createdAt).toDateString()));
     document.getElementById('stat-total-days').textContent = `${uniqueDates.size}天`;
     
     // Total entries
@@ -5817,7 +5668,7 @@ Requirements:
     
     const dailyMinutes = {};
     filteredRecords.forEach(r => {
-      const date = new Date(r.created_at);
+      const date = new Date(r.createdAt);
       let key;
       if (viewType === 'months') {
         key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -5946,13 +5797,13 @@ Requirements:
   async updateTestScoreChart() {
     const moduleId = document.getElementById('test-score-module-select')?.value || 'all';
     
-    const tests = await db.tests.orderBy('created_at').toArray();
+    const tests = await db.tests.orderBy('createdAt').toArray();
     const filteredTests = this.getFilteredTests(tests, moduleId);
     
     // Group by date and add sequence number for same day
     const testGroups = {};
     filteredTests.forEach(t => {
-      const date = new Date(t.created_at).toISOString().split('T')[0];
+      const date = new Date(t.createdAt).toISOString().split('T')[0];
       if (!testGroups[date]) testGroups[date] = [];
       testGroups[date].push(t);
     });
@@ -6076,31 +5927,13 @@ Requirements:
   
   // Settings
   async showSettings() {
-    try {
-      const settings = await this.getSettings();
-
-      const apiUrlInput = document.getElementById('setting-api-url');
-      const apiKeyInput = document.getElementById('setting-api-key');
-      const modelInput = document.getElementById('setting-model');
-      const maxTokensInput = document.getElementById('setting-max-tokens');
-      const dailyLimitInput = document.getElementById('setting-daily-limit');
-      const settingsModal = document.getElementById('settings-modal');
-
-      if (!settingsModal) {
-        throw new Error('找不到设置弹窗节点 #settings-modal');
-      }
-
-      if (apiUrlInput) apiUrlInput.value = settings.apiUrl;
-      if (apiKeyInput) apiKeyInput.value = settings.apiKey || '';
-      if (modelInput) modelInput.value = settings.model;
-      if (maxTokensInput) maxTokensInput.value = settings.maxTokens;
-      if (dailyLimitInput) dailyLimitInput.value = settings.dailyLimit;
-
-      settingsModal.classList.remove('hidden');
-    } catch (error) {
-      console.error('showSettings error:', error);
-      alert('打开设置失败：' + error.message);
-    }
+    const settings = await this.getSettings();
+    document.getElementById('setting-api-url').value = settings.apiUrl;
+    document.getElementById('setting-api-key').value = settings.apiKey || '';
+    document.getElementById('setting-model').value = settings.model;
+    document.getElementById('setting-max-tokens').value = settings.maxTokens;
+    document.getElementById('setting-daily-limit').value = settings.dailyLimit;
+    document.getElementById('settings-modal').classList.remove('hidden');
   },
   
   closeSettings() {
@@ -6108,146 +5941,86 @@ Requirements:
   },
   
   async saveSettings() {
-    try {
-      const settings = {
-        apiUrl: document.getElementById('setting-api-url').value,
-        apiKey: document.getElementById('setting-api-key').value,
-        model: document.getElementById('setting-model').value,
-        maxTokens: parseInt(document.getElementById('setting-max-tokens').value) || 8000,
-        dailyLimit: parseInt(document.getElementById('setting-daily-limit').value) || 20
-      };
-      
-      // 直接调用 db 方法，避免代理问题
-      await db.setSetting('apiUrl', settings.apiUrl);
-      await db.setSetting('apiKey', settings.apiKey);
-      await db.setSetting('model', settings.model);
-      await db.setSetting('maxTokens', settings.maxTokens);
-      await db.setSetting('dailyLimit', settings.dailyLimit);
-      
-      console.log('Settings saved:', settings);
-      this.closeSettings();
-      alert('设置已保存');
-    } catch (error) {
-      console.error('Save settings error:', error);
-      alert('保存失败: ' + error.message);
-    }
+    await db.settings.put({ id: 'apiUrl', value: document.getElementById('setting-api-url').value });
+    await db.settings.put({ id: 'apiKey', value: document.getElementById('setting-api-key').value });
+    await db.settings.put({ id: 'model', value: document.getElementById('setting-model').value });
+    await db.settings.put({ id: 'maxTokens', value: parseInt(document.getElementById('setting-max-tokens').value) || 8000 });
+    await db.settings.put({ id: 'dailyLimit', value: parseInt(document.getElementById('setting-daily-limit').value) || 20 });
+    
+    this.closeSettings();
+    alert('设置已保存');
   },
   
   async getSettings() {
-    try {
-      // 直接调用 db 方法
-      const apiUrl = await db.getSetting('apiUrl');
-      const apiKey = await db.getSetting('apiKey');
-      const model = await db.getSetting('model');
-      const maxTokens = await db.getSetting('maxTokens');
-      const dailyLimit = await db.getSetting('dailyLimit');
-      
-      // 移除apiUrl末尾的斜杠，避免双斜杠问题
-      let apiUrlValue = apiUrl || 'https://api.openai.com/v1';
-      apiUrlValue = apiUrlValue.replace(/\/$/, '');
-      
-      return {
-        apiUrl: apiUrlValue,
-        apiKey: apiKey || '',
-        model: model || '',
-        maxTokens: parseInt(maxTokens) || 8000,
-        dailyLimit: parseInt(dailyLimit) || 20
-      };
-    } catch (error) {
-      console.error('Get settings error:', error);
-      // 返回默认值
-      return {
-        apiUrl: 'https://api.openai.com/v1',
-        apiKey: '',
-        model: '',
-        maxTokens: 8000,
-        dailyLimit: 20
-      };
-    }
+    const [apiUrl, apiKey, model, maxTokens, dailyLimit] = await Promise.all([
+      db.settings.get('apiUrl'),
+      db.settings.get('apiKey'),
+      db.settings.get('model'),
+      db.settings.get('maxTokens'),
+      db.settings.get('dailyLimit')
+    ]);
+    
+    // 移除apiUrl末尾的斜杠，避免双斜杠问题
+    let apiUrlValue = (apiUrl && apiUrl.value) || 'https://api.openai.com/v1';
+    apiUrlValue = apiUrlValue.replace(/\/$/, '');
+    
+    return {
+      apiUrl: apiUrlValue,
+      apiKey: (apiKey && apiKey.value) || '',
+      model: (model && model.value) || '',
+      maxTokens: (maxTokens && maxTokens.value) || 8000,
+      dailyLimit: (dailyLimit && dailyLimit.value) || 20
+    };
   },
   
   // Data Export/Import
   async exportData() {
-    try {
-      // EasyLingo: 使用 Tauri 原生文件保存（如果可用）
-      if (window.isTauri && window.tauriData) {
-        await window.tauriData.exportData();
-        alert('数据导出成功');
-        return;
-      }
-      
-      // 浏览器环境：使用下载方式
-      const data = {
-        modules: await db.modules.toArray(),
-        materials: await db.materials.toArray(),
-        entries: await db.entries.toArray(),
-        tests: await db.tests.toArray(),
-        records: await db.records.toArray(),
-        settings: await db.settings.toArray(),
-        exportDate: new Date().toISOString(),
-        appName: 'EasyLingo',
-        version: '1.0'
-      };
-      
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `easylingo_backup_${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      alert('导出失败: ' + error.message);
-    }
+    const data = {
+      modules: await db.modules.toArray(),
+      materials: await db.materials.toArray(),
+      cards: await db.cards.toArray(),
+      tests: await db.tests.toArray(),
+      records: await db.records.toArray(),
+      settings: await db.settings.toArray(),
+      exportDate: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `polylingo_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   },
   
   async importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
     try {
-      let data;
-      
-      // EasyLingo: 优先使用 Tauri 原生文件选择
-      if (window.isTauri && window.tauriData) {
-        if (!confirm('导入数据将覆盖现有数据，确定继续吗？')) return;
-        await window.tauriData.importData();
-        alert('数据导入成功');
-        this.loadDashboard();
-        return;
-      }
-      
-      // 浏览器环境
-      const file = event.target.files[0];
-      if (!file) return;
-      
       const text = await file.text();
-      data = JSON.parse(text);
+      const data = JSON.parse(text);
       
       if (confirm('导入数据将覆盖现有数据，确定继续吗？')) {
-        await db.clearAllData();
+        await db.modules.clear();
+        await db.materials.clear();
+        await db.cards.clear();
+        await db.tests.clear();
+        await db.records.clear();
         
-        if (data.modules) {
-          for (const m of data.modules) await db.modules.put(m);
-        }
-        if (data.materials) {
-          for (const m of data.materials) await db.materials.put(m);
-        }
-        // 兼容 PolyLingo: cards -> entries
-        const entries = data.entries || data.cards;
-        if (entries) {
-          for (const e of entries) await db.entries.put(e);
-        }
-        if (data.records) {
-          for (const r of data.records) await db.records.put(r);
-        }
-        if (data.settings) {
-          for (const s of data.settings) await db.settings.put(s.id || s.key, s.value);
-        }
+        if (data.modules) await db.modules.bulkPut(data.modules);
+        if (data.materials) await db.materials.bulkPut(data.materials);
+        if (data.cards) await db.cards.bulkPut(data.cards);
+        if (data.tests) await db.tests.bulkPut(data.tests);
+        if (data.records) await db.records.bulkPut(data.records);
+        if (data.settings) await db.settings.bulkPut(data.settings);
         
         alert('数据导入成功');
         this.loadDashboard();
       }
     } catch (error) {
       alert('导入失败: ' + error.message);
-      console.error(error);
     }
   },
   
@@ -6300,7 +6073,7 @@ Requirements:
   async updateTodayMinutesDisplay() {
     const today = new Date().toISOString().split('T')[0];
     const todayRecords = await db.records.filter(r => 
-      new Date(r.created_at).toISOString().split('T')[0] === today
+      new Date(r.createdAt).toISOString().split('T')[0] === today
     ).toArray();
     const recordedMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
     const totalMinutes = recordedMinutes + this.currentStudyMinutes;
@@ -6319,7 +6092,7 @@ Requirements:
       duration: duration,
       count: count,
       action: action,
-      created_at: new Date()
+      createdAt: new Date()
     });
     
     await this.updateSidebarStats();
@@ -6329,7 +6102,7 @@ Requirements:
     // Today's minutes
     const today = new Date().toISOString().split('T')[0];
     const todayRecords = await db.records.filter(r => 
-      new Date(r.created_at).toISOString().split('T')[0] === today
+      new Date(r.createdAt).toISOString().split('T')[0] === today
     ).toArray();
     const todayMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
     document.getElementById('today-minutes').textContent = `${todayMinutes}分钟`;
@@ -6348,7 +6121,7 @@ Requirements:
   
   async calculateStreak() {
     const records = await db.records.toArray();
-    const dates = [...new Set(records.map(r => new Date(r.created_at).toDateString()))]
+    const dates = [...new Set(records.map(r => new Date(r.createdAt).toDateString()))]
       .map(d => new Date(d))
       .sort((a, b) => b - a);
     
@@ -6379,7 +6152,7 @@ Requirements:
   async previewMaterial(id) {
     const material = await db.materials.get(id);
     if (material) {
-      alert(`预览: ${material.name}\n\n${material.content.substring(0, 500)}...`);
+      alert(`预览: ${material.title}\n\n${material.content.substring(0, 500)}...`);
     }
   },
   
@@ -6398,70 +6171,6 @@ Requirements:
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-  },
-  
-  // 辅助方法：清理文章内容，移除不必要的前缀和重复信息
-  cleanArticleContent(content, title) {
-    if (!content) return '';
-    
-    let cleaned = content;
-    
-    // 先进行基本清理：合并多个空格和换行
-    cleaned = cleaned.replace(/\n+/g, ' ');
-    cleaned = cleaned.replace(/\s+/g, ' ');
-    
-    // 移除常见的新闻标签前缀（德语）- 更积极的匹配
-    cleaned = cleaned.replace(/^\s*(Eilmeldung|EILMELDUNG)\s*:?\s*/i, '');
-    cleaned = cleaned.replace(/^\s*(Breaking News|BREAKING)\s*:?\s*/i, '');
-    cleaned = cleaned.replace(/^\s*(Liveblog|LIVEBLOG)\s*:?\s*/i, '');
-    
-    // 移除 "Wegen X:" 或 "WegenX:" 这种前缀（处理连写情况）
-    cleaned = cleaned.replace(/^\s*Wegen\s*\w+\s*:/i, '');
-    cleaned = cleaned.replace(/^\s*Wegen\w+\s*:/i, '');
-    cleaned = cleaned.replace(/^\s*Wegen\s+/i, '');
-    
-    // 移除 "Update:" 或 "UPDATE:" 前缀
-    cleaned = cleaned.replace(/^\s*Update\s*:?\s*/i, '');
-    cleaned = cleaned.replace(/^\s*UPDATE\s*:?\s*/i, '');
-    
-    // 如果内容以标题开头（重复），移除标题部分
-    if (title) {
-      // 清理标题中的特殊字符用于匹配
-      const cleanTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const titleRegex = new RegExp(`^\\s*${cleanTitle}\\s*:?\\s*`, 'i');
-      cleaned = cleaned.replace(titleRegex, '');
-    }
-    
-    // 移除开头的日期时间戳（多种格式）
-    // 格式: 02.04.2026 | 14:35| 或 02.04.2026 | 14:35
-    cleaned = cleaned.replace(/^\s*\d{2}[\.\/]\d{2}[\.\/]\d{4}\s*\|\s*\d{2}:\d{2}\|?\s*/, '');
-    // 格式: 2026/4/2 14:35 或 2026-04-02 14:35
-    cleaned = cleaned.replace(/^\s*\d{4}[\.\/\-]\d{1,2}[\.\/\-]\d{1,2}\s*\d{2}:\d{2}\s*/, '');
-    // 格式: 02.04.2026, 14:35
-    cleaned = cleaned.replace(/^\s*\d{2}[\.\/]\d{2}[\.\/]\d{4}\s*,?\s*\d{2}:\d{2}\s*/, '');
-    
-    // 移除 "Quelle: xxx" 来源标记
-    cleaned = cleaned.replace(/\(Archiv\)/gi, '');
-    cleaned = cleaned.replace(/Quelle:\s*\w+/gi, '');
-    cleaned = cleaned.replace(/\b(dpa|AP|Reuters|AFP)\b/gi, '');
-    
-    // 移除常见的图片说明文字（德语）
-    cleaned = cleaned.replace(/\(Foto:[^)]+\)/gi, '');
-    cleaned = cleaned.replace(/\(Bild:[^)]+\)/gi, '');
-    cleaned = cleaned.replace(/Bild:\s*[^.]+\./gi, '');
-    
-    // 清理多余的空格和换行（再次）
-    cleaned = cleaned.replace(/\n+/g, ' ');
-    cleaned = cleaned.replace(/\s+/g, ' ');
-    cleaned = cleaned.trim();
-    
-    // 移除开头常见的无意义词汇
-    const meaninglessPrefixes = ['|', ':', '-', '·', '•'];
-    while (meaninglessPrefixes.some(p => cleaned.startsWith(p))) {
-      cleaned = cleaned.substring(1).trim();
-    }
-    
-    return cleaned;
   },
   
   // Custom Module Functions
@@ -6660,7 +6369,7 @@ Requirements:
       flag: flag,
       customPrompt: customPrompt,
       isDefault: false,
-      created_at: new Date()
+      createdAt: new Date()
     });
     
     // Add to modules object
@@ -6756,7 +6465,7 @@ Requirements:
       await db.modules.delete(moduleId);
       const materials = await db.materials.where('moduleId').equals(moduleId).toArray();
       for (const m of materials) {
-        await db.db.execute('DELETE FROM entries WHERE materialId = ?', [m.id]);
+        await db.cards.where('materialId').equals(m.id).delete();
       }
       await db.materials.where('moduleId').equals(moduleId).delete();
       
@@ -6781,88 +6490,11 @@ Requirements:
       return;
     }
     this.showTestModal();
-  },
-
-  // 通用：查看提取的原始内容
-  viewExtractedContent(source) {
-    const article = this[`${source}CurrentArticle`];
-    if (!article) { alert('请先获取新闻文章'); return; }
-    
-    const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
-    modal.innerHTML = `
-      <div class="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
-        <div class="p-4 border-b flex justify-between items-center">
-          <h3 class="font-bold text-lg">提取内容</h3>
-          <button onclick="this.closest('.fixed').remove()" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm">✕ 关闭</button>
-        </div>
-        <div class="p-4 overflow-y-auto flex-1">
-          <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap">${this.escapeHtml(article.rawContent || article.content)}</div>
-        </div>
-        <div class="p-4 border-t text-sm text-gray-500">字数: ${(article.rawContent || article.content).length}</div>
-      </div>`;
-    document.body.appendChild(modal);
-  },
-
-  // 调试：直接获取网页HTML并显示
-  async debugFetchRawHTML() {
-    if (!this.zdfCurrentArticle) {
-      alert('请先获取新闻文章');
-      return;
-    }
-    
-    const url = this.zdfCurrentArticle.link;
-    console.log('Debug fetching raw HTML from:', url);
-    
-    try {
-      // 尝试使用 corsproxy.io
-      const proxy = 'https://corsproxy.io/?';
-      const response = await fetch(`${proxy}${encodeURIComponent(url)}`);
-      const html = await response.text();
-      
-      console.log('Raw HTML length:', html.length);
-      
-      // 简单提取段落
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      const paragraphs = doc.querySelectorAll('p');
-      
-      let extractedText = '';
-      paragraphs.forEach((p, i) => {
-        const text = p.textContent?.trim();
-        // 只保留德语段落
-        if (text && text.length > 30 && /[\u00e4\u00f6\u00fc\u00df]|der|die|das|und|ist|von/i.test(text)) {
-          extractedText += `[${i}] ${text}\n\n`;
-        }
-      });
-      
-      console.log('Extracted paragraphs:', extractedText.length);
-      
-      // 显示结果
-      const modal = document.createElement('div');
-      modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
-      modal.innerHTML = `
-        <div class="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
-          <div class="p-4 border-b flex justify-between items-center">
-            <h3 class="font-bold text-lg">调试提取</h3>
-            <button onclick="this.closest('.fixed').remove()" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm">✕ 关闭</button>
-          </div>
-          <div class="p-4 overflow-y-auto flex-1">
-            <p class="text-sm text-gray-500 mb-2">HTML长度: ${html.length} | 段落数: ${paragraphs.length}</p>
-            <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap">${this.escapeHtml(extractedText.substring(0, 8000))}</div>
-          </div>
-        </div>`;
-      document.body.appendChild(modal);
-    } catch (e) {
-      console.error('Debug fetch failed:', e);
-      alert('获取失败: ' + e.message);
-    }
   }
 };
 
 // Initialize app on load
 document.addEventListener('DOMContentLoaded', () => {
-  window.app = app;
   app.init();
 });
 

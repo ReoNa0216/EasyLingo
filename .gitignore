@@ -1,35 +1,12 @@
 # Dependencies
-node_modules/
+node_modules
 
-# Tauri
-src-tauri/target/
-src-tauri/gen/
-
-# Build outputs
-dist/
-build/
+# Tauri build output
+src-tauri/target
 
 # Logs
 *.log
-npm-debug.log*
 
 # OS files
 .DS_Store
 Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Local database (development)
-*.db
-*.db-journal
-
-# Environment
-.env
-.env.local
-
-# Playwright (if used for testing)
-.playwright-mcp/
