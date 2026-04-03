@@ -290,11 +290,25 @@ const app = {
   
   // Desktop News Adapter (EasyLingo)
   async desktopFetchRSS(source, category) {
-    const { invoke } = window.__TAURI__.core;
+    // 检查 Tauri API 是否可用
+    if (!window.__TAURI__) {
+      throw new Error('Tauri API not available. Please ensure you are running in Tauri desktop app.');
+    }
+    // Tauri v2: window.__TAURI__.core.invoke
+    const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
+    if (!invoke) {
+      throw new Error('Tauri invoke function not found');
+    }
     return await invoke('fetch_news_rss', { source, category: category || '' });
   },
   async desktopFetchArticle(source, url, category) {
-    const { invoke } = window.__TAURI__.core;
+    if (!window.__TAURI__) {
+      throw new Error('Tauri API not available. Please ensure you are running in Tauri desktop app.');
+    }
+    const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
+    if (!invoke) {
+      throw new Error('Tauri invoke function not found');
+    }
     return await invoke('fetch_news_article', { source, url, category: category || '' });
   },
   
