@@ -2416,11 +2416,9 @@ ${chunk.substring(0, 8000)}
       // 尝试获取完整内容
       let fullContent = selectedArticle.description;
       try {
-        try {
-          const articleData = await this.desktopFetchArticle('zdf', selectedArticle.link);
-          // 后端已经提取好正文内容
-          fullContent = articleData.content || selectedArticle.description;
-        }
+        const articleData = await this.desktopFetchArticle('zdf', selectedArticle.link);
+        // 后端已经提取好正文内容
+        fullContent = articleData.content || selectedArticle.description;
       } catch (e) {
         console.log('无法获取完整内容，使用简介');
       }
