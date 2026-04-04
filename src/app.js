@@ -4492,59 +4492,57 @@ ${wordsList}
     
     const moduleIds = Object.keys(entriesByModule);
     
+    // 为每个模块的条目分配题型，确保每个条目只用于一种题型
+    const usedEntryIds = new Set(); // 记录已使用的条目ID
+    
     // 生成选择题 - 按语言平均分配
     if (typeCounts.choice > 0) {
       const perModule = Math.ceil(typeCounts.choice / moduleIds.length);
       for (const moduleId of moduleIds) {
-        const moduleEntries = entriesByModule[moduleId];
+        const moduleEntries = entriesByModule[moduleId].filter(e => !usedEntryIds.has(e.id));
         const shuffled = moduleEntries.sort(() => 0.5 - Math.random());
         const selected = shuffled.slice(0, Math.min(perModule * 2, shuffled.length));
         const questions = await this.generateQuestionsOfTypeForModule(
           selected, Math.min(perModule, selected.length), 'choice', settings, moduleInfo[moduleId]
         );
+        // 标记已使用的条目
+        selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
         allQuestions.push(...questions);
       }
     }
     
-    // 生成填空题 - 按语言平均分配
+    // 生成填空题 - 按语言平均分配（排除已用于选择题的条目）
     if (typeCounts.fill > 0) {
       const perModule = Math.ceil(typeCounts.fill / moduleIds.length);
       for (const moduleId of moduleIds) {
-        const moduleEntries = entriesByModule[moduleId];
+        const moduleEntries = entriesByModule[moduleId].filter(e => !usedEntryIds.has(e.id));
         const shuffled = moduleEntries.sort(() => 0.5 - Math.random());
         const selected = shuffled.slice(0, Math.min(perModule * 2, shuffled.length));
         const questions = await this.generateQuestionsOfTypeForModule(
           selected, Math.min(perModule, selected.length), 'fill', settings, moduleInfo[moduleId]
         );
+        selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
         allQuestions.push(...questions);
       }
     }
     
-    // 生成翻译题 - 按语言平均分配
+    // 生成翻译题 - 按语言平均分配（排除已用于其他题型的条目）
     if (typeCounts.translation > 0) {
       const perModule = Math.ceil(typeCounts.translation / moduleIds.length);
       for (const moduleId of moduleIds) {
-        const moduleEntries = entriesByModule[moduleId];
+        const moduleEntries = entriesByModule[moduleId].filter(e => !usedEntryIds.has(e.id));
         const shuffled = moduleEntries.sort(() => 0.5 - Math.random());
         const selected = shuffled.slice(0, Math.min(perModule * 2, shuffled.length));
         const questions = await this.generateQuestionsOfTypeForModule(
           selected, Math.min(perModule, selected.length), 'translation', settings, moduleInfo[moduleId]
         );
+        selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
         allQuestions.push(...questions);
       }
     }
     
-    // 去重：基于题目内容（question字段）去重，避免同一词条生成多个题目
-    const seenQuestions = new Set();
-    const uniqueQuestions = [];
-    for (const q of allQuestions) {
-      // 使用题目原文的前50个字符作为去重键
-      const key = (q.question || '').substring(0, 50).trim();
-      if (key && !seenQuestions.has(key)) {
-        seenQuestions.add(key);
-        uniqueQuestions.push(q);
-      }
-    }
+    // 打乱题目顺序
+    const uniqueQuestions = allQuestions;
     
     // 打乱题目顺序，只返回所需数量
     const totalNeeded = (typeCounts.choice || 0) + (typeCounts.fill || 0) + (typeCounts.translation || 0);
