@@ -930,28 +930,36 @@ ${mod.customPrompt}
 - 例句可以由AI生成，不一定要来源于原文，但必须符合词义和用法` : '';
     
     // 针对英语的特殊提示
-    const englishPrompt = isEnglish ? `特别注意：这是英语学习材料，请积极、尽可能多地提取学习条目，严格按照以下三类分类：
+    const englishPrompt = isEnglish ? `特别注意：这是英语学习材料，请积极、尽可能多地提取学习条目，严格按照以下三类分类，明确区分短语和语句：
 
-1. 【单词 word】：所有名词、动词、形容词、副词、介词、连词等
-   - 需要标注词性：Noun/名词、Verb/动词、Adjective/形容词、Adverb/副词、Preposition/介词等
-   - 英语不需要性别标记（无der/die/das）
-   - 包含：原文、中文翻译、用法解释、例句
-   - 目标：每1000字符至少提取15-25个单词
+【条目类型区分标准 - 关键】
 
-2. 【短语 phrase】：所有固定搭配、介词短语、常用表达、习语
-   - 不需要标注词性
-   - 包含：原文、中文翻译、用法解释、例句
+1. 【单词 word】：单个独立词汇
+   - 判定：可以独立使用，有完整词义
+   - 包含：名词、动词、形容词、副词、介词、连词等
+   - 需要标注词性：Noun/名词、Verb/动词、Adjective/形容词等
+   - 示例："downed"、"jets"、"Lebanon"、"Oracle"
+
+2. 【短语 phrase】：固定搭配或常用表达，不是完整句子
+   - 判定标准：比单词长，但没有完整主谓结构，不能独立成句
+   - 包含：介词短语、固定搭配、习语、新闻标题式表达
+   - 长度：通常3-8个词，无完整谓语动词或独立使用
+   - ✅ 正确示例："Here's more news"、"in a X post"、"war on Iran"、"Downed jets"
+   - ❌ 不是短语："Here's more news from the war on Iran on Saturday:"（有完整主谓结构，是句子）
    - 目标：每1000字符至少提取5-10个短语
 
-3. 【语句 sentence】：完整句子、对话、重要句型、常用表达
-   - 只需要：原文、中文翻译
-   - 不需要解释和例句
+3. 【语句 sentence】：完整句子，有主谓结构
+   - 判定标准：包含完整的主语+谓语，能独立表达完整意思
+   - 特点：有完整语法结构（主谓宾），通常10个词以上
+   - ✅ 正确示例："Here's more news from the war on Iran on Saturday."
+   - ❌ 不是语句："Downed jets | Lebanon | Oracle building"（标题式短语，无动词）
    - 目标：每1000字符至少提取3-5个语句
 
 重要提示：
 - 不要过滤"简单"或"复杂"的词汇，只要是有学习价值的词都要提取
+- 新闻标题通常是phrase（如"Downed jets | Lebanon"），不是sentence
 - 例句可以由AI生成，不一定要来源于原文，但必须符合词义和用法
-- 【例句格式 - 关键】德语句子 + 空格 + 中文翻译，不要括号。正确："Ich lese ein Buch. 我在读书。" 错误："Ich lese ein Buch.（我在读书）"` : '';
+- 【例句格式 - 关键】英语句子 + 空格 + 中文翻译，不要括号。正确："I read a book. 我在读书。" 错误："I read a book.（我在读书）"` : '';
     
     // 针对日语的特殊提示
     const japanesePrompt = isJapanese ? `特别注意：这是日语学习材料，请严格按照以下规则提取，明确区分三类条目：
@@ -1756,6 +1764,7 @@ ${chunk.substring(0, 8000)}
           `;
         }
         if (preview) preview.classList.remove('hidden');
+        if (progress) progress.classList.add('hidden');
         if (status) status.textContent = '文章获取成功！';
       } else {
         throw new Error('No content extracted');
@@ -1929,6 +1938,7 @@ ${chunk.substring(0, 8000)}
           `;
         }
         if (preview) preview.classList.remove('hidden');
+        if (progress) progress.classList.add('hidden');
         if (status) status.textContent = '文章获取成功！';
       } else {
         throw new Error('No content extracted');
@@ -2112,6 +2122,7 @@ ${chunk.substring(0, 8000)}
           `;
         }
         if (preview) preview.classList.remove('hidden');
+        if (progress) progress.classList.add('hidden');
         if (status) status.textContent = '文章获取成功！';
       } else {
         throw new Error('No content extracted');

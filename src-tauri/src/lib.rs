@@ -89,15 +89,38 @@ async fn fetch_news_article(source: String, url: String, _category: String) -> R
 
     // 按 source 选择内容提取器
     let content = match source.as_str() {
-        "bbc" => extract_content(&document, &[
-            "article[data-component='text-block'] p",
-            "[data-testid='card-text'] p",
-            ".ssrcss-1q0x1qg-Paragraph p",
-            ".ssrcss-1q0x1qg-Paragraph",
-            "article p",
-            "[data-component='text-block'] p",
-            ".lx-stream-post-body p",
-        ]),
+        "bbc" => {
+            // BBC 使用多个可能的选择器，尝试获取最完整的内容
+            let content = extract_content(&document, &[
+                "article[data-component='text-block'] p",
+                "[data-testid='card-text'] p",
+                ".ssrcss-1q0x1qg-Paragraph p",
+                ".ssrcss-1q0x1qg-Paragraph",
+                ".ssrcss-18snukc-Paragraph",
+                "article p",
+                "[data-component='text-block']",
+                ".lx-stream-post-body p",
+                "main[role='main'] p",
+                "#main-content p",
+                ".article-body p",
+            ]);
+            // 如果内容太短，尝试获取页面主要文本内容
+            if content.len() < 500 {
+                let fallback = extract_content(&document, &[
+                    "main p",
+                    "article p",
+                    ".content p",
+                    "body p",
+                ]);
+                if fallback.len() > content.len() {
+                    fallback
+                } else {
+                    content
+                }
+            } else {
+                content
+            }
+        }
         "guardian" => extract_content(&document, &[
             ".article-body p",
             "#maincontent p",
