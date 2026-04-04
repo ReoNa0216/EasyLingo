@@ -2829,10 +2829,21 @@ ${chunk.substring(0, 8000)}
         entry.moduleId = this.currentModule;
         entry.id = `entry_${this.currentModule}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        // 处理日语例句格式：移除注音括号
+        // 处理日语例句格式：移除注音括号，确保有空格+中文翻译
         if (isJapaneseModule && entry.example) {
           // 移除注音格式：汉字(假名) → 汉字
           entry.example = entry.example.replace(/([\u4e00-\u9fa5])\([\u3040-\u309f\u30a0-\u30ff]+\)/g, '$1');
+          
+          // 确保example包含中文翻译（用空格分隔）
+          if (!entry.example.includes(' ') || !/[\u4e00-\u9fa5]/.test(entry.example)) {
+            // 如果没有空格或没有中文字符，尝试添加translation作为参考
+            entry.example = entry.example.trim() + ' ' + entry.translation;
+          }
+        }
+        
+        // 处理explanation中可能的未转义引号
+        if (entry.explanation) {
+          entry.explanation = entry.explanation.replace(/"/g, "'");
         }
       });
       
@@ -2927,8 +2938,14 @@ ${chunk.substring(0, 8000)}
 - translation: 中文翻译
 - wordType: 词性
 - gender: 留空
-- explanation: 用法说明
+- explanation: 用法说明（不要在JSON字符串内使用英文双引号，如需引用请用单引号）
 - example: 日语句子 空格 中文翻译（汉字绝对不注音）
+
+【关键提示 - 避免JSON解析错误】
+- explanation字段内不要使用英文双引号 "  
+- 如需引用日语词汇，请使用单引号 ' 或直接写
+- ❌ 错误示例："表示\"吃\"的动作"  
+- ✅ 正确示例："表示'吃'的动作" 或 "表示吃的动作"
 
 请为以下词汇补全信息：
 ${wordsList}
