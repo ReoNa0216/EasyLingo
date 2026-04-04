@@ -1789,6 +1789,8 @@ ${chunk.substring(0, 8000)}
     const progress = document.getElementById('bbc-progress');
     const status = document.getElementById('bbc-status');
     
+    // 显示进度条并更新状态
+    if (progress) progress.classList.remove('hidden');
     if (status) status.textContent = '正在使用AI提取学习条目...';
     
     try {
@@ -1963,6 +1965,8 @@ ${chunk.substring(0, 8000)}
     const progress = document.getElementById('guardian-progress');
     const status = document.getElementById('guardian-status');
     
+    // 显示进度条并更新状态
+    if (progress) progress.classList.remove('hidden');
     if (status) status.textContent = '正在使用AI提取学习条目...';
     
     try {
@@ -2147,6 +2151,8 @@ ${chunk.substring(0, 8000)}
     const progress = document.getElementById('npr-progress');
     const status = document.getElementById('npr-status');
     
+    // 显示进度条并更新状态
+    if (progress) progress.classList.remove('hidden');
     if (status) status.textContent = '正在使用AI提取学习条目...';
     
     try {
