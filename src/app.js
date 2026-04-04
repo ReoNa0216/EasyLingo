@@ -937,8 +937,9 @@ ${mod.customPrompt}
 1. 【单词 word】：单个独立词汇
    - 判定：可以独立使用，有完整词义
    - 包含：名词、动词、形容词、副词、介词、连词等
-   - 需要标注词性：Noun/名词、Verb/动词、Adjective/形容词等
-   - 示例："downed"、"jets"、"Lebanon"、"Oracle"
+   - 【关键】wordType字段必须使用中文词性：名词、动词、形容词、副词、介词、连词
+   - ❌ 严禁使用英文词性：Noun、Verb、Adjective、Adverb
+   - 示例："downed"(动词)、"jets"(名词)、"Lebanon"(名词)、"Oracle"(名词)
 
 2. 【短语 phrase】：固定搭配或常用表达，不是完整句子
    - 判定标准：比单词长，但没有完整主谓结构，不能独立成句
@@ -1131,7 +1132,7 @@ ${chunk.substring(0, 5000)}
   \"type\": \"word\",
   \"original\": \"evening\",
   \"translation\": \"晚上\",
-  \"wordType\": \"Noun\",
+  \"wordType\": \"名词\",
   \"gender\": \"\",
   \"explanation\": \"表示一天中从下午到夜间的时段\",
   \"example\": \"I like to read books in the evening. 我喜欢在晚上读书。\"
@@ -1810,7 +1811,7 @@ ${chunk.substring(0, 8000)}
       this.bbcCurrentArticle = null;
       await this.loadModuleMaterials();
       
-      alert('成功从 BBC 新闻中提取学习条目！');
+      await this.alertDialog('成功从 BBC 新闻中提取学习条目！');
       
     } catch (error) {
       console.error('BBC processing error:', error);
@@ -1984,7 +1985,7 @@ ${chunk.substring(0, 8000)}
       this.guardianCurrentArticle = null;
       await this.loadModuleMaterials();
       
-      alert('成功从 The Guardian 新闻中提取学习条目！');
+      await this.alertDialog('成功从 The Guardian 新闻中提取学习条目！');
       
     } catch (error) {
       console.error('The Guardian processing error:', error);
@@ -2167,7 +2168,7 @@ ${chunk.substring(0, 8000)}
       this.nprCurrentArticle = null;
       await this.loadModuleMaterials();
       
-      alert('成功从 NPR 新闻中提取学习条目！');
+      await this.alertDialog('成功从 NPR 新闻中提取学习条目！');
       
     } catch (error) {
       console.error('NPR processing error:', error);
