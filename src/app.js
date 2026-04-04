@@ -2829,16 +2829,10 @@ ${chunk.substring(0, 8000)}
         entry.moduleId = this.currentModule;
         entry.id = `entry_${this.currentModule}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        // 处理日语例句格式：移除注音括号，确保有空格+中文翻译
+        // 处理日语例句格式：移除注音括号
         if (isJapaneseModule && entry.example) {
           // 移除注音格式：汉字(假名) → 汉字
           entry.example = entry.example.replace(/([\u4e00-\u9fa5])\([\u3040-\u309f\u30a0-\u30ff]+\)/g, '$1');
-          
-          // 确保example包含中文翻译（用空格分隔）
-          if (!entry.example.includes(' ') || !/[\u4e00-\u9fa5]/.test(entry.example)) {
-            // 如果没有空格或没有中文字符，尝试添加translation作为参考
-            entry.example = entry.example.trim() + ' ' + entry.translation;
-          }
         }
         
         // 处理explanation中可能的未转义引号
@@ -2919,11 +2913,13 @@ ${chunk.substring(0, 8000)}
 
 2. 例句（example字段）- 严格规范：
    - 例句必须是完整的日语句子，汉字绝对不能注音
-   - 格式：日语句子 空格 中文翻译
+   - 格式：日语句子 空格 中文翻译（必须是例句的完整中文翻译，不是单词翻译）
    - ✅ 正确示例："私は学生です。 我是学生。"
-   - ✅ 正确示例："駅から家まで歩いて10分です。 从车站到家步行10分钟。"
+   - ✅ 正确示例（猫）："私の家に猫がいます。 我家有一只猫。"（不是"猫"）
+   - ✅ 正确示例（美味しい）："この料理は美味しいです。 这道菜很好吃。"（不是"美味的"）
    - ❌ 严重错误："私(わたし)は学生(がくせい)です。"（example字段禁止注音）
    - ❌ 严重错误："私は学生です。"（缺少中文翻译）
+   - ❌ 严重错误："私の家に猫がいます。 猫"（翻译是单词意思，不是例句翻译）
 
 3. 字段对比示例（必须区分）：
    - original: "学生(がくせい)" ← 单词需要注音
