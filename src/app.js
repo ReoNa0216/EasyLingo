@@ -2895,7 +2895,7 @@ ${chunk.substring(0, 8000)}
 日语特殊要求：
 - 含汉字词汇：original格式为"汉字(平假名)"，如"日本語(にほんご)"，复合词整体标注
 - 片假名外来语：original格式为"片假名(英语原文)"，如"アイスクリーム(ice cream)"
-- 例句格式：日语句子 中文翻译（例句汉字不注音，空格后加中文翻译）` : '';
+- 例句格式：日语句子 中文翻译（例句汉字不注音，空格分隔），如"物価が安定しています。 物价稳定。"` : '';
     
     const prompt = isJapanese
       ? `你是一位专业的日语教学专家。请为以下日语词汇补全完整信息。
@@ -3110,7 +3110,7 @@ ${wordsList}
    - 名词：名词
    - 形容词：い形容词/な形容动词
    - 其他：副词、助词、感叹词等
-5. 示例句子中的汉字必须标注平假名读音` : '';
+5. 示例句子格式：日语句子 中文翻译（例句汉字不注音，空格分隔），如"物価が安定しています。 物价稳定。"` : '';
     
     // 用户自定义补全要求（非默认模块）- 支持Markdown格式
     const customPrompt = !isDefaultModule ? (mod.customPrompt ? `
@@ -3223,10 +3223,7 @@ ${wordsList}
           throw new Error('Response truncated: increase max_tokens setting');
         }
         
-        // 预处理：替换所有中文引号为英文引号（在提取 JSON 之前处理整个内容）
-        content = this.preprocessAIResponse(content);
-        
-        // 解析JSON
+        // 解析JSON - 与PolyLingo一致：只在提取的JSON字符串内处理中文引号
         let enrichedData = null;
         let parseError = null;
         
@@ -3330,23 +3327,7 @@ ${wordsList}
     }
   },
   
-  // 预处理 AI 响应内容，替换可能导致 JSON 解析失败的字符
-  preprocessAIResponse(content) {
-    // 替换所有中文标点为英文标点或转义形式
-    return content
-      // 中文双引号 → 转义的双引号
-      .replace(/[\u201c\u201d]/g, '\\"')
-      // 中文单引号 → 转义的单引号
-      .replace(/[\u2018\u2019]/g, "\\'")
-      // 全角括号 → 半角括号
-      .replace(/[\uFF08]/g, '(')
-      .replace(/[\uFF09]/g, ')')
-      // 其他可能 problematic 的全角标点
-      .replace(/[\uFF0c]/g, ',')  // 全角逗号
-      .replace(/[\u3002]/g, '.'); // 全角句号（可选，通常没问题）
-  },
-  
-  // 修复AI返回的JSON中的格式问题
+  // 修复AI返回的JSON中的格式问题 - 与PolyLingo一致
   fixMalformedJSON(jsonStr) {
     // 处理AI返回的JSON中未转义的中文引号
     // 中文引号在JSON字符串值内部会导致解析失败
