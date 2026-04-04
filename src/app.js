@@ -3223,12 +3223,8 @@ ${wordsList}
           throw new Error('Response truncated: increase max_tokens setting');
         }
         
-        // 预处理：替换内容中的中文引号为英文引号（在 JSON 解析之前）
-        content = content
-          .replace(/\u201c/g, '\\"')  // 左双引号
-          .replace(/\u201d/g, '\\"')  // 右双引号
-          .replace(/\u2018/g, "\\'")   // 左单引号
-          .replace(/\u2019/g, "\\'");  // 右单引号
+        // 预处理：替换所有中文引号为英文引号（在提取 JSON 之前处理整个内容）
+        content = this.preprocessAIResponse(content);
         
         // 解析JSON
         let enrichedData = null;
@@ -3332,6 +3328,22 @@ ${wordsList}
         await new Promise(resolve => setTimeout(resolve, 1000 * retries));
       }
     }
+  },
+  
+  // 预处理 AI 响应内容，替换可能导致 JSON 解析失败的字符
+  preprocessAIResponse(content) {
+    // 替换所有中文标点为英文标点或转义形式
+    return content
+      // 中文双引号 → 转义的双引号
+      .replace(/[\u201c\u201d]/g, '\\"')
+      // 中文单引号 → 转义的单引号
+      .replace(/[\u2018\u2019]/g, "\\'")
+      // 全角括号 → 半角括号
+      .replace(/[\uFF08]/g, '(')
+      .replace(/[\uFF09]/g, ')')
+      // 其他可能 problematic 的全角标点
+      .replace(/[\uFF0c]/g, ',')  // 全角逗号
+      .replace(/[\u3002]/g, '.'); // 全角句号（可选，通常没问题）
   },
   
   // 修复AI返回的JSON中的格式问题
