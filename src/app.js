@@ -4534,9 +4534,21 @@ ${wordsList}
       }
     }
     
+    // 去重：基于题目内容（question字段）去重，避免同一词条生成多个题目
+    const seenQuestions = new Set();
+    const uniqueQuestions = [];
+    for (const q of allQuestions) {
+      // 使用题目原文的前50个字符作为去重键
+      const key = (q.question || '').substring(0, 50).trim();
+      if (key && !seenQuestions.has(key)) {
+        seenQuestions.add(key);
+        uniqueQuestions.push(q);
+      }
+    }
+    
     // 打乱题目顺序，只返回所需数量
     const totalNeeded = (typeCounts.choice || 0) + (typeCounts.fill || 0) + (typeCounts.translation || 0);
-    return allQuestions.sort(() => 0.5 - Math.random()).slice(0, totalNeeded);
+    return uniqueQuestions.sort(() => 0.5 - Math.random()).slice(0, totalNeeded);
   },
   
   async generateQuestionsOfType(entries, count, type, settings, startIndex) {
@@ -5314,10 +5326,12 @@ Requirements:
           </div>
         `;
       } else if (isCorrect) {
+        // 正确题目也显示用户答案和解析
         questionEl.classList.add('border-green-300', 'bg-green-50');
         questionEl.innerHTML += `
-          <div class="mt-4 p-3 bg-green-100 rounded-lg">
-            <div class="font-medium text-green-700">✅ 回答正确！</div>
+          <div class="mt-4 p-4 bg-white rounded-lg">
+            <div class="font-medium text-green-600 mb-1">✅ 您的答案: ${userAnswer || '（未作答）'} 回答正确！</div>
+            <div class="text-primary-600 mt-2">${q.explanation || ''}</div>
           </div>
         `;
       } else {
