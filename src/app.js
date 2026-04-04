@@ -6213,7 +6213,8 @@ Requirements:
   },
   
   async deleteMaterial(id) {
-    if (confirm('确定要删除这个材料吗？相关的学习条目也会被删除。')) {
+    const confirmed = await this.confirmDialog('确定要删除这个材料吗？相关的学习条目也会被删除。');
+    if (confirmed) {
       await db.materials.delete(id);
       await db.entries.where('materialId').equals(id).delete();
       await this.loadModuleMaterials();
