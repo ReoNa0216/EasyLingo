@@ -4808,10 +4808,20 @@ ${wordsList}
           explanation: `${entry.original} 的意思是 ${entry.translation}${entry.gender ? `，性别：${entry.gender}` : ''}${entry.example ? '\n例句: ' + entry.example : ''}`
         });
       } else if (type === 'fill') {
-        const keyword = entry.original.split(/\s+/)[0];
+        // 根据条目类型确定答案：phrase类型用完整短语，word类型用第一个词
+        const isPhrase = entry.type === 'phrase';
+        const keyword = isPhrase ? entry.original : entry.original.split(/\s+/)[0];
         let maskedQuestion = sourceText;
         if (entry.example && entry.example.includes(keyword)) {
           maskedQuestion = entry.example.replace(keyword, '_____');
+        } else if (isPhrase) {
+          // phrase类型：尝试匹配第一个词（可能有时态变化）
+          const firstWord = entry.original.split(/\s+/)[0];
+          if (entry.example && entry.example.includes(firstWord)) {
+            maskedQuestion = entry.example.replace(firstWord, '_____');
+          } else {
+            maskedQuestion = `请用适当的表达填空：_____（${entry.translation}）`;
+          }
         } else {
           const words = entry.original.split(/\s+/);
           const targetWord = words.find(w => w.length > 2) || words[0] || '';
@@ -4822,7 +4832,7 @@ ${wordsList}
           type: 'fill',
           question: `填空：${maskedQuestion}（${entry.translation}）`,
           answer: keyword,
-          explanation: `正确答案是 "${keyword}" 或 "${entry.original}"，意思是 ${entry.translation}${entry.example ? '\n例句: ' + entry.example : ''}`
+          explanation: `正确答案是 "${keyword}"，意思是 ${entry.translation}${entry.example ? '\n例句: ' + entry.example : ''}`
         });
       } else {
         // 翻译题：直接给句子中文（翻译成外语）
@@ -4888,12 +4898,15 @@ ${wordsList}
 请确保只有唯一正确答案，干扰项不是同义词！`,
       fill: `生成${count}道填空题。要求：
 - 优先使用条目中的例句生成题目
-- 选择条目中的一个关键词或短语作为填空答案
-- 将关键词/短语替换为_____，在句子结尾用（）标注中文意思
+- 【关键 - 必须遵守】根据条目类型确定答案：
+  * [word]单词类型：可以只填写该单词（注意性数格变化）
+  * [phrase]短语类型：必须填写完整短语（所有词），不能只填一部分
+  * ❌ 严禁：将短语"exprimer son soutien à"拆开，只让学生填"exprimer"
+- 将关键词或完整短语替换为_____，在句子结尾用（）标注中文意思
 - 题目必须清晰说明要填什么，如："在下列句子中填入空缺的词语：... _____ ... (中文提示)"
 - 对于日语/韩语/中文等无空格语言，需要特别注意标注哪个词需要填写
 - 示例："在下列日语句子中填入空缺的词语：警備員が入り口を_____ています。 (把守)"
-- 正确答案是该外语词/短语本身`,
+- 正确答案是该外语词/短语本身（phrase类型必须是完整短语）`,
       translation: `生成${count}道翻译题。要求：
 - 给出中文句子，让学生翻译成${languageName}语
 - 题目格式："将下列句子翻译成${languageName}语：'中文句子'"
@@ -4923,7 +4936,7 @@ ${wordsList}
 
 学习条目：
 ${entries.map((e, i) => {
-  let text = `${i+1}. ${e.original} - ${e.translation}`;
+  let text = `${i+1}. [${e.type}] ${e.original} - ${e.translation}`;
   if (e.explanation) text += `\n   解释: ${e.explanation}`;
   if (e.example) text += `\n   例句: ${removeChineseTranslation(e.example)}`;
   return text;
@@ -4934,6 +4947,7 @@ ${entries.map((e, i) => {
 - ${count}道题目对应${count}个不同的条目，一一对应
 - 如果提供了${entries.length}个条目但只需要生成${count}道题，选择其中${count}个不同的条目即可
 - ❌ 严禁：用第1个条目生成2道题，而其他条目未使用
+- 注意条目类型：[word]是单词，[phrase]是短语，[sentence]是句子
 
 要求：
 ${typePrompts[type]}
@@ -5216,12 +5230,22 @@ ${typePrompts[type]}
       } else if (type === 'fill') {
         // 填空题：优先从例句中抽取关键词
         const textToUse = cleanExample || entry.original;
-        const keyword = entry.original.split(/\s+/)[0];
+        // 根据条目类型确定答案：phrase类型用完整短语，word类型用第一个词
+        const isPhrase = entry.type === 'phrase';
+        const keyword = isPhrase ? entry.original : entry.original.split(/\s+/)[0];
         let maskedQuestion = textToUse;
         
-        // 尝试在例句中替换关键词
+        // 尝试在例句中替换关键词/短语
         if (cleanExample && cleanExample.includes(keyword)) {
           maskedQuestion = cleanExample.replace(keyword, '_____');
+        } else if (isPhrase) {
+          // phrase类型：尝试匹配第一个词（可能有时态变化）
+          const firstWord = entry.original.split(/\s+/)[0];
+          if (cleanExample && cleanExample.includes(firstWord)) {
+            maskedQuestion = cleanExample.replace(firstWord, '_____');
+          } else {
+            maskedQuestion = `请用适当的表达填空：_____（${entry.translation}）`;
+          }
         } else {
           const words = entry.original.split(/\s+/);
           const targetWord = words.find(w => w.length > 2) || words[0] || '';
@@ -5233,7 +5257,7 @@ ${typePrompts[type]}
           type: 'fill',
           question: `填空：${maskedQuestion}（${entry.translation}）`,
           answer: keyword,
-          explanation: `正确答案是 "${keyword}" 或 "${entry.original}"，意思是 ${entry.translation}${entry.example ? '\n例句: ' + entry.example : ''}`
+          explanation: `正确答案是 "${keyword}"，意思是 ${entry.translation}${entry.example ? '\n例句: ' + entry.example : ''}`
         });
       } else if (type === 'translation') {
         // 翻译题：给中文让用户翻译成外语
