@@ -1294,6 +1294,49 @@ ${chunk.substring(0, 5000)}
     cleaned_text = cleaned_text.replace(/```\s*/g, '');
     cleaned_text = cleaned_text.trim();
     
+    // 预处理：修复JSON字符串中未转义的换行符
+    // AI可能在explanation字段中包含原始换行符，需要转义为\n
+    // 方法：找到JSON字符串值，检查其中的未转义换行符
+    // 使用更宽松的方法：直接替换所有不在JSON结构中的原始换行符
+    let result = '';
+    let inString = false;
+    let escaped = false;
+    
+    for (let i = 0; i < cleaned_text.length; i++) {
+      const char = cleaned_text[i];
+      const nextChar = cleaned_text[i + 1] || '';
+      
+      if (escaped) {
+        result += char;
+        escaped = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        result += char;
+        escaped = true;
+        continue;
+      }
+      
+      if (char === '"' && !inString) {
+        inString = true;
+        result += char;
+      } else if (char === '"' && inString) {
+        inString = false;
+        result += char;
+      } else if (char === '\n' && inString) {
+        // 在字符串内部的原始换行符，转义为\n
+        result += '\\n';
+      } else if (char === '\r' && inString) {
+        // 忽略字符串内的\r
+        continue;
+      } else {
+        result += char;
+      }
+    }
+    
+    cleaned_text = result;
+    
     console.log(`Chunk ${chunkIndex}: Cleaned text length:`, cleaned_text.length);
     console.log(`Chunk ${chunkIndex}: Cleaned text preview:`, cleaned_text.substring(0, 300));
     
