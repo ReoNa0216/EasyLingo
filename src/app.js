@@ -3643,7 +3643,7 @@ ${wordsList}
               ${entry.explanation ? (isCustomModule ? 
                 `<div class="text-sm text-primary-600 mb-2 prose prose-sm max-w-none markdown-content">${marked.parse(entry.explanation)}</div>` : 
                 `<div class="text-sm text-primary-500 mb-1">💡 ${entry.explanation}</div>`) : ''}
-              ${entry.example && !isCustomModule ? `<div class="text-sm text-accent-600">📖 ${entry.example}</div>` : ''}
+              ${entry.example ? `<div class="text-sm text-accent-600 mt-2">📖 ${entry.example}</div>` : ''}
             </div>
           </div>
           ${actionsHtml}
