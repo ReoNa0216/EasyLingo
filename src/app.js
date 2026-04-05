@@ -908,59 +908,122 @@ ${mod.customPrompt}
 - 实用例句和表达`) : '';
     
     // 针对德语的特殊提示
-    const germanPrompt = isGerman ? `特别注意：这是德语学习材料，请积极、尽可能多地提取学习条目，严格按照以下三类分类：
+    const germanPrompt = isGerman ? `【🚨 语言过滤 - 首要原则，必须严格遵守】
 
-1. 【单词 word】：所有名词、动词、形容词、副词、介词、连词等
+⚠️ 重要判断：分析输入材料的语言
+1. 如果输入材料**全是中文**（没有德语内容）：
+   → 返回空数组 []，不要提取任何条目
+   → ❌ 严禁把中文翻译成德语来凑数
+
+2. 如果输入材料**是中德混合**：
+   → ✅ 只提取材料中实际存在的德语内容
+   → ❌ 严禁根据中文部分创造对应的德语表达
+
+3. 如果输入材料**全是德语**：
+   → 正常提取，按以下规则分类
+
+【❌ 绝对禁止】
+- 严禁把中文描述翻译成德语单词/短语
+- 严禁提取语法术语作为学习内容
+
+【条目类型区分标准】
+
+1. 【单词 word】：材料中实际存在的德语单词
+   - 必须是材料原文中出现的词汇，不能是翻译
    - 必须标注性别：m.阳性 / f.阴性 / n.中性 / pl.复数（若可确定）
-   - 包含：原文、中文翻译、用法解释、例句
    - 目标：每1000字符至少提取15-25个单词
 
-2. 【短语 phrase】：所有固定搭配、介词短语、常用表达、习语
-   - 不需要标注性别
-   - 包含：原文、中文翻译、用法解释、例句
+2. 【短语 phrase】：材料中实际存在的德语固定搭配
+   - 必须是材料原文中出现的搭配
+   - ❌ 严禁把中文翻译成德语短语
    - 目标：每1000字符至少提取5-10个短语
 
-3. 【语句 sentence】：完整句子、对话、重要句型、常用表达
-   - 只需要：原文、中文翻译
-   - 不需要解释和例句
+3. 【语句 sentence】：材料中实际存在的完整德语句子
+   - 必须是材料原文中的句子
    - 目标：每1000字符至少提取3-5个语句
 
-重要提示：
-- 不要过滤“简单”或“复杂”的词汇，只要是有学习价值的词都要提取
-- 例句可以由AI生成，不一定要来源于原文，但必须符合词义和用法` : '';
+【验证清单 - 提取前必须检查】
+□ 这个词汇/短语/句子是否确实出现在输入材料中？
+□ 是否是从中文翻译过来的？（如果是，❌拒绝）` : '';
     
     // 针对英语的特殊提示
-    const englishPrompt = isEnglish ? `特别注意：这是英语学习材料，请积极、尽可能多地提取学习条目，严格按照以下三类分类，明确区分短语和语句：
+    const englishPrompt = isEnglish ? `【🚨 语言过滤 - 首要原则，必须严格遵守】
+
+⚠️ 重要判断：分析输入材料的语言
+1. 如果输入材料**全是中文**（没有英语内容）：
+   → 返回空数组 []，不要提取任何条目
+   → ❌ 严禁把中文翻译成英语来凑数
+   → ❌ 严禁提取："fur"、"body shape"、"ferret"、"brown" 等中文词汇的英文翻译
+
+2. 如果输入材料**是中英混合**：
+   → ✅ 只提取材料中实际存在的英语内容
+   → ❌ 严禁根据中文部分创造对应的英语表达
+
+3. 如果输入材料**全是英语**：
+   → 正常提取，按以下规则分类
+
+【❌ 绝对禁止的行为】
+- 严禁把中文描述翻译成英语单词/短语：
+  ❌ 输入"毛发" → 提取 "fur"（错误！）
+  ❌ 输入"体型" → 提取 "body shape"（错误！）
+  ❌ 输入"更像雪貂" → 提取 "more like a ferret"（错误！）
+  ❌ 输入"毛发棕色更深" → 提取 "darker brown fur"（错误！）
+- 严禁提取语法术语作为学习内容：❌ "定语从句"、❌ "attributive clause"
 
 【条目类型区分标准 - 关键】
 
-1. 【单词 word】：单个独立词汇
-   - 判定：可以独立使用，有完整词义
-   - 包含：名词、动词、形容词、副词、介词、连词等
-   - 【关键】wordType字段必须使用中文词性：名词、动词、形容词、副词、介词、连词
+1. 【单词 word】：材料中实际存在的英语单词
+   - 必须是材料原文中出现的词汇，不能是翻译
+   - wordType字段必须使用中文词性：名词、动词、形容词、副词、介词、连词
    - ❌ 严禁使用英文词性：Noun、Verb、Adjective、Adverb
-   - 示例："downed"(动词)、"jets"(名词)、"Lebanon"(名词)、"Oracle"(名词)
+   - ✅ 正确示例："downed"(动词)、"jets"(名词)、"Lebanon"(名词)
+   
+   【词汇难度过滤】
+   过滤过于基础的词汇：基础代词(I/you)、be动词(am/is/are)、助动词(do/have)、
+   情态动词(can/will)、基础介词(in/on/at)、基础连词(and/but/or)、
+   基础名词(man/woman/thing)、基础动词(go/come/make)、基础形容词(good/bad/big/small)
+   ✅ 优先提取：新闻/学术/专业领域词汇、固定搭配、习语
+   
+   【例句格式 - 关键】
+   - example字段必须同时包含英语单词的用法例句和中文翻译
+   - 格式：英语句子 + 空格 + 中文翻译
+   - ✅ 正确："The cat has soft fur. 这只猫有柔软的毛发。"
+   - ❌ 错误："The cat has soft fur."（缺少中文翻译）
 
-2. 【短语 phrase】：固定搭配或常用表达，不是完整句子
-   - 判定标准：比单词长，但没有完整主谓结构，不能独立成句
-   - 包含：介词短语、固定搭配、习语、新闻标题式表达
-   - 长度：通常3-8个词，无完整谓语动词或独立使用
-   - ✅ 正确示例："Here's more news"、"in a X post"、"war on Iran"、"Downed jets"
-   - ❌ 不是短语："Here's more news from the war on Iran on Saturday:"（有完整主谓结构，是句子）
-   - 目标：每1000字符至少提取5-10个短语
+2. 【短语 phrase】：材料中实际存在的英语固定搭配
+   - 【关键】必须是材料原文中实际出现的自然搭配
+   - 【严禁】把中文翻译成英语短语
+   - 【严禁】提取语法术语
+   - 包含类型：
+     * 介词短语："in addition to"、"according to"
+     * 动词短语："carry out"、"look forward to"
+     * 名词短语："climate change"、"artificial intelligence"
+     * 习语俗语："break the ice"、"piece of cake"
+   - ✅ 正确示例："trade war"、"breaking news"、"in response to"
+   - ❌ 错误示例："more like a ferret"、"darker brown fur"、"available for buying"
+   - 【例句格式 - 关键】英语短语 + 空格 + 中文翻译。正确："in response to 作为回应" 错误：只有英语没有中文
+   - 目标：每1000字符提取5-10个地道短语
 
-3. 【语句 sentence】：完整句子，有主谓结构
+3. 【语句 sentence】：材料中实际存在的完整英语句子
    - 判定标准：包含完整的主语+谓语，能独立表达完整意思
-   - 特点：有完整语法结构（主谓宾），通常10个词以上
+   - 必须是材料原文中的句子，不能自己编造
    - ✅ 正确示例："Here's more news from the war on Iran on Saturday."
-   - ❌ 不是语句："Downed jets | Lebanon | Oracle building"（标题式短语，无动词）
+   - ❌ 不是语句：标题式短语（无动词）
    - 目标：每1000字符至少提取3-5个语句
 
-重要提示：
-- 不要过滤"简单"或"复杂"的词汇，只要是有学习价值的词都要提取
-- 新闻标题通常是phrase（如"Downed jets | Lebanon"），不是sentence
-- 例句可以由AI生成，不一定要来源于原文，但必须符合词义和用法
-- 【例句格式 - 关键】英语句子 + 空格 + 中文翻译，不要括号。正确："I read a book. 我在读书。" 错误："I read a book.（我在读书）"` : '';
+【例句格式 - 必须遵守】
+- word和phrase的example字段必须同时包含英语和中文翻译
+- 格式：英语内容 + 空格 + 中文翻译
+- ✅ 正确："The cat has soft fur. 这只猫有柔软的毛发。"
+- ❌ 错误："The cat has soft fur."（缺少中文翻译）
+- ✅ 正确："break the ice 打破僵局"
+- ❌ 错误："break the ice"（缺少中文翻译）
+
+【验证清单 - 提取前必须检查】
+□ 这个词汇/短语/句子是否确实出现在输入材料中？
+□ 是否是从中文翻译过来的？（如果是，❌拒绝）
+□ 是否是语法术语？（如果是，❌拒绝）
+□ 例句(example字段)是否同时包含英语和中文翻译？（如果只有英语没有中文，❌拒绝）` : '';
     
     // 针对日语的特殊提示
     const japanesePrompt = isJapanese ? `特别注意：这是日语学习材料，请严格按照以下规则提取，明确区分三类条目：
@@ -3819,7 +3882,7 @@ ${wordsList}
       .toArray();
     
     if (entries.length === 0) {
-      alert('当前没有条目');
+      await this.alertDialog('当前没有条目');
       return;
     }
     
@@ -3842,13 +3905,16 @@ ${wordsList}
     }
     
     if (duplicates.length === 0) {
-      alert(`✅ 未发现重复${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}，已按字母顺序排序`);
+      await this.alertDialog(`✅ 未发现重复${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}，已按字母顺序排序`);
       // 刷新显示（已排序）
       await this.loadEntries();
       return;
     }
     
-    if (confirm(`发现 ${duplicates.length} 个重复${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}，是否删除？\n\n保留的条目将按字母顺序排序。`)) {
+    const confirmed = await this.confirmDialog(
+      `发现 ${duplicates.length} 个重复${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}，是否删除？\n\n保留的条目将按字母顺序排序。`
+    );
+    if (confirmed) {
       // 删除重复条目
       for (const dup of duplicates) {
         await db.entries.delete(dup.id);
@@ -3857,16 +3923,74 @@ ${wordsList}
       // 重新加载条目（显示已排序的结果）
       await this.loadEntries();
       
-      alert(`✅ 已删除 ${duplicates.length} 个重复条目，${unique.length} 个条目已按字母顺序排序`);
+      await this.alertDialog(`✅ 已删除 ${duplicates.length} 个重复条目，${unique.length} 个条目已按字母顺序排序`);
     }
   },
   
   // 手动添加条目
   addManualEntry(type) {
+    const mod = this.modules[this.currentModule];
     const isGerman = this.currentModule === 'german';
+    const isEnglish = this.currentModule === 'english';
+    const isJapanese = this.currentModule === 'japanese';
+    
+    // 所有语言在添加单词时都显示词性选择
+    const wordTypeField = type === 'word' ? `
+      <div>
+        <label class="block text-sm font-medium text-primary-700 mb-1">词的类型</label>
+        ${isGerman ? `
+        <select id="new-wordType" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+          <option value="">请选择</option>
+          <option value="名词">名词</option>
+          <option value="动词">动词</option>
+          <option value="形容词">形容词</option>
+          <option value="副词">副词</option>
+          <option value="介词">介词</option>
+          <option value="连词">连词</option>
+          <option value="冠词">冠词</option>
+          <option value="代词">代词</option>
+          <option value="数词">数词</option>
+          <option value="感叹词">感叹词</option>
+        </select>
+        ` : isEnglish ? `
+        <select id="new-wordType" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+          <option value="">请选择</option>
+          <option value="名词">名词</option>
+          <option value="动词">动词</option>
+          <option value="形容词">形容词</option>
+          <option value="副词">副词</option>
+          <option value="介词">介词</option>
+          <option value="连词">连词</option>
+          <option value="冠词">冠词</option>
+          <option value="代词">代词</option>
+          <option value="数词">数词</option>
+          <option value="感叹词">感叹词</option>
+        </select>
+        ` : isJapanese ? `
+        <select id="new-wordType" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+          <option value="">请选择</option>
+          <option value="名词">名词</option>
+          <option value="动词·一类">动词·一类</option>
+          <option value="动词·二类">动词·二类</option>
+          <option value="动词·三类">动词·三类</option>
+          <option value="形容词·一类">形容词·一类</option>
+          <option value="形容词·二类">形容词·二类</option>
+          <option value="副词">副词</option>
+          <option value="助词">助词</option>
+          <option value="连词">连词</option>
+          <option value="代词">代词</option>
+          <option value="感叹词">感叹词</option>
+        </select>
+        ` : `
+        <input type="text" id="new-wordType" placeholder="如：名词、动词、形容词..." class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+        `}
+      </div>
+    ` : '';
+    
+    // 德语名词显示性别选择
     const genderField = isGerman && type === 'word' ? `
       <div>
-        <label class="block text-sm font-medium text-primary-700 mb-1">词性</label>
+        <label class="block text-sm font-medium text-primary-700 mb-1">词性（德语名词）</label>
         <select id="new-gender" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
           <option value="">无</option>
           <option value="m.">m. 阳性</option>
@@ -3874,10 +3998,6 @@ ${wordsList}
           <option value="n.">n. 中性</option>
           <option value="pl.">pl. 复数</option>
         </select>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-primary-700 mb-1">词的类型</label>
-        <input type="text" id="new-wordType" placeholder="如：Substantiv, Verb, Adjektiv..." class="w-full px-3 py-2 border border-primary-200 rounded-lg">
       </div>
     ` : '';
     
@@ -3888,34 +4008,42 @@ ${wordsList}
       </div>
       <div>
         <label class="block text-sm font-medium text-primary-700 mb-1">例句</label>
-        <textarea id="new-example" rows="2" class="w-full px-3 py-2 border border-primary-200 rounded-lg"></textarea>
+        <textarea id="new-example" rows="2" class="w-full px-3 py-2 border border-primary-200 rounded-lg" placeholder="${mod?.language || '外语'}例句 + 空格 + 中文翻译"></textarea>
       </div>
     ` : '';
     
     const modal = document.createElement('div');
+    modal.id = 'manual-entry-modal';
     modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
     modal.innerHTML = `
       <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4">
         <h3 class="text-xl font-bold mb-4">添加${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-primary-700 mb-1">${(this.modules[this.currentModule] && this.modules[this.currentModule].language) || '外语'}原文</label>
+            <label class="block text-sm font-medium text-primary-700 mb-1">${mod?.language || '外语'}原文</label>
             <input type="text" id="new-original" class="w-full px-3 py-2 border border-primary-200 rounded-lg" placeholder="输入${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}">
           </div>
           <div>
             <label class="block text-sm font-medium text-primary-700 mb-1">中文翻译</label>
             <input type="text" id="new-translation" class="w-full px-3 py-2 border border-primary-200 rounded-lg" placeholder="输入中文翻译">
           </div>
+          ${wordTypeField}
           ${genderField}
           ${explanationField}
         </div>
         <div class="flex gap-3 mt-6">
-          <button onclick="this.closest('.fixed').remove()" class="flex-1 px-4 py-2 border border-primary-300 rounded-lg hover:bg-primary-50">取消</button>
+          <button onclick="app.closeManualEntryModal()" class="flex-1 px-4 py-2 border border-primary-300 rounded-lg hover:bg-primary-50">取消</button>
           <button onclick="app.saveNewEntry('${type}')" class="flex-1 px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600">添加</button>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
+  },
+  
+  // 关闭手动添加条目对话框
+  closeManualEntryModal() {
+    const modal = document.getElementById('manual-entry-modal');
+    if (modal) modal.remove();
   },
   
   // 保存新条目
@@ -3925,8 +4053,8 @@ ${wordsList}
       materialId: 'manual',
       moduleId: this.currentModule,
       type: type,
-      original: document.getElementById('new-original').value,
-      translation: document.getElementById('new-translation').value,
+      original: document.getElementById('new-original').value.trim(),
+      translation: document.getElementById('new-translation').value.trim(),
       srsLevel: 0,
       nextReview: new Date(),
       interval: 0,
@@ -3934,10 +4062,10 @@ ${wordsList}
     };
     
     const explanationEl = document.getElementById('new-explanation');
-    if (explanationEl) entry.explanation = explanationEl.value;
+    if (explanationEl) entry.explanation = explanationEl.value.trim();
     
     const exampleEl = document.getElementById('new-example');
-    if (exampleEl) entry.example = exampleEl.value;
+    if (exampleEl) entry.example = exampleEl.value.trim();
     
     const genderEl = document.getElementById('new-gender');
     if (genderEl) entry.gender = genderEl.value;
@@ -3946,13 +4074,14 @@ ${wordsList}
     if (wordTypeEl) entry.wordType = wordTypeEl.value;
     
     if (!entry.original || !entry.translation) {
-      alert('请填写原文和翻译');
+      await this.alertDialog('请填写原文和翻译');
       return;
     }
     
     await db.entries.put(entry);
-    document.querySelector('.fixed.inset-0').remove();
-    this.loadEntries();
+    this.closeManualEntryModal();
+    await this.loadEntries();
+    await this.alertDialog('添加成功！');
   },
   
   // SRS Review System
@@ -4801,6 +4930,12 @@ ${entries.map((e, i) => {
   if (e.example) text += `\n   例句: ${removeChineseTranslation(e.example)}`;
   return text;
 }).join('\n\n')}
+
+【关键要求 - 条目使用规则（必须严格遵守）】
+- 每道题目必须使用不同的条目（entries），严禁重复使用同一个条目生成多道题
+- ${count}道题目对应${count}个不同的条目，一一对应
+- 如果提供了${entries.length}个条目但只需要生成${count}道题，选择其中${count}个不同的条目即可
+- ❌ 严禁：用第1个条目生成2道题，而其他条目未使用
 
 要求：
 ${typePrompts[type]}
