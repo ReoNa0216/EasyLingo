@@ -596,7 +596,7 @@ ${placeholderText}`;
           <span class="text-lg">${this.getActionIcon(r.action)}</span>
           <div>
             <div class="font-medium">${this.getActionText(r.action)}</div>
-            <div class="text-xs text-primary-500">${(this.modules[r.moduleId] && this.modules[r.moduleId].name) || '混合'}</div>
+            <div class="text-xs text-primary-500">${this.modules[r.moduleId]?.name || (r.moduleId ? '自定义模块' : '混合复习')}</div>
           </div>
         </div>
         <div class="flex items-center gap-3">
@@ -4562,18 +4562,29 @@ ${wordsList}
         const date = new Date().toISOString().split('T')[0];
         const moduleTimes = this.moduleStudyTimes || {};
         
-        // 为每个模块记录实际学习时间（转换为整数分钟）
+        // 先添加一条混合复习的汇总记录（moduleId为null表示混合）
+        await db.records.put({
+          id: `record_${Date.now()}_mixed`,
+          date: date,
+          moduleId: null, // null表示混合复习
+          duration: duration,
+          count: reviewedCount,
+          action: 'review',
+          createdAt: new Date()
+        });
+        
+        // 为每个模块记录实际学习时间（转换为整数分钟）- 用于统计各语言学习时间
         for (const [moduleId, moduleDuration] of Object.entries(moduleTimes)) {
           const durationMinutes = Math.round(moduleDuration);
           if (durationMinutes > 0) {
             await db.records.put({
-              id: `record_${Date.now()}_${moduleId}`,
+              id: `record_${Date.now()}_${moduleId}_detail`,
               date: date,
               moduleId: moduleId,
               duration: durationMinutes,
-              count: reviewedCount, // 记录本次复习的条目数量
-              action: 'review',
-              createdAt: new Date()
+              count: 0, // 详细记录不计数，避免重复统计
+              action: 'review_detail', // 标记为详细记录
+              createdAt: new Date(Date.now() + 1) // 稍微错开时间
             });
           }
         }
@@ -4778,6 +4789,39 @@ ${wordsList}
         );
         selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
         allQuestions.push(...questions);
+      }
+    }
+    
+    // 补充机制：如果总数不足，从还有剩余条目的模块中补充
+    const totalNeeded = (typeCounts.choice || 0) + (typeCounts.fill || 0) + (typeCounts.translation || 0);
+    if (allQuestions.length < totalNeeded) {
+      const shortage = totalNeeded - allQuestions.length;
+      console.log(`题目数量不足，需要补充 ${shortage} 道`);
+      
+      // 收集所有剩余未使用的条目
+      const remainingEntries = [];
+      for (const moduleId of moduleIds) {
+        const moduleRemaining = entriesByModule[moduleId].filter(e => !usedEntryIds.has(e.id));
+        remainingEntries.push(...moduleRemaining.map(e => ({ ...e, moduleName: moduleInfo[moduleId] })));
+      }
+      
+      if (remainingEntries.length > 0) {
+        // 随机打乱剩余条目
+        const shuffled = remainingEntries.sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, Math.min(shortage * 2, shuffled.length));
+        
+        // 优先补充填空题（最容易本地生成）
+        const fallbackType = typeCounts.fill > 0 ? 'fill' : 
+                            typeCounts.choice > 0 ? 'choice' : 'translation';
+        
+        const fallbackQuestions = this.generateFallbackQuestionsByType(
+          selected, Math.min(shortage, selected.length), fallbackType
+        );
+        
+        // 标记已使用的条目
+        selected.slice(0, fallbackQuestions.length).forEach(e => usedEntryIds.add(e.id));
+        allQuestions.push(...fallbackQuestions);
+        console.log(`补充了 ${fallbackQuestions.length} 道题目`);
       }
     }
     
@@ -5744,7 +5788,7 @@ Requirements:
             <div class="flex-1 cursor-pointer" onclick="app.showTestReview('${t.id}')">
               <div class="flex items-center justify-between">
                 <div>
-                  <div class="font-medium">${(this.modules[t.moduleId] && this.modules[t.moduleId].name) || '未知模块'}</div>
+                  <div class="font-medium">${t.moduleId ? (this.modules[t.moduleId]?.name || '自定义模块') : '混合测试'}</div>
                   <div class="text-sm text-primary-500">${new Date(t.createdAt).toLocaleString()}</div>
                 </div>
                 <div class="text-right">
@@ -6467,7 +6511,8 @@ Requirements:
   async updateTodayMinutesDisplay() {
     const today = new Date().toISOString().split('T')[0];
     const todayRecords = await db.records.filter(r => 
-      new Date(r.createdAt).toISOString().split('T')[0] === today
+      new Date(r.createdAt).toISOString().split('T')[0] === today &&
+      r.action !== 'review_detail' // 排除混合复习的详细记录，避免重复统计
     ).toArray();
     const recordedMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
     const totalMinutes = recordedMinutes + this.currentStudyMinutes;
@@ -6496,7 +6541,8 @@ Requirements:
     // Today's minutes
     const today = new Date().toISOString().split('T')[0];
     const todayRecords = await db.records.filter(r => 
-      new Date(r.createdAt).toISOString().split('T')[0] === today
+      new Date(r.createdAt).toISOString().split('T')[0] === today &&
+      r.action !== 'review_detail' // 排除混合复习的详细记录，避免重复统计
     ).toArray();
     const todayMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
     document.getElementById('today-minutes').textContent = `${todayMinutes}分钟`;
