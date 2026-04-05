@@ -551,12 +551,21 @@ ${placeholderText}`;
     this.currentModule = null; // 重置为混合模式
     
     // Update module stats - 基于学习条目（包括默认模块和自定义模块）
-    const allModules = [...Object.values(this.modules), ...(await db.modules.toArray()).filter(m => m.isCustom)];
+    // 使用 Set 去重，避免自定义模块被重复处理
+    const moduleMap = new Map();
+    Object.values(this.modules).forEach(mod => moduleMap.set(mod.id, mod));
+    const allModules = Array.from(moduleMap.values());
+    
+    console.log(`Updating dashboard for ${allModules.length} modules:`, allModules.map(m => m.id));
     
     for (const mod of allModules) {
       const entries = await db.entries.where('moduleId').equals(mod.id).toArray();
       const dueEntries = entries.filter(e => new Date(e.nextReview) <= new Date());
       const reviewedEntries = entries.filter(e => e.srsLevel > 0);
+      
+      const progress = entries.length > 0 ? Math.round((reviewedEntries.length / entries.length) * 100) : 0;
+      
+      console.log(`Module ${mod.id}: ${entries.length} entries, ${dueEntries.length} due, ${reviewedEntries.length} reviewed, ${progress}% progress`);
       
       // 更新导航栏统计
       const navCountEl = document.getElementById(`${mod.id}-count`);
@@ -570,8 +579,6 @@ ${placeholderText}`;
       
       if (entriesEl) entriesEl.textContent = entries.length;
       if (dueEl) dueEl.textContent = dueEntries.length;
-      
-      const progress = entries.length > 0 ? Math.round((reviewedEntries.length / entries.length) * 100) : 0;
       if (progressEl) progressEl.textContent = `${progress}%`;
       if (barEl) barEl.style.width = `${progress}%`;
     }
@@ -4645,8 +4652,9 @@ ${wordsList}
     this.loadDashboard();
   },
   
-  exitReview() {
-    if (confirm('确定要退出复习吗？进度将不会保存。')) {
+  async exitReview() {
+    const confirmed = await this.confirmDialog('确定要退出复习吗？进度将不会保存。');
+    if (confirmed) {
       this.stopStudyTimer(); // 停止计时（不保存）
       this.loadDashboard();
     }
