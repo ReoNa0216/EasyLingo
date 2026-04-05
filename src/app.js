@@ -388,7 +388,7 @@ const app = {
           <p class="text-sm text-primary-500 mb-3">${mod.language}</p>
           <div class="flex items-center justify-between text-sm">
             <span class="text-primary-600"><span id="${mod.id}-entries">0</span> 条目</span>
-            <span class="text-accent-600"><span id="${mod.id}-due">0</span> 待复习</span>
+            <span class="text-accent-600"><span id="${mod.id}-due">0</span> 到期未复习</span>
           </div>
           <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
             <div id="${mod.id}-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>
@@ -6933,7 +6933,7 @@ Requirements:
         <p class="text-sm text-primary-500 mb-3">${mod.language}</p>
         <div class="flex items-center justify-between text-sm">
           <span class="text-primary-600"><span id="${mod.id}-entries">0</span> 条目</span>
-          <span class="text-accent-600"><span id="${mod.id}-due">0</span> 待复习</span>
+          <span class="text-accent-600"><span id="${mod.id}-due">0</span> 到期未复习</span>
         </div>
         <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
           <div id="${mod.id}-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>
