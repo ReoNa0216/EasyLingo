@@ -6463,53 +6463,155 @@ Requirements:
   },
   
   // Data Export/Import
+  // 显示进度对话框
+  showProgressDialog(message) {
+    const modal = document.createElement('div');
+    modal.id = 'progress-modal';
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 text-center">
+        <div class="mb-4">
+          <div class="w-12 h-12 border-4 border-primary-200 border-t-accent-500 rounded-full animate-spin mx-auto"></div>
+        </div>
+        <h3 class="text-lg font-bold mb-2">${message}</h3>
+        <p class="text-primary-500 text-sm">请稍候...</p>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    return modal;
+  },
+  
+  // 关闭进度对话框
+  closeProgressDialog() {
+    const modal = document.getElementById('progress-modal');
+    if (modal) modal.remove();
+  },
+  
   async exportData() {
-    const data = {
-      modules: await db.modules.toArray(),
-      materials: await db.materials.toArray(),
-      cards: await db.cards.toArray(),
-      tests: await db.tests.toArray(),
-      records: await db.records.toArray(),
-      settings: await db.settings.toArray(),
-      exportDate: new Date().toISOString()
-    };
+    // 检查 Tauri API 是否可用
+    if (!window.__TAURI__ || !window.__TAURI__.dialog) {
+      await this.alertDialog('导出功能需要 Tauri 桌面环境，当前不可用');
+      return;
+    }
     
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `polylingo_backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      // 显示进度对话框
+      this.showProgressDialog('正在准备导出数据');
+      
+      // 收集数据
+      const data = {
+        modules: await db.modules.toArray(),
+        materials: await db.materials.toArray(),
+        entries: await db.entries.toArray(),
+        cards: await db.cards.toArray(),
+        tests: await db.tests.toArray(),
+        records: await db.records.toArray(),
+        settings: await db.settings.toArray(),
+        exportDate: new Date().toISOString(),
+        version: '2.0'
+      };
+      
+      const jsonContent = JSON.stringify(data, null, 2);
+      const defaultName = `EasyLingo_backup_${new Date().toISOString().split('T')[0]}.json`;
+      
+      this.closeProgressDialog();
+      
+      // 使用 Tauri dialog 选择保存路径
+      const savePath = await window.__TAURI__.dialog.save({
+        title: '导出学习数据',
+        defaultPath: defaultName,
+        filters: [{
+          name: 'JSON 文件',
+          extensions: ['json']
+        }]
+      });
+      
+      if (!savePath) {
+        // 用户取消了选择
+        return;
+      }
+      
+      // 显示导出进度
+      this.showProgressDialog('正在导出数据');
+      
+      // 使用 Tauri FS API 写入文件
+      const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
+      await invoke('write_file', {
+        path: savePath,
+        contents: jsonContent
+      });
+      
+      this.closeProgressDialog();
+      await this.alertDialog(`✅ 数据导出成功！\n保存路径: ${savePath}`);
+      
+    } catch (error) {
+      this.closeProgressDialog();
+      console.error('Export error:', error);
+      await this.alertDialog('❌ 导出失败: ' + error.message);
+    }
   },
   
   async importData(event) {
     const file = event.target.files[0];
     if (!file) return;
     
+    const confirmed = await this.confirmDialog('导入数据将覆盖现有所有数据，确定继续吗？');
+    if (!confirmed) {
+      // 重置文件输入
+      event.target.value = '';
+      return;
+    }
+    
+    // 显示进度对话框
+    this.showProgressDialog('正在导入数据');
+    
     try {
       const text = await file.text();
       const data = JSON.parse(text);
       
-      if (confirm('导入数据将覆盖现有数据，确定继续吗？')) {
-        await db.modules.clear();
-        await db.materials.clear();
-        await db.cards.clear();
-        await db.tests.clear();
-        await db.records.clear();
-        
-        if (data.modules) await db.modules.bulkPut(data.modules);
-        if (data.materials) await db.materials.bulkPut(data.materials);
-        if (data.cards) await db.cards.bulkPut(data.cards);
-        if (data.tests) await db.tests.bulkPut(data.tests);
-        if (data.records) await db.records.bulkPut(data.records);
-        if (data.settings) await db.settings.bulkPut(data.settings);
-        
-        alert('数据导入成功');
-        this.loadDashboard();
+      // 更新进度提示
+      const modal = document.getElementById('progress-modal');
+      if (modal) {
+        modal.querySelector('h3').textContent = '正在导入数据';
+        modal.querySelector('p').textContent = '正在清空旧数据...';
       }
+      
+      await db.modules.clear();
+      await db.materials.clear();
+      await db.entries.clear();
+      await db.cards.clear();
+      await db.tests.clear();
+      await db.records.clear();
+      await db.settings.clear();
+      
+      // 更新进度提示
+      if (modal) {
+        modal.querySelector('p').textContent = '正在写入新数据...';
+      }
+      
+      if (data.modules) await db.modules.bulkPut(data.modules);
+      if (data.materials) await db.materials.bulkPut(data.materials);
+      if (data.entries) await db.entries.bulkPut(data.entries);
+      if (data.cards) await db.cards.bulkPut(data.cards);
+      if (data.tests) await db.tests.bulkPut(data.tests);
+      if (data.records) await db.records.bulkPut(data.records);
+      if (data.settings) await db.settings.bulkPut(data.settings);
+      
+      this.closeProgressDialog();
+      await this.alertDialog('✅ 数据导入成功！');
+      
+      // 重置文件输入
+      event.target.value = '';
+      
+      // 重新加载页面数据
+      await this.loadDashboard();
+      await this.loadCustomModules();
+      
     } catch (error) {
-      alert('导入失败: ' + error.message);
+      this.closeProgressDialog();
+      console.error('Import error:', error);
+      await this.alertDialog('❌ 导入失败: ' + error.message);
+      event.target.value = '';
     }
   },
   

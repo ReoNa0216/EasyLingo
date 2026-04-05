@@ -244,13 +244,25 @@ fn extract_asahi(document: &scraper::Html) -> String {
     String::new()
 }
 
+/// 写入文件到指定路径
+#[tauri::command]
+async fn write_file(path: String, contents: String) -> Result<(), String> {
+    use std::fs;
+    use std::io::Write;
+    
+    let mut file = fs::File::create(&path).map_err(|e| format!("创建文件失败: {}", e))?;
+    file.write_all(contents.as_bytes()).map_err(|e| format!("写入文件失败: {}", e))?;
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             fetch_news_rss,
-            fetch_news_article
+            fetch_news_article,
+            write_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
