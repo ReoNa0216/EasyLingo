@@ -550,22 +550,30 @@ ${placeholderText}`;
     this.currentView = 'dashboard';
     this.currentModule = null; // 重置为混合模式
     
-    // Update module stats - 基于学习条目
-    for (const key in this.modules) {
-      const mod = this.modules[key];
-      
-      const materials = await db.materials.where('moduleId').equals(mod.id).toArray();
+    // Update module stats - 基于学习条目（包括默认模块和自定义模块）
+    const allModules = [...Object.values(this.modules), ...(await db.modules.toArray()).filter(m => m.isCustom)];
+    
+    for (const mod of allModules) {
       const entries = await db.entries.where('moduleId').equals(mod.id).toArray();
       const dueEntries = entries.filter(e => new Date(e.nextReview) <= new Date());
       const reviewedEntries = entries.filter(e => e.srsLevel > 0);
       
-      document.getElementById(`${mod.id}-count`).textContent = `${entries.length} 条目`;
-      document.getElementById(`${mod.id}-entries`).textContent = entries.length;
-      document.getElementById(`${mod.id}-due`).textContent = dueEntries.length;
+      // 更新导航栏统计
+      const navCountEl = document.getElementById(`${mod.id}-count`);
+      if (navCountEl) navCountEl.textContent = `${entries.length} 条目`;
+      
+      // 更新卡片统计
+      const entriesEl = document.getElementById(`${mod.id}-entries`);
+      const dueEl = document.getElementById(`${mod.id}-due`);
+      const progressEl = document.getElementById(`${mod.id}-progress`);
+      const barEl = document.getElementById(`${mod.id}-bar`);
+      
+      if (entriesEl) entriesEl.textContent = entries.length;
+      if (dueEl) dueEl.textContent = dueEntries.length;
       
       const progress = entries.length > 0 ? Math.round((reviewedEntries.length / entries.length) * 100) : 0;
-      document.getElementById(`${mod.id}-progress`).textContent = `${progress}%`;
-      document.getElementById(`${mod.id}-bar`).style.width = `${progress}%`;
+      if (progressEl) progressEl.textContent = `${progress}%`;
+      if (barEl) barEl.style.width = `${progress}%`;
     }
     
     // Update due count - show today's progress vs daily goal
@@ -582,7 +590,11 @@ ${placeholderText}`;
   },
   
   async loadRecentActivity() {
-    const records = await db.records.orderBy('createdAt').reverse().limit(10).toArray();
+    const records = await db.records
+      .filter(r => r.action !== 'review_detail') // 排除混合复习的详细记录
+      .reverse()
+      .limit(10)
+      .toArray();
     const container = document.getElementById('recent-activity');
     
     if (records.length === 0) {
@@ -4349,21 +4361,42 @@ ${wordsList}
     // 获取每日复习限制
     const settings = await db.settings.get('dailyLimit');
     const totalLimit = (settings && settings.value) || 20;
-    const perModuleLimit = Math.floor(totalLimit / selectedModules.length);
     
     const shuffle = arr => arr.sort(() => 0.5 - Math.random());
+    
+    // 按模块统计可用条目数
+    const moduleCounts = {};
+    selectedModules.forEach(mid => {
+      moduleCounts[mid] = allEntries.filter(e => e.moduleId === mid).length;
+    });
+    
+    // 计算有可用条目的模块数
+    const modulesWithEntries = selectedModules.filter(mid => moduleCounts[mid] > 0);
+    
+    if (modulesWithEntries.length === 0) {
+      await this.alertDialog('选中的语言当前没有需要复习的条目！');
+      return;
+    }
+    
+    // 按模块实际可用条目比例分配配额
+    const totalAvailable = allEntries.length;
     let selectedEntries = [];
     
-    selectedModules.forEach(moduleId => {
+    // 先尝试按比例分配
+    modulesWithEntries.forEach(moduleId => {
       const moduleEntries = allEntries.filter(e => e.moduleId === moduleId);
+      // 按可用条目比例分配配额（至少1个，如果有的话）
+      const ratio = moduleCounts[moduleId] / totalAvailable;
+      const moduleQuota = Math.max(1, Math.floor(totalLimit * ratio));
+      
       const words = moduleEntries.filter(e => e.type === 'word');
       const phrases = moduleEntries.filter(e => e.type === 'phrase');
       const sentences = moduleEntries.filter(e => e.type === 'sentence');
       
-      // 每个语言内部按类型分配
-      const wordLimit = Math.floor(perModuleLimit * 0.7);
-      const phraseLimit = Math.floor(perModuleLimit * 0.2);
-      const sentenceLimit = perModuleLimit - wordLimit - phraseLimit;
+      // 按类型比例选择，但不超过模块配额
+      const wordLimit = Math.min(words.length, Math.floor(moduleQuota * 0.7));
+      const phraseLimit = Math.min(phrases.length, Math.floor(moduleQuota * 0.2));
+      const sentenceLimit = Math.min(sentences.length, moduleQuota - wordLimit - phraseLimit);
       
       const selectedWords = shuffle([...words]).slice(0, wordLimit);
       const selectedPhrases = shuffle([...phrases]).slice(0, phraseLimit);
@@ -4372,7 +4405,17 @@ ${wordsList}
       selectedEntries.push(...selectedWords, ...selectedPhrases, ...selectedSentences);
     });
     
-    // 打乱顺序
+    // 如果总数不足totalLimit，从剩余条目中补充
+    const usedIds = new Set(selectedEntries.map(e => e.id));
+    const remainingEntries = allEntries.filter(e => !usedIds.has(e.id));
+    
+    if (selectedEntries.length < totalLimit && remainingEntries.length > 0) {
+      const need = totalLimit - selectedEntries.length;
+      const supplement = shuffle([...remainingEntries]).slice(0, need);
+      selectedEntries.push(...supplement);
+    }
+    
+    // 打乱顺序并限制总数
     this.reviewQueue = shuffle(selectedEntries).slice(0, totalLimit);
     
     await this.beginReviewSession();
