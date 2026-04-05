@@ -3934,56 +3934,11 @@ ${wordsList}
     const isEnglish = this.currentModule === 'english';
     const isJapanese = this.currentModule === 'japanese';
     
-    // 所有语言在添加单词时都显示词性选择
+    // 所有语言在添加单词时都显示词类型输入框
     const wordTypeField = type === 'word' ? `
       <div>
         <label class="block text-sm font-medium text-primary-700 mb-1">词的类型</label>
-        ${isGerman ? `
-        <select id="new-wordType" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
-          <option value="">请选择</option>
-          <option value="名词">名词</option>
-          <option value="动词">动词</option>
-          <option value="形容词">形容词</option>
-          <option value="副词">副词</option>
-          <option value="介词">介词</option>
-          <option value="连词">连词</option>
-          <option value="冠词">冠词</option>
-          <option value="代词">代词</option>
-          <option value="数词">数词</option>
-          <option value="感叹词">感叹词</option>
-        </select>
-        ` : isEnglish ? `
-        <select id="new-wordType" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
-          <option value="">请选择</option>
-          <option value="名词">名词</option>
-          <option value="动词">动词</option>
-          <option value="形容词">形容词</option>
-          <option value="副词">副词</option>
-          <option value="介词">介词</option>
-          <option value="连词">连词</option>
-          <option value="冠词">冠词</option>
-          <option value="代词">代词</option>
-          <option value="数词">数词</option>
-          <option value="感叹词">感叹词</option>
-        </select>
-        ` : isJapanese ? `
-        <select id="new-wordType" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
-          <option value="">请选择</option>
-          <option value="名词">名词</option>
-          <option value="动词·一类">动词·一类</option>
-          <option value="动词·二类">动词·二类</option>
-          <option value="动词·三类">动词·三类</option>
-          <option value="形容词·一类">形容词·一类</option>
-          <option value="形容词·二类">形容词·二类</option>
-          <option value="副词">副词</option>
-          <option value="助词">助词</option>
-          <option value="连词">连词</option>
-          <option value="代词">代词</option>
-          <option value="感叹词">感叹词</option>
-        </select>
-        ` : `
-        <input type="text" id="new-wordType" placeholder="如：名词、动词、形容词..." class="w-full px-3 py-2 border border-primary-200 rounded-lg">
-        `}
+        <input type="text" id="new-wordType" placeholder="${isJapanese ? '如：名词、动词·一类、形容词·一类...' : '如：名词、动词、形容词...'}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
       </div>
     ` : '';
     
