@@ -4720,15 +4720,28 @@ ${wordsList}
     // 为每个模块的条目分配题型，确保每个条目只用于一种题型
     const usedEntryIds = new Set(); // 记录已使用的条目ID
     
-    // 生成选择题 - 按语言平均分配
+    // 辅助函数：均匀分配题目数量
+    const distributeQuestions = (total, moduleCount) => {
+      const base = Math.floor(total / moduleCount);
+      const remainder = total % moduleCount;
+      // 前 remainder 个模块多分配一道题
+      const distribution = {};
+      for (let i = 0; i < moduleCount; i++) {
+        distribution[moduleIds[i]] = base + (i < remainder ? 1 : 0);
+      }
+      return distribution;
+    };
+    
+    // 生成选择题 - 按语言均匀分配
     if (typeCounts.choice > 0) {
-      const perModule = Math.ceil(typeCounts.choice / moduleIds.length);
+      const distribution = distributeQuestions(typeCounts.choice, moduleIds.length);
       for (const moduleId of moduleIds) {
+        const targetCount = distribution[moduleId];
         const moduleEntries = entriesByModule[moduleId].filter(e => !usedEntryIds.has(e.id));
         const shuffled = moduleEntries.sort(() => 0.5 - Math.random());
-        const selected = shuffled.slice(0, Math.min(perModule * 2, shuffled.length));
+        const selected = shuffled.slice(0, Math.min(targetCount * 2, shuffled.length));
         const questions = await this.generateQuestionsOfTypeForModule(
-          selected, Math.min(perModule, selected.length), 'choice', settings, moduleInfo[moduleId]
+          selected, Math.min(targetCount, selected.length), 'choice', settings, moduleInfo[moduleId]
         );
         // 标记已使用的条目
         selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
@@ -4736,30 +4749,32 @@ ${wordsList}
       }
     }
     
-    // 生成填空题 - 按语言平均分配（排除已用于选择题的条目）
+    // 生成填空题 - 按语言均匀分配（排除已用于选择题的条目）
     if (typeCounts.fill > 0) {
-      const perModule = Math.ceil(typeCounts.fill / moduleIds.length);
+      const distribution = distributeQuestions(typeCounts.fill, moduleIds.length);
       for (const moduleId of moduleIds) {
+        const targetCount = distribution[moduleId];
         const moduleEntries = entriesByModule[moduleId].filter(e => !usedEntryIds.has(e.id));
         const shuffled = moduleEntries.sort(() => 0.5 - Math.random());
-        const selected = shuffled.slice(0, Math.min(perModule * 2, shuffled.length));
+        const selected = shuffled.slice(0, Math.min(targetCount * 2, shuffled.length));
         const questions = await this.generateQuestionsOfTypeForModule(
-          selected, Math.min(perModule, selected.length), 'fill', settings, moduleInfo[moduleId]
+          selected, Math.min(targetCount, selected.length), 'fill', settings, moduleInfo[moduleId]
         );
         selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
         allQuestions.push(...questions);
       }
     }
     
-    // 生成翻译题 - 按语言平均分配（排除已用于其他题型的条目）
+    // 生成翻译题 - 按语言均匀分配（排除已用于其他题型的条目）
     if (typeCounts.translation > 0) {
-      const perModule = Math.ceil(typeCounts.translation / moduleIds.length);
+      const distribution = distributeQuestions(typeCounts.translation, moduleIds.length);
       for (const moduleId of moduleIds) {
+        const targetCount = distribution[moduleId];
         const moduleEntries = entriesByModule[moduleId].filter(e => !usedEntryIds.has(e.id));
         const shuffled = moduleEntries.sort(() => 0.5 - Math.random());
-        const selected = shuffled.slice(0, Math.min(perModule * 2, shuffled.length));
+        const selected = shuffled.slice(0, Math.min(targetCount * 2, shuffled.length));
         const questions = await this.generateQuestionsOfTypeForModule(
-          selected, Math.min(perModule, selected.length), 'translation', settings, moduleInfo[moduleId]
+          selected, Math.min(targetCount, selected.length), 'translation', settings, moduleInfo[moduleId]
         );
         selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
         allQuestions.push(...questions);
@@ -4767,11 +4782,7 @@ ${wordsList}
     }
     
     // 打乱题目顺序
-    const uniqueQuestions = allQuestions;
-    
-    // 打乱题目顺序，只返回所需数量
-    const totalNeeded = (typeCounts.choice || 0) + (typeCounts.fill || 0) + (typeCounts.translation || 0);
-    return uniqueQuestions.sort(() => 0.5 - Math.random()).slice(0, totalNeeded);
+    return allQuestions.sort(() => 0.5 - Math.random());
   },
   
   async generateQuestionsOfType(entries, count, type, settings, startIndex) {
@@ -4798,10 +4809,28 @@ ${wordsList}
     }
     
     try {
-      return await this.callAIForTestByType(selectedEntries, count, type, settings, moduleName);
+      const questions = await this.callAIForTestByType(selectedEntries, count, type, settings, moduleName);
+      
+      // 如果AI生成的题目数量不足，使用本地备用方案补充
+      if (questions.length < count && selectedEntries.length > questions.length) {
+        const remainingCount = count - questions.length;
+        const usedEntryIds = new Set(questions.map((q, idx) => selectedEntries[idx]?.id).filter(Boolean));
+        const remainingEntries = selectedEntries.filter(e => !usedEntryIds.has(e.id));
+        
+        if (remainingEntries.length > 0) {
+          console.log(`AI generated ${questions.length} questions, supplementing ${remainingCount} more from fallback`);
+          const fallbackQuestions = this.generateFallbackQuestionsByType(
+            remainingEntries, remainingCount, type, moduleName
+          );
+          questions.push(...fallbackQuestions);
+        }
+      }
+      
+      return questions;
     } catch (error) {
       console.warn(`AI generation failed for ${type} in ${moduleName}:`, error);
-      throw error;
+      // AI失败时使用本地备用方案
+      return this.generateFallbackQuestionsByType(selectedEntries, count, type, moduleName);
     }
   },
   
@@ -5251,10 +5280,11 @@ ${typePrompts[type]}
   },
   
   // 按类型生成测试题（无API时的回退方案）- 优先使用例句
-  generateFallbackQuestionsByType(entries, count, type) {
+  generateFallbackQuestionsByType(entries, count, type, moduleName = null) {
     const questions = [];
     const shuffled = entries.sort(() => 0.5 - Math.random());
-    const mod = this.modules[this.currentModule];
+    // 使用传入的 moduleName 或当前模块名称
+    const mod = moduleName ? { name: moduleName } : this.modules[this.currentModule];
     
     // 用于生成干扰选项的其他条目
     const getDistractors = (correctEntry, count = 3) => {
@@ -5309,8 +5339,8 @@ ${typePrompts[type]}
         const correctOption = options.find(o => o.correct);
         
         const questionText = cleanExample 
-          ? `例句: "${cleanExample}"\n\n"${entry.original}" 的意思是什么？`
-          : `"${entry.original}" 的中文意思是什么？`;
+          ? `例句: "${cleanExample}"\n\n请选择正确的${mod?.name || ''}翻译："${entry.original}" 的意思是什么？`
+          : `请选择正确的${mod?.name || ''}翻译："${entry.original}" 的中文意思是什么？`;
         questions.push({
           type: 'choice',
           question: questionText,
@@ -6821,11 +6851,12 @@ Requirements:
   
   async deleteModule(moduleId) {
     if (!(this.modules[moduleId] && this.modules[moduleId].isCustom)) {
-      alert('默认模块不能删除');
+      await this.alertDialog('默认模块不能删除');
       return;
     }
     
-    if (confirm(`确定要删除 ${this.modules[moduleId].name} 模块吗？该模块的所有语料和学习记录都会被删除。`)) {
+    const confirmed = await this.confirmDialog(`确定要删除 ${this.modules[moduleId].name} 模块吗？该模块的所有语料和学习记录都会被删除。`);
+    if (confirmed) {
       // Delete related data
       await db.modules.delete(moduleId);
       const materials = await db.materials.where('moduleId').equals(moduleId).toArray();
