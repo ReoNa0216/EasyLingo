@@ -73,8 +73,88 @@ const app = {
     english: { id: 'english', name: '英语', language: 'English', flag: 'gb', code: 'EN' }
   },
   
+  // 多语言冠词配置（用于答案标准化）
+  languageArticles: {
+    // 德语冠词
+    german: ['der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einen', 'einem', 'eines', 'einer'],
+    // 法语冠词
+    french: ['le', 'la', 'les', 'l\'', 'un', 'une', 'des', 'du', 'de la', 'de l\'', 'aux'],
+    // 英语冠词
+    english: ['the', 'a', 'an'],
+    // 西班牙语冠词
+    spanish: ['el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'al', 'del'],
+    // 意大利语冠词
+    italian: ['il', 'lo', 'la', 'l\'', 'i', 'gli', 'le', 'un', 'uno', 'una', 'un\'', 'dei', 'degli', 'delle'],
+    // 葡萄牙语冠词
+    portuguese: ['o', 'a', 'os', 'as', 'um', 'uma', 'uns', 'umas', 'do', 'da', 'dos', 'das', 'no', 'na', 'nos', 'nas'],
+    // 荷兰语冠词
+    dutch: ['de', 'het', 'een', 'der', 'des', 'den'],
+    // 俄语：无冠词
+    russian: [],
+    // 日语：无冠词
+    japanese: [],
+    // 韩语：无冠词
+    korean: [],
+    // 中文：无冠词
+    chinese: []
+  },
+  
   // SRS Intervals (in days) - SM-2 Algorithm
   srsIntervals: [1, 3, 7, 14, 30, 90, 180],
+  
+  // 标准化答案（去掉冠词、统一大小写）
+  normalizeAnswer(answer, language) {
+    if (!answer || typeof answer !== 'string') return '';
+    
+    // 获取当前模块的语言
+    const mod = this.modules[this.currentModule];
+    let lang = language || mod?.language || '';
+    
+    // 标准化语言代码（小写，处理可能的变体）
+    lang = lang.toLowerCase().trim();
+    
+    // 处理语言名称到代码的映射
+    const langMap = {
+      'german': 'german', 'deutsch': 'german', 'de': 'german',
+      'french': 'french', 'français': 'french', 'fr': 'french',
+      'english': 'english', 'englisch': 'english', 'en': 'english',
+      'spanish': 'spanish', 'español': 'spanish', 'es': 'spanish',
+      'italian': 'italian', 'italiano': 'italian', 'it': 'italian',
+      'portuguese': 'portuguese', 'português': 'portuguese', 'pt': 'portuguese',
+      'dutch': 'dutch', 'nederlands': 'dutch', 'nl': 'dutch',
+      'russian': 'russian', 'русский': 'russian', 'ru': 'russian',
+      'japanese': 'japanese', '日本語': 'japanese', 'ja': 'japanese', 'jp': 'japanese',
+      'korean': 'korean', '한국어': 'korean', 'ko': 'korean', 'kr': 'korean',
+      'chinese': 'chinese', '中文': 'chinese', 'zh': 'chinese', 'cn': 'chinese'
+    };
+    
+    lang = langMap[lang] || lang;
+    
+    // 转换为小写并trim
+    let normalized = answer.toLowerCase().trim();
+    
+    // 去掉该语言的冠词
+    const articles = this.languageArticles[lang] || [];
+    for (const article of articles) {
+      // 去掉开头的冠词+空格
+      if (normalized.startsWith(article + ' ')) {
+        normalized = normalized.substring(article.length).trim();
+        break; // 只去掉第一个冠词
+      }
+    }
+    
+    return normalized;
+  },
+  
+  // 比较两个答案是否等价（考虑冠词差异）
+  isAnswerEquivalent(userAnswer, correctAnswer, language) {
+    if (!userAnswer || !correctAnswer) return false;
+    
+    const normalizedUser = this.normalizeAnswer(userAnswer, language);
+    const normalizedCorrect = this.normalizeAnswer(correctAnswer, language);
+    
+    return normalizedUser === normalizedCorrect;
+  },
   
   // 使用 Tauri Dialog API 的异步确认对话框（解决 WebView confirm 不阻塞的问题）
   async confirmDialog(message) {
@@ -5471,10 +5551,13 @@ Requirements:
       let isCorrect = false;
       if (q.type === 'translation') {
         isCorrect = false; // 翻译题默认不计分，由用户自行评估
+      } else if (q.type === 'choice') {
+        isCorrect = userAnswer === q.answer[0];
+        if (isCorrect) correct++;
+        scorableCount++;
       } else {
-        isCorrect = q.type === 'choice' ? 
-          userAnswer === q.answer[0] : 
-          userAnswer.toLowerCase().trim() === q.answer.toLowerCase().trim();
+        // 填空题：使用标准化比较（考虑冠词差异）
+        isCorrect = this.isAnswerEquivalent(userAnswer, q.answer);
         if (isCorrect) correct++;
         scorableCount++;
       }
