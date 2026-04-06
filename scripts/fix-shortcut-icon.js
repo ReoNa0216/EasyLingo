@@ -14,6 +14,7 @@ const NSIS_DIR = path.join(RELEASE_DIR, 'nsis', 'x64');
 const INSTALLER_NSI = path.join(NSIS_DIR, 'installer.nsi');
 const ICON_SOURCE = path.join(PROJECT_ROOT, 'src-tauri', 'icons', 'icon.ico');
 const ICON_DEST = path.join(RELEASE_DIR, 'icon.ico');
+const ICON_IN_NSIS_DIR = path.join(NSIS_DIR, 'icon.ico');
 
 function log(message) {
   console.log(`[fix-shortcut-icon] ${message}`);
@@ -51,9 +52,9 @@ function fixNsisScript() {
     }
   }
 
-  // 2. 添加 icon.ico 复制指令（File命令从工作目录解析，使用相对于项目根目录的路径）
+  // 2. 添加 icon.ico 复制指令（图标放在 NSIS 目录下，使用简单文件名）
   const copyIconPattern = /(File "\$\{MAINBINARYSRCPATH\}")/;
-  const copyIconReplacement = '$1\n\n  ; Copy icon file for shortcuts\n  File "src-tauri\\target\\release\\icon.ico"';
+  const copyIconReplacement = '$1\n\n  ; Copy icon file for shortcuts\n  File "icon.ico"';
   
   if (copyIconPattern.test(content) && !content.includes('Copy icon file for shortcuts')) {
     content = content.replace(copyIconPattern, copyIconReplacement);
@@ -85,8 +86,14 @@ function copyIconFile() {
     return false;
   }
 
+  // 复制到 release 目录
   fs.copyFileSync(ICON_SOURCE, ICON_DEST);
   log(`✅ 图标已复制到: ${ICON_DEST}`);
+
+  // 同时复制到 NSIS 脚本目录（这样 File 命令可以直接引用）
+  fs.copyFileSync(ICON_SOURCE, ICON_IN_NSIS_DIR);
+  log(`✅ 图标已复制到 NSIS 目录: ${ICON_IN_NSIS_DIR}`);
+
   return true;
 }
 
