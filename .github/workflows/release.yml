@@ -9,6 +9,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -64,7 +67,11 @@ jobs:
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v4
+        
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         
@@ -75,7 +82,7 @@ jobs:
             EasyLingo-Windows/*.exe
             EasyLingo-macOS/*.dmg
             API配置说明.pdf
-            prompt-examples/**.md
+            prompt-examples/*.md
           draft: true
           prerelease: false
         env:
