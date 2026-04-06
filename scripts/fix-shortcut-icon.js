@@ -51,9 +51,9 @@ function fixNsisScript() {
     }
   }
 
-  // 2. 添加 icon.ico 复制指令
+  // 2. 添加 icon.ico 复制指令（NSIS脚本在 nsis/x64/ 目录，需要返回3级到 release 目录）
   const copyIconPattern = /(File "\$\{MAINBINARYSRCPATH\}")/;
-  const copyIconReplacement = '$1\n\n  ; Copy icon file for shortcuts\n  File "${ICON_DEST}"';
+  const copyIconReplacement = '$1\n\n  ; Copy icon file for shortcuts\n  File "..\\..\\..\\icon.ico"';
   
   if (copyIconPattern.test(content) && !content.includes('Copy icon file for shortcuts')) {
     content = content.replace(copyIconPattern, copyIconReplacement);
