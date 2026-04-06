@@ -82,7 +82,7 @@ jobs:
             EasyLingo-Windows/*.exe
             EasyLingo-macOS/*.dmg
             API配置说明.pdf
-            prompt-examples/*.md
+            prompt-examples/*
           draft: true
           prerelease: false
         env:
