@@ -39,6 +39,14 @@
     "copyright": "Copyright (c) 2024 ReoNa0216",
     "category": "Education",
     "shortDescription": "AI-powered language learning app",
-    "longDescription": "EasyLingo is a desktop language learning application with AI extraction and SRS review system."
+    "longDescription": "EasyLingo is a desktop language learning application with AI extraction and SRS review system.",
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "both",
+        "displayLanguageSelector": false,
+        "languages": ["SimpChinese"]
+      }
+    }
   }
 }

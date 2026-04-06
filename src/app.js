@@ -6090,13 +6090,24 @@ Requirements:
       `<option value="${m.id}">${m.name}</option>`
     ).join('');
     
-    const selects = ['trend-module-select', 'test-score-module-select', 'review-count-module-select'];
-    selects.forEach(id => {
+    // 学习趋势和复习统计下拉菜单（不包含混合测试选项）
+    const trendSelects = ['trend-module-select', 'review-count-module-select'];
+    trendSelects.forEach(id => {
       const select = document.getElementById(id);
       if (select) {
         select.innerHTML = '<option value="all">全部模块</option>' + moduleOptions;
       }
     });
+    
+    // 测试成绩趋势下拉菜单（包含混合测试选项）
+    const testSelect = document.getElementById('test-score-module-select');
+    if (testSelect) {
+      testSelect.innerHTML = `
+        <option value="all">全部测试</option>
+        <option value="mixed">混合测试</option>
+        ${moduleOptions}
+      `;
+    }
   },
   
   async renderCharts(records, tests) {
@@ -6116,6 +6127,10 @@ Requirements:
   // Get filtered tests by module
   getFilteredTests(tests, moduleId) {
     if (moduleId === 'all' || !moduleId) return tests;
+    if (moduleId === 'mixed') {
+      // 混合测试：moduleId 为 null 或 undefined
+      return tests.filter(t => t.moduleId === null || t.moduleId === undefined);
+    }
     return tests.filter(t => t.moduleId === moduleId);
   },
   
@@ -6450,7 +6465,7 @@ Requirements:
     ]);
     
     // 移除apiUrl末尾的斜杠，避免双斜杠问题
-    let apiUrlValue = (apiUrl && apiUrl.value) || 'https://api.openai.com/v1';
+    let apiUrlValue = (apiUrl && apiUrl.value) || 'https://open.bigmodel.cn/api/paas/v4';
     apiUrlValue = apiUrlValue.replace(/\/$/, '');
     
     return {
