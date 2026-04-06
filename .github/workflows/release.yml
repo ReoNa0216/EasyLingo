@@ -75,6 +75,12 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         
+      - name: Zip prompt-examples
+        run: |
+          cd prompt-examples
+          zip -r ../prompt-examples.zip .
+          cd ..
+          
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -82,7 +88,7 @@ jobs:
             EasyLingo-Windows/*.exe
             EasyLingo-macOS/*.dmg
             API配置说明.pdf
-            prompt-examples/**
+            prompt-examples.zip
           draft: true
           prerelease: false
         env:
