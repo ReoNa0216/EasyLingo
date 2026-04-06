@@ -6,7 +6,8 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build": "tauri build",
+    "build:win": "tauri build && node scripts/fix-shortcut-icon.js"
   },
   "keywords": ["language-learning", "srs", "ai", "desktop-app"],
   "author": "ReoNa0216",
