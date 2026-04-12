@@ -325,7 +325,11 @@ class DatabaseAdapter {
   }
 
   async putEntry(entry) {
-    if (entry.id) {
+    // v1.1.0 的 id 是字符串，v2.0 的 id 是 INTEGER AUTOINCREMENT
+    // 如果 id 是字符串（旧版本数据），忽略它让数据库生成新 id
+    const hasNumericId = entry.id && typeof entry.id === 'number';
+    
+    if (hasNumericId) {
       const { id, ...rest } = entry;
       const cols = Object.keys(rest);
       const placeholders = cols.map(() => '?').join(',');
@@ -335,9 +339,11 @@ class DatabaseAdapter {
         [id, ...values]
       );
     } else {
-      const cols = Object.keys(entry);
+      // 移除字符串 id（如果有），让数据库自动生成
+      const { id, ...dataWithoutId } = entry;
+      const cols = Object.keys(dataWithoutId);
       const placeholders = cols.map(() => '?').join(',');
-      const values = Object.values(entry);
+      const values = Object.values(dataWithoutId);
       const result = await this.execute(
         `INSERT INTO entries (${cols.join(',')}) VALUES (${placeholders})`,
         values
