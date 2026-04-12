@@ -52,6 +52,10 @@ class DatabaseAdapter {
     });
     
     await this.createTables();
+    
+    // 迁移：添加缺失的列
+    await this.migrateTables();
+    
     console.log('[DB] SQLite 初始化完成:', this.dbPath || 'default location');
   }
 
@@ -108,6 +112,7 @@ class DatabaseAdapter {
         original TEXT,
         translation TEXT,
         type TEXT,
+        wordType TEXT,
         level INTEGER,
         gender TEXT,
         tags TEXT,
@@ -162,6 +167,23 @@ class DatabaseAdapter {
         value TEXT
       )
     `);
+  }
+
+  // 迁移：添加缺失的列
+  async migrateTables() {
+    try {
+      // 检查 entries 表是否有 wordType 列
+      const tableInfo = await this.select("PRAGMA table_info(entries)");
+      const hasWordType = tableInfo.some(col => col.name === 'wordType');
+      
+      if (!hasWordType) {
+        console.log('[DB] Migrating: adding wordType column to entries table');
+        await this.execute("ALTER TABLE entries ADD COLUMN wordType TEXT");
+        console.log('[DB] Migration complete');
+      }
+    } catch (e) {
+      console.warn('[DB] Migration error:', e);
+    }
   }
 
   // modules
