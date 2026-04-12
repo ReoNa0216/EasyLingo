@@ -157,11 +157,18 @@ const app = {
   },
   
   // 使用 Tauri Dialog API 的异步确认对话框（解决 WebView confirm 不阻塞的问题）
+  getInvoke() {
+    if (!window.__TAURI__) return null;
+    return window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
+  },
+
   async confirmDialog(message) {
     // 优先使用 Tauri Dialog API
-    if (window.__TAURI__ && window.__TAURI__.dialog) {
+    const invoke = this.getInvoke();
+    if (invoke) {
       try {
-        const result = await window.__TAURI__.dialog.ask(message, {
+        const result = await invoke('plugin:dialog|ask', {
+          message: message,
           title: 'EasyLingo',
           type: 'warning'
         });
@@ -176,9 +183,11 @@ const app = {
   
   // 异步 alert（统一风格）
   async alertDialog(message) {
-    if (window.__TAURI__ && window.__TAURI__.dialog) {
+    const invoke = this.getInvoke();
+    if (invoke) {
       try {
-        await window.__TAURI__.dialog.message(message, {
+        await invoke('plugin:dialog|message', {
+          message: message,
           title: 'EasyLingo',
           type: 'info'
         });
@@ -209,7 +218,9 @@ const app = {
       this.cleanupDuplicateElements();
       
       // 初始化 SQLite 数据库
+      console.log('[App] Initializing database...');
       await dbAdapter.init();
+      console.log('[App] Database initialized');
       
       await this.initModules();
       await this.loadCustomModules();
@@ -227,11 +238,22 @@ const app = {
     } catch (error) {
       console.error('Init error:', error);
       
+      // 重置初始化标志，允许重试
+      this.isInitialized = false;
+      window.appInitialized = false;
+      
+      // 显示错误信息
+      alert('应用初始化失败: ' + error.message + '\n\n请刷新页面重试。');
+      
       // 检测数据库升级错误
       if (error.name === 'UpgradeError' || (error.message && (error.message.includes('primary key') || error.message.includes('changing primary key')))) {
         const shouldReset = confirm('检测到数据库结构需要更新。\n\n点击"确定"清空本地数据库并刷新页面（如有重要数据请先备份），或点击"取消"手动刷新。');
         if (shouldReset) {
-          await dbAdapter.clearAll();
+          try {
+            await dbAdapter.clearAll();
+          } catch (e) {
+            console.error('Clear failed:', e);
+          }
           location.reload();
           return;
         }
@@ -405,23 +427,16 @@ const app = {
   // Desktop News Adapter (EasyLingo)
   async desktopFetchRSS(source, category) {
     // 检查 Tauri API 是否可用
-    if (!window.__TAURI__) {
-      throw new Error('Tauri API not available. Please ensure you are running in Tauri desktop app.');
-    }
-    // Tauri v2: window.__TAURI__.core.invoke
-    const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
+    const invoke = this.getInvoke();
     if (!invoke) {
-      throw new Error('Tauri invoke function not found');
+      throw new Error('Tauri API not available. Please ensure you are running in Tauri desktop app.');
     }
     return await invoke('fetch_news_rss', { source, category: category || '' });
   },
   async desktopFetchArticle(source, url, category) {
-    if (!window.__TAURI__) {
-      throw new Error('Tauri API not available. Please ensure you are running in Tauri desktop app.');
-    }
-    const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
+    const invoke = this.getInvoke();
     if (!invoke) {
-      throw new Error('Tauri invoke function not found');
+      throw new Error('Tauri API not available. Please ensure you are running in Tauri desktop app.');
     }
     return await invoke('fetch_news_article', { source, url, category: category || '' });
   },
@@ -6442,7 +6457,8 @@ Requirements:
   // 选择数据存储路径
   async selectDataPath() {
     try {
-      const selected = await window.__TAURI__.dialog.open({
+      const invoke = this.getInvoke();
+      const selected = await invoke('plugin:dialog|open', {
         directory: true,
         multiple: false,
         title: '选择数据存储位置'
@@ -6558,7 +6574,7 @@ Requirements:
   
   async exportData() {
     // 检查 Tauri API 是否可用
-    if (!window.__TAURI__ || !window.__TAURI__.dialog) {
+    if (!window.__TAURI__) {
       await this.alertDialog('导出功能需要 Tauri 桌面环境，当前不可用');
       return;
     }
@@ -6591,7 +6607,8 @@ Requirements:
       this.closeProgressDialog();
       
       // 使用 Tauri dialog 选择保存路径
-      const savePath = await window.__TAURI__.dialog.save({
+      const invoke = this.getInvoke();
+      const savePath = await invoke('plugin:dialog|save', {
         title: '导出学习数据',
         defaultPath: defaultName,
         filters: [{
@@ -6609,7 +6626,6 @@ Requirements:
       this.showProgressDialog('正在导出数据');
       
       // 使用 Tauri FS API 写入文件
-      const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
       await invoke('write_file', {
         path: savePath,
         contents: jsonContent
@@ -6626,15 +6642,23 @@ Requirements:
   },
   
   async importData(event) {
+    console.log('[Import] 开始导入...');
     const file = event.target.files[0];
-    if (!file) return;
+    if (!file) {
+      console.log('[Import] 没有选择文件');
+      return;
+    }
+    console.log('[Import] 选择的文件:', file.name);
     
     // 确保数据库已初始化
     if (!dbAdapter.db) {
+      console.log('[Import] 初始化数据库...');
       await dbAdapter.init();
     }
     
+    console.log('[Import] 显示确认对话框...');
     const confirmed = await this.confirmDialog('导入数据将覆盖现有所有数据，确定继续吗？');
+    console.log('[Import] 用户确认:', confirmed);
     if (!confirmed) {
       // 重置文件输入
       event.target.value = '';
@@ -6645,8 +6669,13 @@ Requirements:
     this.showProgressDialog('正在导入数据');
     
     try {
+      console.log('[Import] 读取文件内容...');
       const text = await file.text();
+      console.log('[Import] 文件大小:', text.length, '字符');
+      
+      console.log('[Import] 解析 JSON...');
       const data = JSON.parse(text);
+      console.log('[Import] JSON 解析成功，包含:', Object.keys(data));
       
       // 更新进度提示
       const modal = document.getElementById('progress-modal');
@@ -6655,22 +6684,48 @@ Requirements:
         modal.querySelector('p').textContent = '正在清空旧数据...';
       }
       
+      console.log('[Import] 清空旧数据...');
       await dbAdapter.clearAll();
+      console.log('[Import] 清空完成');
       
       // 更新进度提示
       if (modal) {
         modal.querySelector('p').textContent = '正在写入新数据...';
       }
       
-      if (data.modules) await dbAdapter.bulkPut("modules", data.modules);
-      if (data.materials) await dbAdapter.bulkPut("materials", data.materials);
-      if (data.entries) await dbAdapter.bulkPut("entries", data.entries);
-      if (data.cards) await dbAdapter.bulkPut("cards", data.cards);
-      if (data.tests) await dbAdapter.bulkPut("tests", data.tests);
-      if (data.records) await dbAdapter.bulkPut("records", data.records);
-      if (data.settings) await dbAdapter.bulkPut("settings", data.settings);
+      console.log('[Import] 开始写入数据...');
+      if (data.modules) {
+        console.log('[Import] 写入 modules:', data.modules.length);
+        await dbAdapter.bulkPut("modules", data.modules);
+      }
+      if (data.materials) {
+        console.log('[Import] 写入 materials:', data.materials.length);
+        await dbAdapter.bulkPut("materials", data.materials);
+      }
+      if (data.entries) {
+        console.log('[Import] 写入 entries:', data.entries.length);
+        await dbAdapter.bulkPut("entries", data.entries);
+      }
+      if (data.cards) {
+        console.log('[Import] 写入 cards:', data.cards.length);
+        await dbAdapter.bulkPut("cards", data.cards);
+      }
+      if (data.tests) {
+        console.log('[Import] 写入 tests:', data.tests.length);
+        await dbAdapter.bulkPut("tests", data.tests);
+      }
+      if (data.records) {
+        console.log('[Import] 写入 records:', data.records.length);
+        await dbAdapter.bulkPut("records", data.records);
+      }
+      if (data.settings) {
+        console.log('[Import] 写入 settings:', data.settings.length);
+        await dbAdapter.bulkPut("settings", data.settings);
+      }
       
+      console.log('[Import] 写入完成，关闭对话框...');
       this.closeProgressDialog();
+      console.log('[Import] 显示成功提示...');
       await this.alertDialog('✅ 数据导入成功！');
       
       // 重置文件输入
@@ -6681,11 +6736,13 @@ Requirements:
       await this.loadCustomModules();
       
     } catch (error) {
+      console.error('[Import] 错误:', error);
+      console.error('[Import] 错误堆栈:', error.stack);
       this.closeProgressDialog();
-      console.error('Import error:', error);
       await this.alertDialog('❌ 导入失败: ' + error.message);
       event.target.value = '';
     }
+    console.log('[Import] 导入流程结束');
   },
   
   // Utility Functions

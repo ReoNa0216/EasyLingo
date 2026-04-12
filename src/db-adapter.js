@@ -1,67 +1,80 @@
 /**
  * SQLite 数据库适配器
- * 封装 Tauri SQL Plugin，提供与 IndexedDB 类似的 API
+ * 使用 Tauri invoke 直接调用 Rust 后端 SQL 命令
  */
 
 class DatabaseAdapter {
   constructor() {
-    this.db = null;
     this.dbPath = null;
     this.customPath = null;
+    this.invoke = null;
+  }
+
+  getInvoke() {
+    if (!this.invoke) {
+      if (typeof window.__TAURI__ === 'undefined') {
+        throw new Error('Tauri API not available');
+      }
+      this.invoke = window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
+    }
+    return this.invoke;
   }
 
   async init() {
+    console.log('[DB] Initializing...');
+    
+    // 等待 Tauri 准备好
+    let retries = 0;
+    while (typeof window.__TAURI__ === 'undefined' && retries < 30) {
+      await new Promise(r => setTimeout(r, 100));
+      retries++;
+    }
+    
+    if (typeof window.__TAURI__ === 'undefined') {
+      throw new Error('Tauri API not available after waiting');
+    }
+    
     // 先尝试从 localStorage 读取自定义路径
     const savedPath = localStorage.getItem('polylingo_db_path');
     
     if (savedPath) {
-      // 使用用户指定的路径
       this.customPath = savedPath;
-      this.dbPath = `sqlite:${savedPath}/polylingo.db`;
+      this.dbPath = `${savedPath}/polylingo.db`;
     } else {
-      // 使用默认路径
-      this.dbPath = 'sqlite:polylingo.db';
+      // 使用默认路径 - AppData 目录
+      this.dbPath = null; // null 表示使用默认路径
     }
     
-    const { Database } = window.__TAURI__.sql;
-    this.db = await Database.load(this.dbPath);
+    // 初始化数据库连接
+    const invoke = this.getInvoke();
+    await invoke('plugin:sql|load', { 
+      db: this.dbPath || 'sqlite:polylingo.db'
+    });
+    
     await this.createTables();
-    console.log('[DB] SQLite 初始化完成:', this.dbPath);
+    console.log('[DB] SQLite 初始化完成:', this.dbPath || 'default location');
   }
 
-  // 设置自定义数据路径
-  async setCustomPath(path) {
-    // 确保目录存在
-    await window.__TAURI__.core.invoke('ensure_dir', { path });
-    
-    // 保存路径
-    this.customPath = path;
-    localStorage.setItem('polylingo_db_path', path);
-    
-    return true;
+  async execute(sql, params = []) {
+    const invoke = this.getInvoke();
+    return await invoke('plugin:sql|execute', { 
+      db: this.dbPath || 'sqlite:polylingo.db',
+      query: sql,
+      values: params
+    });
   }
 
-  // 获取当前数据路径
-  getCurrentPath() {
-    if (this.customPath) {
-      return this.customPath;
-    }
-    return '默认位置 (AppData)';
-  }
-
-  // 重置为默认路径
-  resetToDefault() {
-    localStorage.removeItem('polylingo_db_path');
-    this.customPath = null;
-  }
-
-  // 检查是否需要重启
-  needsRestart() {
-    return true; // 更改路径后需要重启
+  async select(sql, params = []) {
+    const invoke = this.getInvoke();
+    return await invoke('plugin:sql|select', { 
+      db: this.dbPath || 'sqlite:polylingo.db',
+      query: sql,
+      values: params
+    });
   }
 
   async createTables() {
-    await this.db.execute(`
+    await this.execute(`
       CREATE TABLE IF NOT EXISTS modules (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -74,7 +87,7 @@ class DatabaseAdapter {
       )
     `);
 
-    await this.db.execute(`
+    await this.execute(`
       CREATE TABLE IF NOT EXISTS materials (
         id TEXT PRIMARY KEY,
         moduleId TEXT,
@@ -87,7 +100,7 @@ class DatabaseAdapter {
       )
     `);
 
-    await this.db.execute(`
+    await this.execute(`
       CREATE TABLE IF NOT EXISTS entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         materialId TEXT,
@@ -108,7 +121,7 @@ class DatabaseAdapter {
       )
     `);
 
-    await this.db.execute(`
+    await this.execute(`
       CREATE TABLE IF NOT EXISTS cards (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entryId INTEGER,
@@ -120,7 +133,7 @@ class DatabaseAdapter {
       )
     `);
 
-    await this.db.execute(`
+    await this.execute(`
       CREATE TABLE IF NOT EXISTS tests (
         id TEXT PRIMARY KEY,
         moduleId TEXT,
@@ -131,7 +144,7 @@ class DatabaseAdapter {
       )
     `);
 
-    await this.db.execute(`
+    await this.execute(`
       CREATE TABLE IF NOT EXISTS records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         moduleId TEXT,
@@ -143,7 +156,7 @@ class DatabaseAdapter {
       )
     `);
 
-    await this.db.execute(`
+    await this.execute(`
       CREATE TABLE IF NOT EXISTS settings (
         id TEXT PRIMARY KEY,
         value TEXT
@@ -153,24 +166,24 @@ class DatabaseAdapter {
 
   // modules
   async getModule(id) {
-    const rows = await this.db.select("SELECT * FROM modules WHERE id = ?", [id]);
+    const rows = await this.select("SELECT * FROM modules WHERE id = ?", [id]);
     return rows[0] || null;
   }
 
   async getAllModules() {
-    return await this.db.select("SELECT * FROM modules");
+    return await this.select("SELECT * FROM modules");
   }
 
   async putModule(module) {
     const { id, name, language, code, flag, customPrompt, isDefault, createdAt } = module;
-    await this.db.execute(
+    await this.execute(
       "INSERT OR REPLACE INTO modules (id, name, language, code, flag, customPrompt, isDefault, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [id, name, language, code, flag, customPrompt, isDefault ? 1 : 0, createdAt]
     );
   }
 
   async deleteModule(id) {
-    await this.db.execute("DELETE FROM modules WHERE id = ?", [id]);
+    await this.execute("DELETE FROM modules WHERE id = ?", [id]);
   }
 
   async updateModule(id, changes) {
@@ -181,22 +194,22 @@ class DatabaseAdapter {
       values.push(value);
     }
     values.push(id);
-    await this.db.execute(`UPDATE modules SET ${sets.join(', ')} WHERE id = ?`, values);
+    await this.execute(`UPDATE modules SET ${sets.join(', ')} WHERE id = ?`, values);
   }
 
   // materials
   async getMaterial(id) {
-    const rows = await this.db.select("SELECT * FROM materials WHERE id = ?", [id]);
+    const rows = await this.select("SELECT * FROM materials WHERE id = ?", [id]);
     return rows[0] || null;
   }
 
   async getMaterialsByModule(moduleId) {
-    return await this.db.select("SELECT * FROM materials WHERE moduleId = ?", [moduleId]);
+    return await this.select("SELECT * FROM materials WHERE moduleId = ?", [moduleId]);
   }
 
   async putMaterial(material) {
     const { id, moduleId, title, content, status, createdAt, entryCount, errorMsg } = material;
-    await this.db.execute(
+    await this.execute(
       "INSERT OR REPLACE INTO materials (id, moduleId, title, content, status, createdAt, entryCount, errorMsg) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [id, moduleId, title, content, status, createdAt, entryCount || 0, errorMsg]
     );
@@ -210,33 +223,33 @@ class DatabaseAdapter {
       values.push(value);
     }
     values.push(id);
-    await this.db.execute(`UPDATE materials SET ${sets.join(', ')} WHERE id = ?`, values);
+    await this.execute(`UPDATE materials SET ${sets.join(', ')} WHERE id = ?`, values);
   }
 
   async deleteMaterial(id) {
-    await this.db.execute("DELETE FROM materials WHERE id = ?", [id]);
+    await this.execute("DELETE FROM materials WHERE id = ?", [id]);
   }
 
   async deleteMaterialsByModule(moduleId) {
-    await this.db.execute("DELETE FROM materials WHERE moduleId = ?", [moduleId]);
+    await this.execute("DELETE FROM materials WHERE moduleId = ?", [moduleId]);
   }
 
   // entries
   async getEntry(id) {
-    const rows = await this.db.select("SELECT * FROM entries WHERE id = ?", [id]);
+    const rows = await this.select("SELECT * FROM entries WHERE id = ?", [id]);
     return rows[0] || null;
   }
 
   async getEntriesByModule(moduleId) {
-    return await this.db.select("SELECT * FROM entries WHERE moduleId = ?", [moduleId]);
+    return await this.select("SELECT * FROM entries WHERE moduleId = ?", [moduleId]);
   }
 
   async getEntriesByMaterial(materialId) {
-    return await this.db.select("SELECT * FROM entries WHERE materialId = ?", [materialId]);
+    return await this.select("SELECT * FROM entries WHERE materialId = ?", [materialId]);
   }
 
   async getAllEntries() {
-    return await this.db.select("SELECT * FROM entries");
+    return await this.select("SELECT * FROM entries");
   }
 
   async putEntry(entry) {
@@ -245,7 +258,7 @@ class DatabaseAdapter {
       const cols = Object.keys(rest);
       const placeholders = cols.map(() => '?').join(',');
       const values = Object.values(rest);
-      await this.db.execute(
+      await this.execute(
         `INSERT INTO entries (id, ${cols.join(',')}) VALUES (?, ${placeholders})`,
         [id, ...values]
       );
@@ -253,7 +266,7 @@ class DatabaseAdapter {
       const cols = Object.keys(entry);
       const placeholders = cols.map(() => '?').join(',');
       const values = Object.values(entry);
-      const result = await this.db.execute(
+      const result = await this.execute(
         `INSERT INTO entries (${cols.join(',')}) VALUES (${placeholders})`,
         values
       );
@@ -269,26 +282,26 @@ class DatabaseAdapter {
       values.push(value);
     }
     values.push(id);
-    await this.db.execute(`UPDATE entries SET ${sets.join(', ')} WHERE id = ?`, values);
+    await this.execute(`UPDATE entries SET ${sets.join(', ')} WHERE id = ?`, values);
   }
 
   async deleteEntry(id) {
-    await this.db.execute("DELETE FROM entries WHERE id = ?", [id]);
+    await this.execute("DELETE FROM entries WHERE id = ?", [id]);
   }
 
   async deleteEntriesByMaterial(materialId) {
-    await this.db.execute("DELETE FROM entries WHERE materialId = ?", [materialId]);
+    await this.execute("DELETE FROM entries WHERE materialId = ?", [materialId]);
   }
 
   async getDueEntries(moduleId, date) {
-    return await this.db.select(
+    return await this.select(
       "SELECT * FROM entries WHERE moduleId = ? AND nextReview <= ? AND status != 'mastered'",
       [moduleId, date]
     );
   }
 
   async countEntriesByModule(moduleId) {
-    const rows = await this.db.select("SELECT COUNT(*) as count FROM entries WHERE moduleId = ?", [moduleId]);
+    const rows = await this.select("SELECT COUNT(*) as count FROM entries WHERE moduleId = ?", [moduleId]);
     return rows[0]?.count || 0;
   }
 
@@ -299,84 +312,84 @@ class DatabaseAdapter {
 
   // cards
   async getCardsByEntry(entryId) {
-    return await this.db.select("SELECT * FROM cards WHERE entryId = ?", [entryId]);
+    return await this.select("SELECT * FROM cards WHERE entryId = ?", [entryId]);
   }
 
   async putCard(card) {
     const { entryId, moduleId, materialId, front, back, createdAt } = card;
-    await this.db.execute(
+    await this.execute(
       "INSERT INTO cards (entryId, moduleId, materialId, front, back, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
       [entryId, moduleId, materialId, front, back, createdAt]
     );
   }
 
   async deleteCardsByMaterial(materialId) {
-    await this.db.execute("DELETE FROM cards WHERE materialId = ?", [materialId]);
+    await this.execute("DELETE FROM cards WHERE materialId = ?", [materialId]);
   }
 
   // tests
   async getTest(id) {
-    const rows = await this.db.select("SELECT * FROM tests WHERE id = ?", [id]);
+    const rows = await this.select("SELECT * FROM tests WHERE id = ?", [id]);
     return rows[0] || null;
   }
 
   async getAllTests() {
-    return await this.db.select("SELECT * FROM tests");
+    return await this.select("SELECT * FROM tests");
   }
 
   async putTest(test) {
     const { id, moduleId, score, totalQuestions, createdAt, answers } = test;
-    await this.db.execute(
+    await this.execute(
       "INSERT OR REPLACE INTO tests (id, moduleId, score, totalQuestions, createdAt, answers) VALUES (?, ?, ?, ?, ?, ?)",
       [id, moduleId, score, totalQuestions, createdAt, JSON.stringify(answers)]
     );
   }
 
   async deleteTest(id) {
-    await this.db.execute("DELETE FROM tests WHERE id = ?", [id]);
+    await this.execute("DELETE FROM tests WHERE id = ?", [id]);
   }
 
   // records
   async getAllRecords() {
-    return await this.db.select("SELECT * FROM records");
+    return await this.select("SELECT * FROM records");
   }
 
   async putRecord(record) {
     const { moduleId, entryId, action, duration, date, createdAt } = record;
-    await this.db.execute(
+    await this.execute(
       "INSERT INTO records (moduleId, entryId, action, duration, date, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
       [moduleId, entryId, action, duration, date, createdAt]
     );
   }
 
   async getRecordsByDate(date) {
-    return await this.db.select("SELECT * FROM records WHERE date = ?", [date]);
+    return await this.select("SELECT * FROM records WHERE date = ?", [date]);
   }
 
   async deleteRecord(id) {
-    await this.db.execute("DELETE FROM records WHERE id = ?", [id]);
+    await this.execute("DELETE FROM records WHERE id = ?", [id]);
   }
 
   // settings
   async getSetting(id) {
-    const rows = await this.db.select("SELECT * FROM settings WHERE id = ?", [id]);
+    const rows = await this.select("SELECT * FROM settings WHERE id = ?", [id]);
     return rows[0] || null;
   }
 
   async getAllSettings() {
-    return await this.db.select("SELECT * FROM settings");
+    return await this.select("SELECT * FROM settings");
   }
 
   async putSetting(setting) {
     const { id, value } = setting;
-    await this.db.execute(
+    await this.execute(
       "INSERT OR REPLACE INTO settings (id, value) VALUES (?, ?)",
       [id, typeof value === 'object' ? JSON.stringify(value) : String(value)]
     );
   }
 
   async deleteSetting(id) {
-    await this.db.execute("DELETE FROM settings WHERE id = ?", [id]);
+    await this.execute("DELETE FROM settings WHERE id = ?", [id]);
   }
 
   // bulk operations
@@ -392,46 +405,60 @@ class DatabaseAdapter {
 
   // clear all
   async clearAll() {
-    await this.db.execute("DELETE FROM modules");
-    await this.db.execute("DELETE FROM materials");
-    await this.db.execute("DELETE FROM entries");
-    await this.db.execute("DELETE FROM cards");
-    await this.db.execute("DELETE FROM tests");
-    await this.db.execute("DELETE FROM records");
-    await this.db.execute("DELETE FROM settings");
+    await this.execute("DELETE FROM modules");
+    await this.execute("DELETE FROM materials");
+    await this.execute("DELETE FROM entries");
+    await this.execute("DELETE FROM cards");
+    await this.execute("DELETE FROM tests");
+    await this.execute("DELETE FROM records");
+    await this.execute("DELETE FROM settings");
   }
 
   // close
   async close() {
-    if (this.db) {
-      await this.db.close();
-      this.db = null;
+    // SQLite 通过插件管理，不需要显式关闭
+    console.log('[DB] Connection closed');
+  }
+
+  // 设置自定义数据路径
+  async setCustomPath(path) {
+    const invoke = this.getInvoke();
+    await invoke('ensure_dir', { path });
+    this.customPath = path;
+    localStorage.setItem('polylingo_db_path', path);
+    return true;
+  }
+
+  // 获取当前数据路径
+  getCurrentPath() {
+    if (this.customPath) {
+      return this.customPath;
     }
+    return '默认位置 (AppData)';
+  }
+
+  // 重置为默认路径
+  resetToDefault() {
+    localStorage.removeItem('polylingo_db_path');
+    this.customPath = null;
+    this.dbPath = null;
   }
 
   // 额外辅助方法
   async getAllMaterials() {
-    return await this.db.select("SELECT * FROM materials");
+    return await this.select("SELECT * FROM materials");
   }
 
   async getAllCards() {
-    return await this.db.select("SELECT * FROM cards");
+    return await this.select("SELECT * FROM cards");
   }
 
-  async getDueEntries(moduleId, today) {
-    return await this.db.select(
-      "SELECT * FROM entries WHERE moduleId = ? AND nextReview <= ? AND status != 'mastered'",
-      [moduleId, today]
-    );
-  }
-
-  // 获取待复习条目（用于 SRS）
   async getDueEntriesForReview(moduleId, today, limit) {
     const sql = limit ? 
       "SELECT * FROM entries WHERE moduleId = ? AND nextReview <= ? AND status != 'mastered' LIMIT ?" :
       "SELECT * FROM entries WHERE moduleId = ? AND nextReview <= ? AND status != 'mastered'";
     const params = limit ? [moduleId, today, limit] : [moduleId, today];
-    return await this.db.select(sql, params);
+    return await this.select(sql, params);
   }
 }
 

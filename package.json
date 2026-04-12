@@ -9,10 +9,18 @@
     "build": "tauri build",
     "build:win": "tauri build && node scripts/fix-shortcut-icon.js"
   },
-  "keywords": ["language-learning", "srs", "ai", "desktop-app"],
+  "keywords": [
+    "language-learning",
+    "srs",
+    "ai",
+    "desktop-app"
+  ],
   "author": "ReoNa0216",
   "license": "MIT",
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-sql": "^2.4.0"
   }
 }
