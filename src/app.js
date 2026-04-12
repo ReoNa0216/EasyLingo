@@ -282,8 +282,14 @@ const app = {
   },
   
   // Initialize default modules
-  // 从 IndexedDB 迁移数据到 SQLite（一次性）
+  // 从 IndexedDB 迁移数据到 SQLite（一次性，仅在默认路径时执行）
   async migrateFromIndexedDB() {
+    // 如果使用了自定义路径，不进行自动迁移（提醒用户手动导出导入）
+    if (dbAdapter.customPath) {
+      console.log('[Migration] 使用自定义路径，跳过自动迁移');
+      return;
+    }
+    
     try {
       // 检查是否已迁移
       const migrated = await dbAdapter.getSetting('migratedFromIndexedDB');
@@ -305,6 +311,9 @@ const app = {
       
       await dexieDB.open();
       console.log('[Migration] 检测到 IndexedDB 数据，开始迁移...');
+      
+      // 显示迁移提示
+      this.showToast('正在迁移数据到 SQLite...', 'info');
       
       // 迁移 modules
       const modules = await dexieDB.modules.toArray();
@@ -351,6 +360,7 @@ const app = {
       // 标记已迁移
       await dbAdapter.putSetting({ id: 'migratedFromIndexedDB', value: 'true' });
       console.log('[Migration] 数据迁移完成！');
+      this.showToast('数据迁移完成！', 'success');
       
       // 关闭 IndexedDB（不删除，保留备份）
       await dexieDB.close();
@@ -358,6 +368,22 @@ const app = {
     } catch (error) {
       console.log('[Migration] 无 IndexedDB 数据或迁移失败:', error.message);
     }
+  },
+
+  // 显示临时提示
+  showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in ${
+      type === 'success' ? 'bg-green-500 text-white' : 
+      type === 'error' ? 'bg-red-500 text-white' : 
+      'bg-accent-500 text-white'
+    }`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.remove();
+    }, 3000);
   },
 
   async initModules() {
@@ -6512,7 +6538,67 @@ Requirements:
     document.getElementById('setting-model').value = settings.model;
     document.getElementById('setting-max-tokens').value = settings.maxTokens;
     document.getElementById('setting-daily-limit').value = settings.dailyLimit;
+    
+    // 加载数据路径
+    const dataPath = dbAdapter.getCurrentPath();
+    document.getElementById('setting-data-path').value = dataPath;
+    
     document.getElementById('settings-modal').classList.remove('hidden');
+  },
+
+  // 选择数据存储路径
+  async selectDataPath() {
+    try {
+      const selected = await window.__TAURI__.dialog.open({
+        directory: true,
+        multiple: false,
+        title: '选择数据存储位置'
+      });
+      
+      if (selected) {
+        const path = Array.isArray(selected) ? selected[0] : selected;
+        
+        // 检查目录是否可写
+        const exists = await window.__TAURI__.core.invoke('path_exists', { path });
+        if (!exists) {
+          alert('所选路径不存在');
+          return;
+        }
+        
+        // 确认更改
+        const confirmed = await this.confirmDialog(
+          `确定将数据存储位置更改为：\n${path}\n\n` +
+          '⚠️ 重要提示：\n' +
+          '1. 更改后需要重启应用生效\n' +
+          '2. 当前数据不会自动迁移\n' +
+          '3. 建议先导出数据备份\n\n' +
+          '是否继续？'
+        );
+        
+        if (confirmed) {
+          await dbAdapter.setCustomPath(path);
+          document.getElementById('setting-data-path').value = path;
+          alert('设置已保存，请重启应用生效。\n\n下次启动时数据将保存在新位置。');
+        }
+      }
+    } catch (error) {
+      console.error('选择路径失败:', error);
+      alert('选择路径失败: ' + error.message);
+    }
+  },
+
+  // 重置数据路径
+  async resetDataPath() {
+    const confirmed = await this.confirmDialog(
+      '确定重置为默认存储位置？\n\n' +
+      '⚠️ 需要重启应用生效，当前数据不会自动迁移。'
+    );
+    
+    if (confirmed) {
+      dbAdapter.resetToDefault();
+      document.getElementById('setting-data-path').value = '默认位置 (AppData)';
+      alert('已重置为默认位置，请重启应用生效。');
+    }
   },
   
   closeSettings() {

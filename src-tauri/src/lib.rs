@@ -255,6 +255,22 @@ async fn write_file(path: String, contents: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 确保目录存在，不存在则创建
+#[tauri::command]
+async fn ensure_dir(path: String) -> Result<(), String> {
+    use std::fs;
+    if !std::path::Path::new(&path).exists() {
+        fs::create_dir_all(&path).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+    Ok(())
+}
+
+/// 检查路径是否存在
+#[tauri::command]
+async fn path_exists(path: String) -> Result<bool, String> {
+    Ok(std::path::Path::new(&path).exists())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -263,7 +279,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fetch_news_rss,
             fetch_news_article,
-            write_file
+            write_file,
+            ensure_dir,
+            path_exists
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

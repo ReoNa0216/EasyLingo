@@ -6,14 +6,58 @@
 class DatabaseAdapter {
   constructor() {
     this.db = null;
-    this.dbPath = 'sqlite:polylingo.db';
+    this.dbPath = null;
+    this.customPath = null;
   }
 
   async init() {
+    // 先尝试从 localStorage 读取自定义路径
+    const savedPath = localStorage.getItem('polylingo_db_path');
+    
+    if (savedPath) {
+      // 使用用户指定的路径
+      this.customPath = savedPath;
+      this.dbPath = `sqlite:${savedPath}/polylingo.db`;
+    } else {
+      // 使用默认路径
+      this.dbPath = 'sqlite:polylingo.db';
+    }
+    
     const { Database } = window.__TAURI__.sql;
     this.db = await Database.load(this.dbPath);
     await this.createTables();
-    console.log('[DB] SQLite 初始化完成');
+    console.log('[DB] SQLite 初始化完成:', this.dbPath);
+  }
+
+  // 设置自定义数据路径
+  async setCustomPath(path) {
+    // 确保目录存在
+    await window.__TAURI__.core.invoke('ensure_dir', { path });
+    
+    // 保存路径
+    this.customPath = path;
+    localStorage.setItem('polylingo_db_path', path);
+    
+    return true;
+  }
+
+  // 获取当前数据路径
+  getCurrentPath() {
+    if (this.customPath) {
+      return this.customPath;
+    }
+    return '默认位置 (AppData)';
+  }
+
+  // 重置为默认路径
+  resetToDefault() {
+    localStorage.removeItem('polylingo_db_path');
+    this.customPath = null;
+  }
+
+  // 检查是否需要重启
+  needsRestart() {
+    return true; // 更改路径后需要重启
   }
 
   async createTables() {
@@ -379,6 +423,15 @@ class DatabaseAdapter {
       "SELECT * FROM entries WHERE moduleId = ? AND nextReview <= ? AND status != 'mastered'",
       [moduleId, today]
     );
+  }
+
+  // 获取待复习条目（用于 SRS）
+  async getDueEntriesForReview(moduleId, today, limit) {
+    const sql = limit ? 
+      "SELECT * FROM entries WHERE moduleId = ? AND nextReview <= ? AND status != 'mastered' LIMIT ?" :
+      "SELECT * FROM entries WHERE moduleId = ? AND nextReview <= ? AND status != 'mastered'";
+    const params = limit ? [moduleId, today, limit] : [moduleId, today];
+    return await this.db.select(sql, params);
   }
 }
 
