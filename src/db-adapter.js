@@ -117,6 +117,8 @@ class DatabaseAdapter {
         gender TEXT,
         tags TEXT,
         explanation TEXT,
+        example TEXT,
+        srsLevel INTEGER DEFAULT 0,
         createdAt TEXT,
         nextReview TEXT,
         interval INTEGER DEFAULT 0,
@@ -172,15 +174,23 @@ class DatabaseAdapter {
   // 迁移：添加缺失的列
   async migrateTables() {
     try {
-      // 检查 entries 表是否有 wordType 列
       const tableInfo = await this.select("PRAGMA table_info(entries)");
-      const hasWordType = tableInfo.some(col => col.name === 'wordType');
+      const columns = tableInfo.map(col => col.name);
       
-      if (!hasWordType) {
+      // 检查并添加缺失的列
+      if (!columns.includes('wordType')) {
         console.log('[DB] Migrating: adding wordType column to entries table');
         await this.execute("ALTER TABLE entries ADD COLUMN wordType TEXT");
-        console.log('[DB] Migration complete');
       }
+      if (!columns.includes('example')) {
+        console.log('[DB] Migrating: adding example column to entries table');
+        await this.execute("ALTER TABLE entries ADD COLUMN example TEXT");
+      }
+      if (!columns.includes('srsLevel')) {
+        console.log('[DB] Migrating: adding srsLevel column to entries table');
+        await this.execute("ALTER TABLE entries ADD COLUMN srsLevel INTEGER DEFAULT 0");
+      }
+      console.log('[DB] Migration complete');
     } catch (e) {
       console.warn('[DB] Migration error:', e);
     }
