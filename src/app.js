@@ -211,9 +211,6 @@ const app = {
       // 初始化 SQLite 数据库
       await dbAdapter.init();
       
-      // 检查是否需要从 IndexedDB 迁移数据
-      await this.migrateFromIndexedDB();
-      
       await this.initModules();
       await this.loadCustomModules();
       await this.loadDashboard();
@@ -282,110 +279,6 @@ const app = {
   },
   
   // Initialize default modules
-  // 从 IndexedDB 迁移数据到 SQLite（一次性，仅在默认路径时执行）
-  async migrateFromIndexedDB() {
-    // 如果使用了自定义路径，不进行自动迁移（提醒用户手动导出导入）
-    if (dbAdapter.customPath) {
-      console.log('[Migration] 使用自定义路径，跳过自动迁移');
-      return;
-    }
-    
-    try {
-      // 检查是否已迁移
-      const migrated = await dbAdapter.getSetting('migratedFromIndexedDB');
-      if (migrated && migrated.value === 'true') {
-        return;
-      }
-      
-      // 尝试打开 IndexedDB
-      const dexieDB = new Dexie('PolyLingoDB');
-      dexieDB.version(5).stores({
-        modules: '++id, name, language, createdAt',
-        materials: '++id, moduleId, title, content, sourceFile, createdAt',
-        entries: '++id, materialId, moduleId, type, original, translation, srsLevel, nextReview, interval, createdAt',
-        cards: '++id, materialId, content, srsLevel, nextReview, interval, createdAt',
-        tests: '++id, moduleId, questions, answers, results, score, duration, createdAt',
-        records: '++id, date, moduleId, duration, action, createdAt',
-        settings: '++id, value'
-      });
-      
-      await dexieDB.open();
-      console.log('[Migration] 检测到 IndexedDB 数据，开始迁移...');
-      
-      // 显示迁移提示
-      this.showToast('正在迁移数据到 SQLite...', 'info');
-      
-      // 迁移 modules
-      const modules = await dexieDB.modules.toArray();
-      for (const m of modules) {
-        await dbAdapter.putModule(m);
-      }
-      console.log(`[Migration] 迁移了 ${modules.length} 个模块`);
-      
-      // 迁移 materials
-      const materials = await dexieDB.materials.toArray();
-      for (const m of materials) {
-        await dbAdapter.putMaterial(m);
-      }
-      console.log(`[Migration] 迁移了 ${materials.length} 个语料`);
-      
-      // 迁移 entries
-      const entries = await dexieDB.entries.toArray();
-      for (const e of entries) {
-        await dbAdapter.putEntry(e);
-      }
-      console.log(`[Migration] 迁移了 ${entries.length} 个条目`);
-      
-      // 迁移 tests
-      const tests = await dexieDB.tests.toArray();
-      for (const t of tests) {
-        await dbAdapter.putTest(t);
-      }
-      console.log(`[Migration] 迁移了 ${tests.length} 个测试`);
-      
-      // 迁移 records
-      const records = await dexieDB.records.toArray();
-      for (const r of records) {
-        await dbAdapter.putRecord(r);
-      }
-      console.log(`[Migration] 迁移了 ${records.length} 条记录`);
-      
-      // 迁移 settings
-      const settings = await dexieDB.settings.toArray();
-      for (const s of settings) {
-        await dbAdapter.putSetting(s);
-      }
-      console.log(`[Migration] 迁移了 ${settings.length} 条设置`);
-      
-      // 标记已迁移
-      await dbAdapter.putSetting({ id: 'migratedFromIndexedDB', value: 'true' });
-      console.log('[Migration] 数据迁移完成！');
-      this.showToast('数据迁移完成！', 'success');
-      
-      // 关闭 IndexedDB（不删除，保留备份）
-      await dexieDB.close();
-      
-    } catch (error) {
-      console.log('[Migration] 无 IndexedDB 数据或迁移失败:', error.message);
-    }
-  },
-
-  // 显示临时提示
-  showToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in ${
-      type === 'success' ? 'bg-green-500 text-white' : 
-      type === 'error' ? 'bg-red-500 text-white' : 
-      'bg-accent-500 text-white'
-    }`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    
-    setTimeout(() => {
-      toast.remove();
-    }, 3000);
-  },
-
   async initModules() {
     // 清理已删除的默认模块（不在当前代码定义中的）
     const allModules = await dbAdapter.getAllModules();
@@ -6670,6 +6563,11 @@ Requirements:
       return;
     }
     
+    // 确保数据库已初始化
+    if (!dbAdapter.db) {
+      await dbAdapter.init();
+    }
+    
     try {
       // 显示进度对话框
       this.showProgressDialog('正在准备导出数据');
@@ -6731,6 +6629,11 @@ Requirements:
     const file = event.target.files[0];
     if (!file) return;
     
+    // 确保数据库已初始化
+    if (!dbAdapter.db) {
+      await dbAdapter.init();
+    }
+    
     const confirmed = await this.confirmDialog('导入数据将覆盖现有所有数据，确定继续吗？');
     if (!confirmed) {
       // 重置文件输入
@@ -6752,12 +6655,6 @@ Requirements:
         modal.querySelector('p').textContent = '正在清空旧数据...';
       }
       
-      await dbAdapter.clearAll();
-      await dbAdapter.clearAll();
-      await dbAdapter.clearAll();
-      await dbAdapter.clearAll();
-      await dbAdapter.clearAll();
-      await dbAdapter.clearAll();
       await dbAdapter.clearAll();
       
       // 更新进度提示
