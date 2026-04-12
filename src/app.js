@@ -6437,6 +6437,7 @@ Requirements:
     document.getElementById('setting-model').value = settings.model;
     document.getElementById('setting-max-tokens').value = settings.maxTokens;
     document.getElementById('setting-daily-limit').value = settings.dailyLimit;
+    await this.loadDataPath();
     document.getElementById('settings-modal').classList.remove('hidden');
   },
   
@@ -7055,9 +7056,14 @@ Requirements:
         <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
           <div id="${mod.id}-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>
         </div>
-        <button onclick="event.stopPropagation(); app.deleteModule('${mod.id}')" class="mt-3 w-full px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm transition-colors">
-          删除模块
-        </button>
+        <div class="mt-3 flex gap-2">
+          <button onclick="event.stopPropagation(); app.editModule('${mod.id}')" class="flex-1 px-3 py-1.5 bg-accent-50 text-accent-600 hover:bg-accent-100 rounded-lg text-sm transition-colors">
+            编辑
+          </button>
+          <button onclick="event.stopPropagation(); app.deleteModule('${mod.id}')" class="flex-1 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm transition-colors">
+            删除
+          </button>
+        </div>
       `;
       dashboardCards.appendChild(card);
     }
@@ -7090,6 +7096,111 @@ Requirements:
       
       // Refresh
       await this.loadDashboard();
+    }
+  },
+  
+  // Edit custom module
+  async editModule(moduleId) {
+    if (!(this.modules[moduleId] && this.modules[moduleId].isCustom)) {
+      await this.alertDialog('默认模块不能编辑');
+      return;
+    }
+    
+    const mod = this.modules[moduleId];
+    
+    // Populate form
+    document.getElementById('edit-module-id').value = moduleId;
+    document.getElementById('edit-module-name').value = mod.name;
+    document.getElementById('edit-module-lang').value = mod.language;
+    document.getElementById('edit-module-code').value = mod.code || '';
+    document.getElementById('edit-module-flag').value = mod.flag || '';
+    document.getElementById('edit-module-prompt').value = mod.customPrompt || '';
+    
+    // Show modal
+    document.getElementById('edit-module-modal').classList.remove('hidden');
+  },
+  
+  closeEditModuleModal() {
+    document.getElementById('edit-module-modal').classList.add('hidden');
+  },
+  
+  async saveModuleEdit() {
+    const moduleId = document.getElementById('edit-module-id').value;
+    const name = document.getElementById('edit-module-name').value.trim();
+    const language = document.getElementById('edit-module-lang').value.trim();
+    const code = document.getElementById('edit-module-code').value.trim();
+    const flag = document.getElementById('edit-module-flag').value;
+    const customPrompt = document.getElementById('edit-module-prompt').value.trim();
+    
+    if (!name || !language || !code) {
+      alert('请填写所有必填字段');
+      return;
+    }
+    
+    // Update database
+    await db.modules.update(moduleId, {
+      name: name,
+      language: language,
+      code: code,
+      flag: flag,
+      customPrompt: customPrompt
+    });
+    
+    // Update local object
+    this.modules[moduleId] = {
+      ...this.modules[moduleId],
+      name: name,
+      language: language,
+      code: code,
+      flag: flag,
+      customPrompt: customPrompt
+    };
+    
+    // Update UI
+    this.closeEditModuleModal();
+    await this.refreshModuleUI();
+    
+    alert('模块已更新！');
+  },
+  
+  async refreshModuleUI() {
+    // Re-render custom modules
+    await this.loadCustomModules();
+    await this.renderModuleNav();
+    await this.loadDashboard();
+  },
+  
+  // Data storage path selection
+  async selectDataPath() {
+    try {
+      const selected = await window.__TAURI__.dialog.open({
+        directory: true,
+        multiple: false,
+        title: '选择数据存储位置'
+      });
+      
+      if (selected) {
+        const path = Array.isArray(selected) ? selected[0] : selected;
+        await db.settings.put({ id: 'dataPath', value: path });
+        document.getElementById('setting-data-path').value = path;
+        alert('数据存储位置已设置，请重启应用生效。建议先导出数据备份。');
+      }
+    } catch (error) {
+      console.error('选择路径失败:', error);
+      alert('选择路径失败: ' + error.message);
+    }
+  },
+  
+  async resetDataPath() {
+    await db.settings.delete('dataPath');
+    document.getElementById('setting-data-path').value = '';
+    alert('已重置为默认位置，请重启应用生效。');
+  },
+  
+  async loadDataPath() {
+    const setting = await db.settings.get('dataPath');
+    if (setting && setting.value) {
+      document.getElementById('setting-data-path').value = setting.value;
     }
   },
   

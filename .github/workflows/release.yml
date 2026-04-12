@@ -87,7 +87,7 @@ jobs:
           files: |
             EasyLingo-Windows/*.exe
             EasyLingo-macOS/*.dmg
-            API配置说明.pdf
+            API_configuration.pdf
             prompt-examples.zip
           draft: true
           prerelease: false

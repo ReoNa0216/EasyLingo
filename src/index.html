@@ -1030,6 +1030,49 @@
     </div>
   </div>
   
+  <!-- Edit Module Modal -->
+  <div id="edit-module-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-2xl p-8 w-full mx-4 animate-fade-in overflow-y-auto" style="max-width: 800px; max-height: 90vh;">
+      <h3 class="text-2xl font-bold mb-4">编辑模块</h3>
+      <input type="hidden" id="edit-module-id">
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-primary-700 mb-1">模块名称</label>
+            <input type="text" id="edit-module-name" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent" placeholder="如：韩语">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-primary-700 mb-1">语言名称</label>
+            <input type="text" id="edit-module-lang" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent" placeholder="如：Korean">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-primary-700 mb-1">语言代码</label>
+            <input type="text" id="edit-module-code" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent" placeholder="如：ko">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-primary-700 mb-1">国家/地区代码</label>
+            <input type="text" id="edit-module-flag" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent" placeholder="如：kr">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-primary-700 mb-2">自定义AI提取要求</label>
+          <textarea id="edit-module-prompt" rows="8" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent font-mono text-sm" placeholder="在此输入自定义提示词..."></textarea>
+          <p class="text-xs text-primary-500 mt-1">修改后的提示词将对新语料生效，历史语料不受影响。</p>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 mt-6">
+        <button onclick="app.closeEditModuleModal()" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg transition-colors">
+          取消
+        </button>
+        <button onclick="app.saveModuleEdit()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors">
+          保存修改
+        </button>
+      </div>
+    </div>
+  </div>
+  
   <!-- Test Modal -->
   <div id="test-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
     <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 animate-fade-in">
@@ -1131,6 +1174,24 @@
         <!-- Desktop Hint -->
         <div class="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
           <p class="text-xs text-green-700">💡 桌面版提示：新闻抓取和文件导入均由应用原生支持，无需额外配置代理服务器。</p>
+        </div>
+        
+        <!-- Data Storage Location -->
+        <div>
+          <h4 class="text-lg font-semibold mb-3">数据存储位置</h4>
+          <div class="space-y-3">
+            <div class="flex items-center gap-2">
+              <input type="text" id="setting-data-path" readonly class="flex-1 px-4 py-2 border border-primary-200 rounded-lg bg-primary-50 text-primary-600 text-sm" placeholder="使用默认位置">
+              <button onclick="app.selectDataPath()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors text-sm whitespace-nowrap">
+                选择位置
+              </button>
+              <button onclick="app.resetDataPath()" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg transition-colors text-sm whitespace-nowrap">
+                重置
+              </button>
+            </div>
+            <p class="text-xs text-primary-500">默认位置：%APPDATA%/com.reona0216.easylingo/</p>
+            <p class="text-xs text-amber-600">⚠️ 更改存储位置后，需要重启应用生效。原数据不会自动迁移，请先用下方导出功能备份。</p>
+          </div>
         </div>
         
         <!-- Data Management -->

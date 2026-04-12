@@ -1,6 +1,6 @@
 [package]
 name = "easylingo"
-version = "1.0.0"
+version = "1.1.0"
 description = "A desktop language learning app powered by AI and SRS"
 authors = ["ReoNa0216"]
 edition = "2021"
