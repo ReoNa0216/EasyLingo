@@ -234,7 +234,7 @@ const app = {
       if (error.name === 'UpgradeError' || (error.message && (error.message.includes('primary key') || error.message.includes('changing primary key')))) {
         const shouldReset = confirm('检测到数据库结构需要更新。\n\n点击"确定"清空本地数据库并刷新页面（如有重要数据请先备份），或点击"取消"手动刷新。');
         if (shouldReset) {
-          await db.delete();
+          await dbAdapter.clearAll();
           location.reload();
           return;
         }
@@ -375,7 +375,7 @@ const app = {
       const mod = this.modules[key];
       const existing = await dbAdapter.getModule(mod.id);
       if (!existing) {
-        await db.modules.put({
+        await dbAdapter.putModule({
           id: mod.id,
           name: mod.name,
           language: mod.language,
@@ -678,11 +678,10 @@ ${placeholderText}`;
   },
   
   async loadRecentActivity() {
-    const records = await db.records
+    const records = (await dbAdapter.getAllRecords())
       .filter(r => r.action !== 'review_detail') // 排除混合复习的详细记录
       .reverse()
-      .limit(10)
-      .toArray();
+      .slice(0, 10);
     const container = document.getElementById('recent-activity');
     
     if (records.length === 0) {
@@ -990,7 +989,7 @@ ${placeholderText}`;
           // 更新进度
           const progress = Math.round(((i + 1) / chunks.length) * 100);
           console.log(`Overall progress: ${progress}% (${allEntries.length} entries so far)`);
-          await db.materials.update(material.id, { 
+          await dbAdapter.updateMaterial(material.id, { 
             status: 'processing', 
             progress: progress,
             partialCount: allEntries.length 
@@ -1026,7 +1025,7 @@ ${placeholderText}`;
       let savedCount = 0;
       for (const entry of allEntries) {
         try {
-          await db.entries.put({
+          await dbAdapter.putEntry({
             id: `entry_${material.id}_${Math.random().toString(36).substr(2, 9)}`,
             materialId: material.id,
             moduleId: material.moduleId,
@@ -1049,7 +1048,7 @@ ${placeholderText}`;
       }
       console.log(`Saved ${savedCount} entries to database`);
       
-      await db.materials.update(material.id, { 
+      await dbAdapter.updateMaterial(material.id, { 
         status: 'completed', 
         entryCount: savedCount 
       });
@@ -3201,7 +3200,7 @@ ${chunk.substring(0, 8000)}
       if (error.name === 'UpgradeError' || (error.message && error.message.includes('primary key'))) {
         const shouldReset = confirm('数据库结构需要更新才能继续导入。\n\n点击"确定"清空本地数据并刷新页面（建议先导出重要数据），或点击"取消"手动刷新。');
         if (shouldReset) {
-          await db.delete();
+          await dbAdapter.clearAll();
           location.reload();
         }
       } else {
@@ -3688,9 +3687,7 @@ ${wordsList}
     
     for (const type of types) {
       // 获取所有条目并排序
-      const allEntries = await db.entries
-        .where({ moduleId: this.currentModule, type: type })
-        .toArray();
+      const allEntries = await dbAdapter.getEntriesByModule(this.currentModule);
       
       // 按 original 字母顺序排序（不区分大小写）
       allEntries.sort((a, b) => {
@@ -4099,10 +4096,7 @@ ${wordsList}
   
   // 查重并删除重复条目（按字母顺序排序）
   async deduplicateEntries(type) {
-    const entries = await db.entries
-      .where('moduleId').equals(this.currentModule)
-      .and(e => e.type === type)
-      .toArray();
+    const entries = (await dbAdapter.getEntriesByModule(this.currentModule)).filter(e => e.type === type);
     
     if (entries.length === 0) {
       await this.alertDialog('当前没有条目');
@@ -4276,10 +4270,10 @@ ${wordsList}
   
   // 单个模块复习
   async startSingleModuleReview(moduleId) {
-    const allEntries = await db.entries.filter(e => 
+    const allEntries = (await dbAdapter.getAllEntries()).filter(e => 
       e.moduleId === moduleId && 
       new Date(e.nextReview) <= new Date()
-    ).toArray();
+    );
     
     // 获取每日复习限制
     const settings = await dbAdapter.getSetting('dailyLimit');
@@ -4441,10 +4435,10 @@ ${wordsList}
     this.closeMixedReviewModal();
     
     // 获取所选模块待复习的条目
-    const allEntries = await db.entries.filter(e => 
+    const allEntries = (await dbAdapter.getAllEntries()).filter(e => 
       selectedModules.includes(e.moduleId) && 
       new Date(e.nextReview) <= new Date()
-    ).toArray();
+    );
     
     // 获取每日复习限制
     const settings = await dbAdapter.getSetting('dailyLimit');
@@ -4658,7 +4652,7 @@ ${wordsList}
     nextReview.setDate(nextReview.getDate() + entry.interval);
     entry.nextReview = nextReview;
     
-    await db.entries.update(entry.id, {
+    await dbAdapter.updateEntry(entry.id, {
       srsLevel: entry.srsLevel,
       interval: entry.interval,
       nextReview: entry.nextReview
@@ -4694,7 +4688,7 @@ ${wordsList}
         const moduleTimes = this.moduleStudyTimes || {};
         
         // 先添加一条混合复习的汇总记录（moduleId为null表示混合）
-        await db.records.put({
+        await dbAdapter.putRecord({
           id: `record_${Date.now()}_mixed`,
           date: date,
           moduleId: null, // null表示混合复习
@@ -4708,7 +4702,7 @@ ${wordsList}
         for (const [moduleId, moduleDuration] of Object.entries(moduleTimes)) {
           const durationMinutes = Math.round(moduleDuration);
           if (durationMinutes > 0) {
-            await db.records.put({
+            await dbAdapter.putRecord({
               id: `record_${Date.now()}_${moduleId}_detail`,
               date: date,
               moduleId: moduleId,
@@ -5838,7 +5832,7 @@ Requirements:
     const duration = this.stopStudyTimer();
     
     // Save test record with full user answers
-    await db.tests.put({
+    await dbAdapter.putTest({
       id: `test_${Date.now()}`,
       moduleId: this.currentModule,
       questions: this.testData.questions,
@@ -6597,9 +6591,9 @@ Requirements:
       // 收集数据
       const data = {
         modules: await dbAdapter.getAllModules(),
-        materials: await db.materials.toArray(),
+        materials: await dbAdapter.getAllMaterials(),
         entries: await dbAdapter.getAllEntries(),
-        cards: await db.cards.toArray(),
+        cards: await dbAdapter.getAllCards(),
         tests: await dbAdapter.getAllTests(),
         records: await dbAdapter.getAllRecords(),
         settings: await dbAdapter.getAllSettings(),
@@ -6759,7 +6753,7 @@ Requirements:
   // 实时更新今日学习时长显示
   async updateTodayMinutesDisplay() {
     const today = new Date().toISOString().split('T')[0];
-    const todayRecords = await db.records.filter(r => 
+    const todayRecords = (await dbAdapter.getAllRecords()).filter(r => 
       new Date(r.createdAt).toISOString().split('T')[0] === today &&
       r.action !== 'review_detail' // 排除混合复习的详细记录，避免重复统计
     ).toArray();
@@ -6773,7 +6767,7 @@ Requirements:
   },
   
   async recordActivity(action, duration, count = 1) {
-    await db.records.put({
+    await dbAdapter.putRecord({
       id: `record_${Date.now()}`,
       date: new Date().toISOString().split('T')[0],
       moduleId: this.currentModule,
@@ -6789,7 +6783,7 @@ Requirements:
   async updateSidebarStats() {
     // Today's minutes
     const today = new Date().toISOString().split('T')[0];
-    const todayRecords = await db.records.filter(r => 
+    const todayRecords = (await dbAdapter.getAllRecords()).filter(r => 
       new Date(r.createdAt).toISOString().split('T')[0] === today &&
       r.action !== 'review_detail' // 排除混合复习的详细记录，避免重复统计
     ).toArray();
@@ -6849,7 +6843,7 @@ Requirements:
     const confirmed = await this.confirmDialog('确定要删除这个材料吗？相关的学习条目也会被删除。');
     if (confirmed) {
       await dbAdapter.deleteMaterial(id);
-      await db.entries.where('materialId').equals(id).delete();
+      await dbAdapter.deleteEntriesByMaterial(id);
       await this.loadModuleMaterials();
       await this.updateSidebarStats();
     }
@@ -7051,7 +7045,7 @@ Requirements:
     const id = `custom_${Date.now()}`;
     
     // Save to database
-    await db.modules.put({
+    await dbAdapter.putModule({
       id: id,
       name: name,
       language: language,
@@ -7161,9 +7155,9 @@ Requirements:
       await dbAdapter.deleteModule(moduleId);
       const materials = await dbAdapter.getMaterialsByModule(moduleId);
       for (const m of materials) {
-        await db.cards.where('materialId').equals(m.id).delete();
+        await dbAdapter.deleteCardsByMaterial(m.id);
       }
-      await db.materials.where('moduleId').equals(moduleId).delete();
+      await dbAdapter.deleteMaterialsByModule(moduleId);
       
       // Remove from modules object
       delete this.modules[moduleId];
@@ -7218,7 +7212,7 @@ Requirements:
     }
     
     // Update database
-    await db.modules.update(moduleId, {
+    await dbAdapter.updateModule(moduleId, {
       name: name,
       language: language,
       code: code,
@@ -7264,4 +7258,6 @@ Requirements:
 document.addEventListener('DOMContentLoaded', () => {
   app.init();
 });
+
+
 

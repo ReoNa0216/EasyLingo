@@ -364,6 +364,22 @@ class DatabaseAdapter {
       this.db = null;
     }
   }
+
+  // 额外辅助方法
+  async getAllMaterials() {
+    return await this.db.select("SELECT * FROM materials");
+  }
+
+  async getAllCards() {
+    return await this.db.select("SELECT * FROM cards");
+  }
+
+  async getDueEntries(moduleId, today) {
+    return await this.db.select(
+      "SELECT * FROM entries WHERE moduleId = ? AND nextReview <= ? AND status != 'mastered'",
+      [moduleId, today]
+    );
+  }
 }
 
 // 创建全局实例
