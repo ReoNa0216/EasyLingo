@@ -51,6 +51,13 @@ class DatabaseAdapter {
       db: this.dbPath || 'sqlite:polylingo.db'
     });
     
+    // 检查是否需要重新创建表（表结构变更时）
+    const needsRecreate = await this.checkTableSchema();
+    if (needsRecreate) {
+      console.log('[DB] Table schema changed, recreating tables...');
+      await this.dropTables();
+    }
+    
     await this.createTables();
     
     // 迁移：添加缺失的列
@@ -169,6 +176,39 @@ class DatabaseAdapter {
         value TEXT
       )
     `);
+  }
+
+  // 检查表结构是否需要重建
+  async checkTableSchema() {
+    try {
+      const tableInfo = await this.select("PRAGMA table_info(entries)");
+      const columns = tableInfo.map(col => col.name);
+      const requiredColumns = ['wordType', 'example', 'srsLevel'];
+      const missing = requiredColumns.filter(col => !columns.includes(col));
+      if (missing.length > 0) {
+        console.log('[DB] Missing columns detected:', missing);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 删除所有表（用于重建）
+  async dropTables() {
+    try {
+      await this.execute("DROP TABLE IF EXISTS entries");
+      await this.execute("DROP TABLE IF EXISTS cards");
+      await this.execute("DROP TABLE IF EXISTS materials");
+      await this.execute("DROP TABLE IF EXISTS modules");
+      await this.execute("DROP TABLE IF EXISTS tests");
+      await this.execute("DROP TABLE IF EXISTS records");
+      await this.execute("DROP TABLE IF EXISTS settings");
+      console.log('[DB] All tables dropped');
+    } catch (e) {
+      console.error('[DB] Error dropping tables:', e);
+    }
   }
 
   // 迁移：添加缺失的列
