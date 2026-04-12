@@ -1,4 +1,4 @@
-﻿/**
+/**
  * PolyLingo - Language Learning Assistant
  * Main Application Logic
  */
@@ -208,8 +208,11 @@ const app = {
       // 清理可能的重复元素（针对 Edge 浏览器刷新问题）
       this.cleanupDuplicateElements();
       
-      // 尝试打开数据库
-      await db.open();
+      // 初始化 SQLite 数据库
+      await dbAdapter.init();
+      
+      // 检查是否需要从 IndexedDB 迁移数据
+      await this.migrateFromIndexedDB();
       
       await this.initModules();
       await this.loadCustomModules();
@@ -279,20 +282,98 @@ const app = {
   },
   
   // Initialize default modules
+  // 从 IndexedDB 迁移数据到 SQLite（一次性）
+  async migrateFromIndexedDB() {
+    try {
+      // 检查是否已迁移
+      const migrated = await dbAdapter.getSetting('migratedFromIndexedDB');
+      if (migrated && migrated.value === 'true') {
+        return;
+      }
+      
+      // 尝试打开 IndexedDB
+      const dexieDB = new Dexie('PolyLingoDB');
+      dexieDB.version(5).stores({
+        modules: '++id, name, language, createdAt',
+        materials: '++id, moduleId, title, content, sourceFile, createdAt',
+        entries: '++id, materialId, moduleId, type, original, translation, srsLevel, nextReview, interval, createdAt',
+        cards: '++id, materialId, content, srsLevel, nextReview, interval, createdAt',
+        tests: '++id, moduleId, questions, answers, results, score, duration, createdAt',
+        records: '++id, date, moduleId, duration, action, createdAt',
+        settings: '++id, value'
+      });
+      
+      await dexieDB.open();
+      console.log('[Migration] 检测到 IndexedDB 数据，开始迁移...');
+      
+      // 迁移 modules
+      const modules = await dexieDB.modules.toArray();
+      for (const m of modules) {
+        await dbAdapter.putModule(m);
+      }
+      console.log(`[Migration] 迁移了 ${modules.length} 个模块`);
+      
+      // 迁移 materials
+      const materials = await dexieDB.materials.toArray();
+      for (const m of materials) {
+        await dbAdapter.putMaterial(m);
+      }
+      console.log(`[Migration] 迁移了 ${materials.length} 个语料`);
+      
+      // 迁移 entries
+      const entries = await dexieDB.entries.toArray();
+      for (const e of entries) {
+        await dbAdapter.putEntry(e);
+      }
+      console.log(`[Migration] 迁移了 ${entries.length} 个条目`);
+      
+      // 迁移 tests
+      const tests = await dexieDB.tests.toArray();
+      for (const t of tests) {
+        await dbAdapter.putTest(t);
+      }
+      console.log(`[Migration] 迁移了 ${tests.length} 个测试`);
+      
+      // 迁移 records
+      const records = await dexieDB.records.toArray();
+      for (const r of records) {
+        await dbAdapter.putRecord(r);
+      }
+      console.log(`[Migration] 迁移了 ${records.length} 条记录`);
+      
+      // 迁移 settings
+      const settings = await dexieDB.settings.toArray();
+      for (const s of settings) {
+        await dbAdapter.putSetting(s);
+      }
+      console.log(`[Migration] 迁移了 ${settings.length} 条设置`);
+      
+      // 标记已迁移
+      await dbAdapter.putSetting({ id: 'migratedFromIndexedDB', value: 'true' });
+      console.log('[Migration] 数据迁移完成！');
+      
+      // 关闭 IndexedDB（不删除，保留备份）
+      await dexieDB.close();
+      
+    } catch (error) {
+      console.log('[Migration] 无 IndexedDB 数据或迁移失败:', error.message);
+    }
+  },
+
   async initModules() {
     // 清理已删除的默认模块（不在当前代码定义中的）
-    const allModules = await db.modules.toArray();
+    const allModules = await dbAdapter.getAllModules();
     const validModuleIds = new Set(Object.keys(this.modules));
     for (const mod of allModules) {
       if (mod.isDefault && !validModuleIds.has(mod.id)) {
         console.log('Removing obsolete default module:', mod.id);
-        await db.modules.delete(mod.id);
+        await dbAdapter.deleteModule(mod.id);
       }
     }
     
     for (const key in this.modules) {
       const mod = this.modules[key];
-      const existing = await db.modules.get(mod.id);
+      const existing = await dbAdapter.getModule(mod.id);
       if (!existing) {
         await db.modules.put({
           id: mod.id,
@@ -313,7 +394,7 @@ const app = {
       return;
     }
     
-    const customModules = await db.modules.filter(m => !m.isDefault).toArray();
+    const customModules = (await dbAdapter.getAllModules()).filter(m => !m.isDefault);
     console.log(`Loading ${customModules.length} custom modules...`);
     
     for (const mod of customModules) {
@@ -559,7 +640,7 @@ ${placeholderText}`;
     console.log(`Updating dashboard for ${allModules.length} modules:`, allModules.map(m => m.id));
     
     for (const mod of allModules) {
-      const entries = await db.entries.where('moduleId').equals(mod.id).toArray();
+      const entries = await dbAdapter.getEntriesByModule(mod.id);
       const dueEntries = entries.filter(e => new Date(e.nextReview) <= new Date());
       const reviewedEntries = entries.filter(e => e.srsLevel > 0);
       
@@ -587,7 +668,7 @@ ${placeholderText}`;
     const settings = await this.getSettings();
     const dailyGoal = settings.dailyLimit || 20;
     const today = new Date().toISOString().split('T')[0];
-    const todayRecords = await db.records.where('date').equals(today).and(r => r.action === 'review').toArray();
+    const todayRecords = await dbAdapter.getAllRecords();
     const completedToday = todayRecords.reduce((sum, r) => sum + (r.count || 1), 0);
     const remaining = Math.max(0, dailyGoal - completedToday);
     document.getElementById('due-count').textContent = `${completedToday}/${dailyGoal}`;
@@ -638,7 +719,7 @@ ${placeholderText}`;
     if (!confirmed) return;
     
     try {
-      await db.records.delete(recordId);
+      await dbAdapter.deleteRecord(recordId);
       await this.loadRecentActivity();
       await this.updateSidebarStats();
     } catch (error) {
@@ -858,7 +939,7 @@ ${placeholderText}`;
       createdAt: new Date()
     };
     
-    await db.materials.put(material);
+    await dbAdapter.putMaterial(material);
     
     // 检查是否配置了API
     const settings = await this.getSettings();
@@ -875,7 +956,7 @@ ${placeholderText}`;
     const settings = await this.getSettings();
     const mod = this.modules[material.moduleId];
     
-    await db.materials.update(material.id, { status: 'processing' });
+    await dbAdapter.updateMaterial(material.id, { status: 'processing' });
     
     try {
       let allEntries = [];
@@ -979,7 +1060,7 @@ ${placeholderText}`;
       alert(`已成功提取 ${savedCount} 个学习条目（原文共 ${allEntries.length} 条）！`);
     } catch (error) {
       console.error('AI processing error:', error);
-      await db.materials.update(material.id, { status: 'error', errorMsg: error.message });
+      await dbAdapter.updateMaterial(material.id, { status: 'error', errorMsg: error.message });
       alert('处理失败: ' + error.message);
     }
   },
@@ -2009,7 +2090,7 @@ ${chunk.substring(0, 8000)}
         createdAt: new Date()
       };
       
-      await db.materials.put(material);
+      await dbAdapter.putMaterial(material);
       await this.processMaterialWithAI(material);
       
       const preview = document.getElementById('bbc-preview');
@@ -2185,7 +2266,7 @@ ${chunk.substring(0, 8000)}
         createdAt: new Date()
       };
       
-      await db.materials.put(material);
+      await dbAdapter.putMaterial(material);
       await this.processMaterialWithAI(material);
       
       const preview = document.getElementById('guardian-preview');
@@ -2371,7 +2452,7 @@ ${chunk.substring(0, 8000)}
         createdAt: new Date()
       };
       
-      await db.materials.put(material);
+      await dbAdapter.putMaterial(material);
       await this.processMaterialWithAI(material);
       
       const preview = document.getElementById('npr-preview');
@@ -2791,7 +2872,7 @@ ${chunk.substring(0, 8000)}
         createdAt: new Date()
       };
       
-      await db.materials.put(material);
+      await dbAdapter.putMaterial(material);
       
       // 使用AI处理
       await this.processMaterialWithAI(material);
@@ -2985,7 +3066,7 @@ ${chunk.substring(0, 8000)}
         createdAt: new Date()
       };
       
-      await db.materials.put(material);
+      await dbAdapter.putMaterial(material);
       await this.processMaterialWithAI(material);
       
       document.getElementById('asahi-preview').classList.add('hidden');
@@ -3095,7 +3176,7 @@ ${chunk.substring(0, 8000)}
       console.log('Saving entries to DB:', entries.length);
       for (let i = 0; i < entries.length; i++) {
         try {
-          await db.entries.put(entries[i]);
+          await dbAdapter.putEntry(entries[i]);
         } catch (err) {
           console.error('Failed to add entry:', entries[i], err);
         }
@@ -3510,7 +3591,7 @@ ${wordsList}
   async loadModuleMaterials() {
     if (!this.currentModule) return;
     
-    const materials = await db.materials.where('moduleId').equals(this.currentModule).toArray();
+    const materials = await dbAdapter.getMaterialsByModule(this.currentModule);
     const container = document.getElementById('materials-list');
     
     if (materials.length === 0) {
@@ -3521,7 +3602,7 @@ ${wordsList}
     }
     
     // 获取条目统计
-    const entriesCount = await db.entries.where('moduleId').equals(this.currentModule).count();
+    const entriesCount = await dbAdapter.countEntriesByModule(this.currentModule);
     
     container.innerHTML = materials.map(m => {
       let statusBadge = '';
@@ -3753,7 +3834,7 @@ ${wordsList}
   
   // 编辑条目
   async editEntry(entryId) {
-    const entry = await db.entries.get(entryId);
+    const entry = await dbAdapter.getEntry(entryId);
     if (!entry) return;
     
     const isGerman = this.currentModule === 'german';
@@ -3841,7 +3922,7 @@ ${wordsList}
     const wordTypeEl = document.getElementById('edit-wordType');
     if (wordTypeEl) update.wordType = wordTypeEl.value;
     
-    await db.entries.update(entryId, update);
+    await dbAdapter.updateEntry(entryId, update);
     
     // 关闭模态框并刷新
     document.querySelector('.fixed.inset-0').remove();
@@ -3861,11 +3942,11 @@ ${wordsList}
       }
       
       // 尝试获取条目（处理数字/字符串 ID 兼容）
-      let entry = await db.entries.get(entryId);
+      let entry = await dbAdapter.getEntry(entryId);
       
       // 如果找不到且是字符串数字，尝试数字形式
       if (!entry && typeof entryId === 'string' && !isNaN(entryId)) {
-        entry = await db.entries.get(parseInt(entryId));
+        entry = await dbAdapter.getEntry(parseInt(entryId));
       }
       
       if (!entry) {
@@ -3874,7 +3955,7 @@ ${wordsList}
       }
       
       // 使用实际找到的 ID 删除
-      await db.entries.delete(entry.id);
+      await dbAdapter.deleteEntry(entry.id);
       this.loadEntries();
     } catch (error) {
       console.error('Delete entry failed:', error);
@@ -3971,16 +4052,16 @@ ${wordsList}
       for (const entryId of selected) {
         try {
           // 尝试用原始 ID 删除
-          let entry = await db.entries.get(entryId);
+          let entry = await dbAdapter.getEntry(entryId);
           
           // 如果找不到且是数字，尝试字符串形式
           if (!entry && typeof entryId === 'number') {
-            entry = await db.entries.get(String(entryId));
+            entry = await dbAdapter.getEntry(String(entryId));
           }
           
           // 如果找不到且是字符串数字，尝试数字形式
           if (!entry && typeof entryId === 'string' && !isNaN(entryId)) {
-            entry = await db.entries.get(parseInt(entryId));
+            entry = await dbAdapter.getEntry(parseInt(entryId));
           }
           
           if (!entry) {
@@ -3990,7 +4071,7 @@ ${wordsList}
           }
           
           // 使用实际找到的 ID 删除
-          await db.entries.delete(entry.id);
+          await dbAdapter.deleteEntry(entry.id);
           deletedCount++;
         } catch (err) {
           console.error(`[Batch Delete] Failed to delete ${entryId}:`, err);
@@ -4059,7 +4140,7 @@ ${wordsList}
     if (confirmed) {
       // 删除重复条目
       for (const dup of duplicates) {
-        await db.entries.delete(dup.id);
+        await dbAdapter.deleteEntry(dup.id);
       }
       
       // 重新加载条目（显示已排序的结果）
@@ -4175,7 +4256,7 @@ ${wordsList}
       return;
     }
     
-    await db.entries.put(entry);
+    await dbAdapter.putEntry(entry);
     this.closeManualEntryModal();
     await this.loadEntries();
     await this.alertDialog('添加成功！');
@@ -4201,7 +4282,7 @@ ${wordsList}
     ).toArray();
     
     // 获取每日复习限制
-    const settings = await db.settings.get('dailyLimit');
+    const settings = await dbAdapter.getSetting('dailyLimit');
     const totalLimit = (settings && settings.value) || 20;
     
     // 按类型分配（单词70%，短语20%，语句10%）
@@ -4229,7 +4310,7 @@ ${wordsList}
   
   // 显示混合复习语言选择弹窗
   async showMixedReviewModal() {
-    const modules = await db.modules.toArray();
+    const modules = await dbAdapter.getAllModules();
     const container = document.getElementById('mixed-review-modules');
     
     container.innerHTML = modules.map(mod => `
@@ -4251,7 +4332,7 @@ ${wordsList}
   
   // 显示快速测试语言选择弹窗
   async showQuickTestModal() {
-    const modules = await db.modules.toArray();
+    const modules = await dbAdapter.getAllModules();
     const container = document.getElementById('quick-test-modules');
     
     container.innerHTML = modules.map(mod => `
@@ -4313,7 +4394,7 @@ ${wordsList}
     this.closeQuickTestModal();
     
     // 获取所选模块的学习条目
-    const allEntries = await db.entries.toArray();
+    const allEntries = await dbAdapter.getAllEntries();
     const entries = allEntries.filter(e => selectedModules.includes(e.moduleId));
     
     if (entries.length === 0) {
@@ -4366,7 +4447,7 @@ ${wordsList}
     ).toArray();
     
     // 获取每日复习限制
-    const settings = await db.settings.get('dailyLimit');
+    const settings = await dbAdapter.getSetting('dailyLimit');
     const totalLimit = (settings && settings.value) || 20;
     
     const shuffle = arr => arr.sort(() => 0.5 - Math.random());
@@ -4721,9 +4802,9 @@ ${wordsList}
     // 获取学习条目
     let entries = [];
     if (this.currentModule) {
-      entries = await db.entries.where('moduleId').equals(this.currentModule).toArray();
+      entries = await dbAdapter.getEntriesByModule(this.currentModule);
     } else {
-      entries = await db.entries.toArray();
+      entries = await dbAdapter.getAllEntries();
     }
     
     if (entries.length === 0) {
@@ -4765,7 +4846,7 @@ ${wordsList}
     });
     
     // 获取所有模块信息（包括默认和自定义模块）
-    const allModules = await db.modules.toArray();
+    const allModules = await dbAdapter.getAllModules();
     const moduleInfo = {};
     allModules.forEach(mod => {
       moduleInfo[mod.id] = mod.name;
@@ -5827,7 +5908,7 @@ Requirements:
   // Test History
   async showTestHistory() {
     const container = document.getElementById('test-history-list');
-    const tests = await db.tests.orderBy('createdAt').reverse().toArray();
+    const tests = await dbAdapter.getAllTests();
     
     if (tests.length === 0) {
       container.innerHTML = '<p class="text-center text-primary-500 py-8">暂无测试记录</p>';
@@ -5880,7 +5961,7 @@ Requirements:
     try {
       // 使用循环单独删除
       for (const id of selectedIds) {
-        await db.tests.delete(id);
+        await dbAdapter.deleteTest(id);
       }
       await this.showTestHistory();
       await this.alertDialog('删除成功');
@@ -5895,7 +5976,7 @@ Requirements:
   },
   
   async showTestReview(testId) {
-    const test = await db.tests.get(testId);
+    const test = await dbAdapter.getTest(testId);
     if (!test) {
       alert('测试记录不存在');
       return;
@@ -6002,7 +6083,7 @@ Requirements:
   },
   
   async getCalendarEvents() {
-    const records = await db.records.toArray();
+    const records = await dbAdapter.getAllRecords();
     const dateMap = {};
     
     records.forEach(r => {
@@ -6023,7 +6104,7 @@ Requirements:
   },
   
   async loadStudyLog() {
-    const records = await db.records.orderBy('createdAt').reverse().limit(20).toArray();
+    const records = (await dbAdapter.getAllRecords()).reverse().slice(0, 20);
     const container = document.getElementById('study-log');
     
     if (records.length === 0) {
@@ -6056,9 +6137,9 @@ Requirements:
     this.currentView = 'stats';
     
     // Calculate stats
-    const records = await db.records.toArray();
-    const entries = await db.entries.toArray();
-    const tests = await db.tests.toArray();
+    const records = await dbAdapter.getAllRecords();
+    const entries = await dbAdapter.getAllEntries();
+    const tests = await dbAdapter.getAllTests();
     
     // Total time
     const totalMinutes = records.reduce((sum, r) => sum + r.duration, 0);
@@ -6085,7 +6166,7 @@ Requirements:
   
   // Populate module dropdowns
   async populateModuleSelects() {
-    const modules = await db.modules.toArray();
+    const modules = await dbAdapter.getAllModules();
     const moduleOptions = modules.map(m => 
       `<option value="${m.id}">${m.name}</option>`
     ).join('');
@@ -6139,7 +6220,7 @@ Requirements:
     const moduleId = document.getElementById('trend-module-select')?.value || 'all';
     const viewType = document.getElementById('trend-view-select')?.value || 'week';
     
-    const records = await db.records.toArray();
+    const records = await dbAdapter.getAllRecords();
     const filteredRecords = this.getFilteredRecords(records, moduleId);
     
     let labels, data, labelFormat;
@@ -6301,7 +6382,7 @@ Requirements:
   async updateTestScoreChart() {
     const moduleId = document.getElementById('test-score-module-select')?.value || 'all';
     
-    const tests = await db.tests.orderBy('createdAt').toArray();
+    const tests = await dbAdapter.getAllTests();
     const filteredTests = this.getFilteredTests(tests, moduleId);
     
     // Group by date and add sequence number for same day
@@ -6376,7 +6457,7 @@ Requirements:
     const colors = ['#f59e0b', '#10b981', '#486581', '#8b5cf6', '#ec4899'];
     
     for (const [key, mod] of Object.entries(this.modules)) {
-      const entries = await db.entries.where('moduleId').equals(key).toArray();
+      const entries = await dbAdapter.getEntriesByModule(key);
       const totalEntries = entries.length;
       const reviewedEntries = entries.filter(e => e.srsLevel > 0).length;
       const percentage = totalEntries > 0 ? Math.round((reviewedEntries / totalEntries) * 100) : 0;
@@ -6445,11 +6526,11 @@ Requirements:
   },
   
   async saveSettings() {
-    await db.settings.put({ id: 'apiUrl', value: document.getElementById('setting-api-url').value });
-    await db.settings.put({ id: 'apiKey', value: document.getElementById('setting-api-key').value });
-    await db.settings.put({ id: 'model', value: document.getElementById('setting-model').value });
-    await db.settings.put({ id: 'maxTokens', value: parseInt(document.getElementById('setting-max-tokens').value) || 8000 });
-    await db.settings.put({ id: 'dailyLimit', value: parseInt(document.getElementById('setting-daily-limit').value) || 20 });
+    await dbAdapter.putSetting({ id: 'apiUrl', value: document.getElementById('setting-api-url').value });
+    await dbAdapter.putSetting({ id: 'apiKey', value: document.getElementById('setting-api-key').value });
+    await dbAdapter.putSetting({ id: 'model', value: document.getElementById('setting-model').value });
+    await dbAdapter.putSetting({ id: 'maxTokens', value: parseInt(document.getElementById('setting-max-tokens').value) || 8000 });
+    await dbAdapter.putSetting({ id: 'dailyLimit', value: parseInt(document.getElementById('setting-daily-limit').value) || 20 });
     
     this.closeSettings();
     alert('设置已保存');
@@ -6515,13 +6596,13 @@ Requirements:
       
       // 收集数据
       const data = {
-        modules: await db.modules.toArray(),
+        modules: await dbAdapter.getAllModules(),
         materials: await db.materials.toArray(),
-        entries: await db.entries.toArray(),
+        entries: await dbAdapter.getAllEntries(),
         cards: await db.cards.toArray(),
-        tests: await db.tests.toArray(),
-        records: await db.records.toArray(),
-        settings: await db.settings.toArray(),
+        tests: await dbAdapter.getAllTests(),
+        records: await dbAdapter.getAllRecords(),
+        settings: await dbAdapter.getAllSettings(),
         exportDate: new Date().toISOString(),
         version: '2.0'
       };
@@ -6591,26 +6672,26 @@ Requirements:
         modal.querySelector('p').textContent = '正在清空旧数据...';
       }
       
-      await db.modules.clear();
-      await db.materials.clear();
-      await db.entries.clear();
-      await db.cards.clear();
-      await db.tests.clear();
-      await db.records.clear();
-      await db.settings.clear();
+      await dbAdapter.clearAll();
+      await dbAdapter.clearAll();
+      await dbAdapter.clearAll();
+      await dbAdapter.clearAll();
+      await dbAdapter.clearAll();
+      await dbAdapter.clearAll();
+      await dbAdapter.clearAll();
       
       // 更新进度提示
       if (modal) {
         modal.querySelector('p').textContent = '正在写入新数据...';
       }
       
-      if (data.modules) await db.modules.bulkPut(data.modules);
-      if (data.materials) await db.materials.bulkPut(data.materials);
-      if (data.entries) await db.entries.bulkPut(data.entries);
-      if (data.cards) await db.cards.bulkPut(data.cards);
-      if (data.tests) await db.tests.bulkPut(data.tests);
-      if (data.records) await db.records.bulkPut(data.records);
-      if (data.settings) await db.settings.bulkPut(data.settings);
+      if (data.modules) await dbAdapter.bulkPut("modules", data.modules);
+      if (data.materials) await dbAdapter.bulkPut("materials", data.materials);
+      if (data.entries) await dbAdapter.bulkPut("entries", data.entries);
+      if (data.cards) await dbAdapter.bulkPut("cards", data.cards);
+      if (data.tests) await dbAdapter.bulkPut("tests", data.tests);
+      if (data.records) await dbAdapter.bulkPut("records", data.records);
+      if (data.settings) await dbAdapter.bulkPut("settings", data.settings);
       
       this.closeProgressDialog();
       await this.alertDialog('✅ 数据导入成功！');
@@ -6721,14 +6802,14 @@ Requirements:
     
     // Module counts - update all including custom
     for (const key in this.modules) {
-      const count = await db.entries.where('moduleId').equals(key).count();
+      const count = await dbAdapter.countEntriesByModule(key);
       const countEl = document.getElementById(`${key}-count`);
       if (countEl) countEl.textContent = `${count} 条目`;
     }
   },
   
   async calculateStreak() {
-    const records = await db.records.toArray();
+    const records = await dbAdapter.getAllRecords();
     const dates = [...new Set(records.map(r => new Date(r.createdAt).toDateString()))]
       .map(d => new Date(d))
       .sort((a, b) => b - a);
@@ -6758,7 +6839,7 @@ Requirements:
   },
   
   async previewMaterial(id) {
-    const material = await db.materials.get(id);
+    const material = await dbAdapter.getMaterial(id);
     if (material) {
       alert(`预览: ${material.title}\n\n${material.content.substring(0, 500)}...`);
     }
@@ -6767,7 +6848,7 @@ Requirements:
   async deleteMaterial(id) {
     const confirmed = await this.confirmDialog('确定要删除这个材料吗？相关的学习条目也会被删除。');
     if (confirmed) {
-      await db.materials.delete(id);
+      await dbAdapter.deleteMaterial(id);
       await db.entries.where('materialId').equals(id).delete();
       await this.loadModuleMaterials();
       await this.updateSidebarStats();
@@ -7077,8 +7158,8 @@ Requirements:
     const confirmed = await this.confirmDialog(`确定要删除 ${this.modules[moduleId].name} 模块吗？该模块的所有语料和学习记录都会被删除。`);
     if (confirmed) {
       // Delete related data
-      await db.modules.delete(moduleId);
-      const materials = await db.materials.where('moduleId').equals(moduleId).toArray();
+      await dbAdapter.deleteModule(moduleId);
+      const materials = await dbAdapter.getMaterialsByModule(moduleId);
       for (const m of materials) {
         await db.cards.where('materialId').equals(m.id).delete();
       }
