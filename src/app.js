@@ -6437,7 +6437,6 @@ Requirements:
     document.getElementById('setting-model').value = settings.model;
     document.getElementById('setting-max-tokens').value = settings.maxTokens;
     document.getElementById('setting-daily-limit').value = settings.dailyLimit;
-    await this.loadDataPath();
     document.getElementById('settings-modal').classList.remove('hidden');
   },
   
@@ -7168,40 +7167,6 @@ Requirements:
     await this.loadCustomModules();
     await this.renderModuleNav();
     await this.loadDashboard();
-  },
-  
-  // Data storage path selection
-  async selectDataPath() {
-    try {
-      const selected = await window.__TAURI__.dialog.open({
-        directory: true,
-        multiple: false,
-        title: '选择数据存储位置'
-      });
-      
-      if (selected) {
-        const path = Array.isArray(selected) ? selected[0] : selected;
-        await db.settings.put({ id: 'dataPath', value: path });
-        document.getElementById('setting-data-path').value = path;
-        alert('数据存储位置已设置，请重启应用生效。建议先导出数据备份。');
-      }
-    } catch (error) {
-      console.error('选择路径失败:', error);
-      alert('选择路径失败: ' + error.message);
-    }
-  },
-  
-  async resetDataPath() {
-    await db.settings.delete('dataPath');
-    document.getElementById('setting-data-path').value = '';
-    alert('已重置为默认位置，请重启应用生效。');
-  },
-  
-  async loadDataPath() {
-    const setting = await db.settings.get('dataPath');
-    if (setting && setting.value) {
-      document.getElementById('setting-data-path').value = setting.value;
-    }
   },
   
   async generateTestFromMaterials() {
