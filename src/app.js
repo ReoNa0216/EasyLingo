@@ -6796,7 +6796,7 @@ Requirements:
     const todayRecords = (await dbAdapter.getAllRecords()).filter(r => 
       new Date(r.createdAt).toISOString().split('T')[0] === today &&
       r.action !== 'review_detail' // 排除混合复习的详细记录，避免重复统计
-    ).toArray();
+    );
     const recordedMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
     const totalMinutes = recordedMinutes + this.currentStudyMinutes;
     
@@ -6826,7 +6826,7 @@ Requirements:
     const todayRecords = (await dbAdapter.getAllRecords()).filter(r => 
       new Date(r.createdAt).toISOString().split('T')[0] === today &&
       r.action !== 'review_detail' // 排除混合复习的详细记录，避免重复统计
-    ).toArray();
+    );
     const todayMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
     document.getElementById('today-minutes').textContent = `${todayMinutes}分钟`;
     
