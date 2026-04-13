@@ -3,20 +3,6 @@
  * Main Application Logic
  */
 
-// Database Setup
-const db = new Dexie('PolyLingoDB');
-
-// Define database schema - version 5 with auto-increment keys
-db.version(5).stores({
-  modules: '++id, name, language, createdAt',
-  materials: '++id, moduleId, title, content, sourceFile, createdAt',
-  entries: '++id, materialId, moduleId, type, original, translation, srsLevel, nextReview, interval, createdAt',
-  cards: '++id, materialId, content, srsLevel, nextReview, interval, createdAt',
-  tests: '++id, moduleId, questions, answers, results, score, duration, createdAt',
-  records: '++id, date, moduleId, duration, action, createdAt',
-  settings: '++id, value'
-});
-
 // Application State
 const app = {
   currentModule: null,
