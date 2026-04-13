@@ -107,6 +107,8 @@ class DatabaseAdapter {
         sourceFile TEXT,
         source TEXT,
         status TEXT,
+        progress INTEGER DEFAULT 0,
+        partialCount INTEGER DEFAULT 0,
         createdAt TEXT,
         entryCount INTEGER DEFAULT 0,
         errorMsg TEXT
@@ -192,7 +194,7 @@ class DatabaseAdapter {
       // 检查 materials 表
       const materialsInfo = await this.select("PRAGMA table_info(materials)");
       const materialsColumns = materialsInfo.map(col => col.name);
-      const materialsRequired = ['sourceFile', 'source'];
+      const materialsRequired = ['sourceFile', 'source', 'progress', 'partialCount'];
       const materialsMissing = materialsRequired.filter(col => !materialsColumns.includes(col));
       
       if (entriesMissing.length > 0 || materialsMissing.length > 0) {
@@ -252,6 +254,14 @@ class DatabaseAdapter {
       if (!materialsColumns.includes('source')) {
         console.log('[DB] Migrating: adding source column to materials table');
         await this.execute("ALTER TABLE materials ADD COLUMN source TEXT");
+      }
+      if (!materialsColumns.includes('progress')) {
+        console.log('[DB] Migrating: adding progress column to materials table');
+        await this.execute("ALTER TABLE materials ADD COLUMN progress INTEGER DEFAULT 0");
+      }
+      if (!materialsColumns.includes('partialCount')) {
+        console.log('[DB] Migrating: adding partialCount column to materials table');
+        await this.execute("ALTER TABLE materials ADD COLUMN partialCount INTEGER DEFAULT 0");
       }
       
       console.log('[DB] Migration complete');

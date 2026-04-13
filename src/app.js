@@ -233,7 +233,8 @@ const app = {
       window.appInitialized = false;
       
       // 显示错误信息
-      alert('应用初始化失败: ' + error.message + '\n\n请刷新页面重试。');
+      const initErrorMsg = error?.message || error?.toString() || '未知错误';
+      alert('应用初始化失败: ' + initErrorMsg + '\n\n请刷新页面重试。');
       
       // 检测数据库升级错误
       if (error.name === 'UpgradeError' || (error.message && (error.message.includes('primary key') || error.message.includes('changing primary key')))) {
@@ -983,8 +984,13 @@ ${placeholderText}`;
       alert(`已成功提取 ${savedCount} 个学习条目（原文共 ${allEntries.length} 条）！`);
     } catch (error) {
       console.error('AI processing error:', error);
-      await dbAdapter.updateMaterial(material.id, { status: 'error', errorMsg: error.message });
-      alert('处理失败: ' + error.message);
+      const errorMsg = error?.message || error?.toString() || '未知错误';
+      try {
+        await dbAdapter.updateMaterial(material.id, { status: 'error', errorMsg: errorMsg });
+      } catch (updateErr) {
+        console.error('Failed to update material error status:', updateErr);
+      }
+      alert('处理失败: ' + errorMsg);
     }
   },
   
@@ -1982,7 +1988,8 @@ ${chunk.substring(0, 8000)}
       
     } catch (error) {
       console.error('BBC fetch error:', error);
-      if (status) status.textContent = '获取失败: ' + error.message;
+      const fetchErrorMsg = error?.message || error?.toString() || '未知错误';
+      if (status) status.textContent = '获取失败: ' + fetchErrorMsg;
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -2026,7 +2033,8 @@ ${chunk.substring(0, 8000)}
       
     } catch (error) {
       console.error('BBC processing error:', error);
-      if (status) status.textContent = '处理失败: ' + error.message;
+      const errorMsg = error?.message || error?.toString() || '未知错误';
+      if (status) status.textContent = '处理失败: ' + errorMsg;
       if (progress) progress.classList.add('hidden');
     }
   },
@@ -2158,7 +2166,8 @@ ${chunk.substring(0, 8000)}
       
     } catch (error) {
       console.error('The Guardian fetch error:', error);
-      if (status) status.textContent = '获取失败: ' + error.message;
+      const fetchErrorMsg = error?.message || error?.toString() || '未知错误';
+      if (status) status.textContent = '获取失败: ' + fetchErrorMsg;
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -2202,7 +2211,8 @@ ${chunk.substring(0, 8000)}
       
     } catch (error) {
       console.error('The Guardian processing error:', error);
-      if (status) status.textContent = '处理失败: ' + error.message;
+      const processErrorMsg = error?.message || error?.toString() || '未知错误';
+      if (status) status.textContent = '处理失败: ' + processErrorMsg;
       if (progress) progress.classList.add('hidden');
     }
   },
@@ -2344,7 +2354,8 @@ ${chunk.substring(0, 8000)}
       
     } catch (error) {
       console.error('NPR fetch error:', error);
-      if (status) status.textContent = '获取失败: ' + error.message;
+      const fetchErrorMsg = error?.message || error?.toString() || '未知错误';
+      if (status) status.textContent = '获取失败: ' + fetchErrorMsg;
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -2387,7 +2398,8 @@ ${chunk.substring(0, 8000)}
       
     } catch (error) {
       console.error('NPR processing error:', error);
-      if (status) status.textContent = '处理失败: ' + error.message;
+      const processErrorMsg = error?.message || error?.toString() || '未知错误';
+      if (status) status.textContent = '处理失败: ' + processErrorMsg;
     }
   },
   
