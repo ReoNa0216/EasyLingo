@@ -168,9 +168,11 @@ const app = {
     if (invoke) {
       try {
         const result = await invoke('plugin:dialog|ask', {
-          message: message,
-          title: 'EasyLingo',
-          type: 'warning'
+          options: {
+            message: message,
+            title: 'EasyLingo',
+            type: 'warning'
+          }
         });
         return result === true;
       } catch (e) {
@@ -187,9 +189,11 @@ const app = {
     if (invoke) {
       try {
         await invoke('plugin:dialog|message', {
-          message: message,
-          title: 'EasyLingo',
-          type: 'info'
+          options: {
+            message: message,
+            title: 'EasyLingo',
+            type: 'info'
+          }
         });
         return;
       } catch (e) {
@@ -6464,9 +6468,11 @@ Requirements:
       }
       
       const selected = await invoke('plugin:dialog|open', {
-        directory: true,
-        multiple: false,
-        title: '选择数据存储位置'
+        options: {
+          directory: true,
+          multiple: false,
+          title: '选择数据存储位置'
+        }
       });
       
       if (selected) {
@@ -6614,12 +6620,14 @@ Requirements:
       // 使用 Tauri dialog 选择保存路径
       const invoke = this.getInvoke();
       const savePath = await invoke('plugin:dialog|save', {
-        title: '导出学习数据',
-        defaultPath: defaultName,
-        filters: [{
-          name: 'JSON 文件',
-          extensions: ['json']
-        }]
+        options: {
+          title: '导出学习数据',
+          defaultPath: defaultName,
+          filters: [{
+            name: 'JSON 文件',
+            extensions: ['json']
+          }]
+        }
       });
       
       if (!savePath) {
