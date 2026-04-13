@@ -39,16 +39,16 @@ class DatabaseAdapter {
     
     if (savedPath) {
       this.customPath = savedPath;
-      this.dbPath = `${savedPath}/polylingo.db`;
+      this.dbPath = `sqlite:${savedPath}/polylingo.db`;
     } else {
       // 使用默认路径 - AppData 目录
-      this.dbPath = null; // null 表示使用默认路径
+      this.dbPath = 'sqlite:polylingo.db';
     }
     
     // 初始化数据库连接
     const invoke = this.getInvoke();
     await invoke('plugin:sql|load', { 
-      db: this.dbPath || 'sqlite:polylingo.db'
+      db: this.dbPath
     });
     
     // 检查是否需要重新创建表（表结构变更时）
@@ -69,7 +69,7 @@ class DatabaseAdapter {
   async execute(sql, params = []) {
     const invoke = this.getInvoke();
     return await invoke('plugin:sql|execute', { 
-      db: this.dbPath || 'sqlite:polylingo.db',
+      db: this.dbPath,
       query: sql,
       values: params
     });
@@ -78,7 +78,7 @@ class DatabaseAdapter {
   async select(sql, params = []) {
     const invoke = this.getInvoke();
     return await invoke('plugin:sql|select', { 
-      db: this.dbPath || 'sqlite:polylingo.db',
+      db: this.dbPath,
       query: sql,
       values: params
     });
@@ -503,6 +503,7 @@ class DatabaseAdapter {
     const invoke = this.getInvoke();
     await invoke('ensure_dir', { path });
     this.customPath = path;
+    this.dbPath = `sqlite:${path}/polylingo.db`;
     localStorage.setItem('polylingo_db_path', path);
     return true;
   }
