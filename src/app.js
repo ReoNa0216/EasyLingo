@@ -950,13 +950,24 @@ ${placeholderText}`;
       let savedCount = 0;
       for (const entry of allEntries) {
         try {
+          // 自动修复英语 original/translation 颠倒的问题
+          let original = entry.original || '';
+          let translation = entry.translation || '';
+          if (material.moduleId === 'english' || this.modules[material.moduleId]?.language === 'English') {
+            const isOriginalChinese = /[\u4e00-\u9fa5]/.test(original);
+            const isTranslationEnglish = /^[a-zA-Z\s'-]+$/.test(translation);
+            if (isOriginalChinese && isTranslationEnglish) {
+              [original, translation] = [translation, original];
+            }
+          }
+          
           await dbAdapter.putEntry({
             id: `entry_${material.id}_${Math.random().toString(36).substr(2, 9)}`,
             materialId: material.id,
             moduleId: material.moduleId,
             type: entry.type || 'sentence', // word, phrase, sentence
-            original: entry.original,
-            translation: entry.translation || '',
+            original: original,
+            translation: translation,
             wordType: entry.wordType || '', // 词的类型（Substantiv/Verb/Adjektiv等）
             explanation: entry.explanation || '',
             example: entry.example || '',
@@ -1083,7 +1094,7 @@ ${mod.customPrompt}
 
 1. 【单词 word】：材料中实际存在的英语单词
    - 必须是材料原文中出现的词汇，不能是翻译
-   - wordType字段必须使用中文词性：名词、动词、形容词、副词、介词、连词
+   - wordType字段必须使用中文词性：名词、动词、形容词、副词、介词、连词、情态动词、助动词
    - ❌ 严禁使用英文词性：Noun、Verb、Adjective、Adverb
    - ✅ 正确示例："downed"(动词)、"jets"(名词)、"Lebanon"(名词)
    
@@ -1170,6 +1181,7 @@ ${mod.customPrompt}
    - 含汉字的短语：整体注音在最后的括号中，如"入場者数(にゅうじょうしゃすう)"
    - ❌禁止逐字注音：不要"入(にゅう)場(じょう)者(しゃ)数(すう)"
    - 复合词不拆开，整体注音
+   - 🚨 关键要求：只要短语中包含汉字，original字段必须带注音括号。如"緊急に備える(きんきゅうにそなえる)"、"君に任せる(きみにまかせる)"
    
 3. 【语句 sentence】格式：纯原文（无注音）
    - 语句original字段不注音，保持完整原文
@@ -3069,7 +3081,7 @@ ${chunk.substring(0, 8000)}
         srsLevel: 0,
         nextReview: Date.now(),
         interval: 0,
-        easeFactor: 2.5
+        efactor: 2.5
       }));
       
       // 使用AI补全所有信息
@@ -3091,9 +3103,19 @@ ${chunk.substring(0, 8000)}
       
       // 添加模块ID和字符串ID（与学习材料提取保持一致）
       const isJapaneseModule = this.currentModule === 'japanese';
+      const isEnglishModule = this.currentModule === 'english';
       entries.forEach(entry => {
         entry.moduleId = this.currentModule;
         entry.id = `entry_${this.currentModule}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // 自动修复英语 original/translation 颠倒的问题
+        if (isEnglishModule) {
+          const isOriginalChinese = /[\u4e00-\u9fa5]/.test(entry.original);
+          const isTranslationEnglish = /^[a-zA-Z\s'-]+$/.test(entry.translation);
+          if (isOriginalChinese && isTranslationEnglish) {
+            [entry.original, entry.translation] = [entry.translation, entry.original];
+          }
+        }
         
         // 处理日语例句格式：移除注音括号
         if (isJapaneseModule && entry.example) {
