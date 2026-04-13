@@ -104,6 +104,8 @@ class DatabaseAdapter {
         moduleId TEXT,
         title TEXT,
         content TEXT,
+        sourceFile TEXT,
+        source TEXT,
         status TEXT,
         createdAt TEXT,
         entryCount INTEGER DEFAULT 0,
@@ -181,12 +183,20 @@ class DatabaseAdapter {
   // 检查表结构是否需要重建
   async checkTableSchema() {
     try {
-      const tableInfo = await this.select("PRAGMA table_info(entries)");
-      const columns = tableInfo.map(col => col.name);
-      const requiredColumns = ['wordType', 'example', 'srsLevel'];
-      const missing = requiredColumns.filter(col => !columns.includes(col));
-      if (missing.length > 0) {
-        console.log('[DB] Missing columns detected:', missing);
+      // 检查 entries 表
+      const entriesInfo = await this.select("PRAGMA table_info(entries)");
+      const entriesColumns = entriesInfo.map(col => col.name);
+      const entriesRequired = ['wordType', 'example', 'srsLevel'];
+      const entriesMissing = entriesRequired.filter(col => !entriesColumns.includes(col));
+      
+      // 检查 materials 表
+      const materialsInfo = await this.select("PRAGMA table_info(materials)");
+      const materialsColumns = materialsInfo.map(col => col.name);
+      const materialsRequired = ['sourceFile', 'source'];
+      const materialsMissing = materialsRequired.filter(col => !materialsColumns.includes(col));
+      
+      if (entriesMissing.length > 0 || materialsMissing.length > 0) {
+        console.log('[DB] Missing columns detected - entries:', entriesMissing, 'materials:', materialsMissing);
         return true;
       }
       return false;
@@ -214,22 +224,36 @@ class DatabaseAdapter {
   // 迁移：添加缺失的列
   async migrateTables() {
     try {
-      const tableInfo = await this.select("PRAGMA table_info(entries)");
-      const columns = tableInfo.map(col => col.name);
+      // 迁移 entries 表
+      const entriesInfo = await this.select("PRAGMA table_info(entries)");
+      const entriesColumns = entriesInfo.map(col => col.name);
       
-      // 检查并添加缺失的列
-      if (!columns.includes('wordType')) {
+      if (!entriesColumns.includes('wordType')) {
         console.log('[DB] Migrating: adding wordType column to entries table');
         await this.execute("ALTER TABLE entries ADD COLUMN wordType TEXT");
       }
-      if (!columns.includes('example')) {
+      if (!entriesColumns.includes('example')) {
         console.log('[DB] Migrating: adding example column to entries table');
         await this.execute("ALTER TABLE entries ADD COLUMN example TEXT");
       }
-      if (!columns.includes('srsLevel')) {
+      if (!entriesColumns.includes('srsLevel')) {
         console.log('[DB] Migrating: adding srsLevel column to entries table');
         await this.execute("ALTER TABLE entries ADD COLUMN srsLevel INTEGER DEFAULT 0");
       }
+      
+      // 迁移 materials 表
+      const materialsInfo = await this.select("PRAGMA table_info(materials)");
+      const materialsColumns = materialsInfo.map(col => col.name);
+      
+      if (!materialsColumns.includes('sourceFile')) {
+        console.log('[DB] Migrating: adding sourceFile column to materials table');
+        await this.execute("ALTER TABLE materials ADD COLUMN sourceFile TEXT");
+      }
+      if (!materialsColumns.includes('source')) {
+        console.log('[DB] Migrating: adding source column to materials table');
+        await this.execute("ALTER TABLE materials ADD COLUMN source TEXT");
+      }
+      
       console.log('[DB] Migration complete');
     } catch (e) {
       console.warn('[DB] Migration error:', e);
@@ -280,10 +304,10 @@ class DatabaseAdapter {
   }
 
   async putMaterial(material) {
-    const { id, moduleId, title, content, status, createdAt, entryCount, errorMsg } = material;
+    const { id, moduleId, title, content, sourceFile, source, status, createdAt, entryCount, errorMsg } = material;
     await this.execute(
-      "INSERT OR REPLACE INTO materials (id, moduleId, title, content, status, createdAt, entryCount, errorMsg) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, moduleId, title, content, status, createdAt, entryCount || 0, errorMsg]
+      "INSERT OR REPLACE INTO materials (id, moduleId, title, content, sourceFile, source, status, createdAt, entryCount, errorMsg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, moduleId, title, content, sourceFile || null, source || null, status, createdAt, entryCount || 0, errorMsg]
     );
   }
 
