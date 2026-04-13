@@ -3622,8 +3622,9 @@ ${wordsList}
     const types = ['word', 'phrase', 'sentence'];
     
     for (const type of types) {
-      // 获取所有条目并排序
-      const allEntries = await dbAdapter.getEntriesByModule(this.currentModule);
+      // 获取对应类型的条目并排序
+      const allEntries = (await dbAdapter.getEntriesByModule(this.currentModule))
+        .filter(e => e.type === type);
       
       // 按 original 字母顺序排序（不区分大小写）
       allEntries.sort((a, b) => {
@@ -3632,7 +3633,7 @@ ${wordsList}
         return aText.localeCompare(bText, undefined, { sensitivity: 'base' });
       });
       
-      // 保存全部条目
+      // 保存该类型的全部条目
       this.entriesPagination[type].all = allEntries;
       this.entriesPagination[type].offset = 0;
       
