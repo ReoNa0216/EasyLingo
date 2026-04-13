@@ -6458,6 +6458,11 @@ Requirements:
   async selectDataPath() {
     try {
       const invoke = this.getInvoke();
+      if (!invoke) {
+        alert('Tauri API 不可用');
+        return;
+      }
+      
       const selected = await invoke('plugin:dialog|open', {
         directory: true,
         multiple: false,
@@ -6467,8 +6472,8 @@ Requirements:
       if (selected) {
         const path = Array.isArray(selected) ? selected[0] : selected;
         
-        // 检查目录是否可写
-        const exists = await window.__TAURI__.core.invoke('path_exists', { path });
+        // 检查目录是否存在
+        const exists = await invoke('path_exists', { path });
         if (!exists) {
           alert('所选路径不存在');
           return;
@@ -6492,7 +6497,7 @@ Requirements:
       }
     } catch (error) {
       console.error('选择路径失败:', error);
-      alert('选择路径失败: ' + error.message);
+      alert('选择路径失败: ' + (error.message || error));
     }
   },
 
