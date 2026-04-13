@@ -6538,11 +6538,11 @@ Requirements:
   
   async getSettings() {
     const [apiUrl, apiKey, model, maxTokens, dailyLimit] = await Promise.all([
-      db.settings.get('apiUrl'),
-      db.settings.get('apiKey'),
-      db.settings.get('model'),
-      db.settings.get('maxTokens'),
-      db.settings.get('dailyLimit')
+      dbAdapter.getSetting('apiUrl'),
+      dbAdapter.getSetting('apiKey'),
+      dbAdapter.getSetting('model'),
+      dbAdapter.getSetting('maxTokens'),
+      dbAdapter.getSetting('dailyLimit')
     ]);
     
     // 移除apiUrl末尾的斜杠，避免双斜杠问题
