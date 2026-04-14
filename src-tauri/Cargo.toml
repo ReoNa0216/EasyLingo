@@ -1,6 +1,6 @@
 [package]
 name = "easylingo"
-version = "1.1.0"
+version = "2.0.0"
 description = "A desktop language learning app powered by AI and SRS"
 authors = ["ReoNa0216"]
 edition = "2021"
@@ -23,6 +23,7 @@ tauri-build = { version = "2.0", features = [] }
 tauri = { version = "2.0", features = [] }
 tauri-plugin-dialog = "2.0"
 tauri-plugin-fs = "2.0"
+tauri-plugin-sql = { version = "2.0", features = ["sqlite"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", features = ["rustls-tls"] }

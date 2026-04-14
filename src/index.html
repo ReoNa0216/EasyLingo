@@ -22,8 +22,8 @@
   <!-- Marked.js for Markdown rendering (custom modules only) -->
   <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
   
-  <!-- Dexie.js (IndexedDB) -->
-  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <!-- SQLite Database Adapter -->
+  <script src="db-adapter.js"></script>
   
   <!-- FullCalendar -->
   <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/main.min.css' rel='stylesheet' />
@@ -1157,6 +1157,24 @@
               <p class="text-xs text-primary-500 mt-1">如果AI补全失败或内容被截断，请增加此值</p>
               <p class="text-xs text-amber-600 mt-1">💡 建议设置：日语 16000，德语/英语 8000</p>
             </div>
+          </div>
+        </div>
+        
+        <!-- Data Storage Location -->
+        <div>
+          <h4 class="text-lg font-semibold mb-3">数据存储位置</h4>
+          <div class="space-y-3">
+            <div class="flex items-center gap-2">
+              <input type="text" id="setting-data-path" readonly class="flex-1 px-4 py-2 border border-primary-200 rounded-lg bg-primary-50 text-primary-600 text-sm" placeholder="使用默认位置">
+              <button onclick="app.selectDataPath()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors text-sm whitespace-nowrap">
+                选择位置
+              </button>
+              <button onclick="app.resetDataPath()" class="px-4 py-2 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-lg transition-colors text-sm whitespace-nowrap">
+                重置
+              </button>
+            </div>
+            <p class="text-xs text-primary-500">数据将保存在所选目录的 polylingo.db 文件中</p>
+            <p class="text-xs text-amber-600">⚠️ 更改存储位置后，需要重启应用生效。建议先导出数据备份。</p>
           </div>
         </div>
         

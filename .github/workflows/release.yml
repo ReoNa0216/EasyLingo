@@ -2,11 +2,8 @@ name: Build and Release
 
 on:
   push:
-    branches: [ main, master ]
     tags:
       - 'v*'
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -36,7 +33,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EasyLingo-Windows
-          path: src-tauri/target/release/bundle/nsis/*.exe
+          path: src-tauri/target/release/bundle/nsis/EasyLingo_2.0.0_x64-setup.exe
 
   build-macos:
     runs-on: macos-latest
@@ -61,7 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EasyLingo-macOS
-          path: src-tauri/target/release/bundle/dmg/*.dmg
+          path: src-tauri/target/release/bundle/dmg/EasyLingo_2.0.0_aarch64.dmg
 
   create-release:
     needs: [build-windows, build-macos]
@@ -72,9 +69,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         
-      - name: Download all artifacts
+      - name: Download Windows artifact
         uses: actions/download-artifact@v4
-        
+        with:
+          name: EasyLingo-Windows
+          path: EasyLingo-Windows
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: EasyLingo-macOS
+          path: EasyLingo-macOS
+          
       - name: Zip prompt-examples
         run: |
           cd prompt-examples
@@ -85,11 +91,11 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            EasyLingo-Windows/*.exe
-            EasyLingo-macOS/*.dmg
+            EasyLingo-Windows/EasyLingo_2.0.0_x64-setup.exe
+            EasyLingo-macOS/EasyLingo_2.0.0_aarch64.dmg
             API_configuration.pdf
             prompt-examples.zip
-          draft: true
+          draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
