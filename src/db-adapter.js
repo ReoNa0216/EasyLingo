@@ -157,8 +157,11 @@ class DatabaseAdapter {
         moduleId TEXT,
         score INTEGER,
         totalQuestions INTEGER,
+        duration INTEGER DEFAULT 0,
         createdAt TEXT,
-        answers TEXT
+        answers TEXT,
+        questions TEXT,
+        results TEXT
       )
     `);
 
@@ -169,6 +172,7 @@ class DatabaseAdapter {
         entryId INTEGER,
         action TEXT,
         duration INTEGER,
+        count INTEGER DEFAULT 1,
         date TEXT,
         createdAt TEXT
       )
@@ -262,6 +266,32 @@ class DatabaseAdapter {
       if (!materialsColumns.includes('partialCount')) {
         console.log('[DB] Migrating: adding partialCount column to materials table');
         await this.execute("ALTER TABLE materials ADD COLUMN partialCount INTEGER DEFAULT 0");
+      }
+      
+      // 迁移 tests 表
+      const testsInfo = await this.select("PRAGMA table_info(tests)");
+      const testsColumns = testsInfo.map(col => col.name);
+      
+      if (!testsColumns.includes('duration')) {
+        console.log('[DB] Migrating: adding duration column to tests table');
+        await this.execute("ALTER TABLE tests ADD COLUMN duration INTEGER DEFAULT 0");
+      }
+      if (!testsColumns.includes('questions')) {
+        console.log('[DB] Migrating: adding questions column to tests table');
+        await this.execute("ALTER TABLE tests ADD COLUMN questions TEXT");
+      }
+      if (!testsColumns.includes('results')) {
+        console.log('[DB] Migrating: adding results column to tests table');
+        await this.execute("ALTER TABLE tests ADD COLUMN results TEXT");
+      }
+      
+      // 迁移 records 表
+      const recordsInfo = await this.select("PRAGMA table_info(records)");
+      const recordsColumns = recordsInfo.map(col => col.name);
+      
+      if (!recordsColumns.includes('count')) {
+        console.log('[DB] Migrating: adding count column to records table');
+        await this.execute("ALTER TABLE records ADD COLUMN count INTEGER DEFAULT 1");
       }
       
       console.log('[DB] Migration complete');
@@ -440,20 +470,35 @@ class DatabaseAdapter {
   }
 
   // tests
+  _parseTestRow(row) {
+    if (!row) return row;
+    try {
+      if (row.answers && typeof row.answers === 'string') row.answers = JSON.parse(row.answers);
+    } catch (e) { row.answers = {}; }
+    try {
+      if (row.questions && typeof row.questions === 'string') row.questions = JSON.parse(row.questions);
+    } catch (e) { row.questions = []; }
+    try {
+      if (row.results && typeof row.results === 'string') row.results = JSON.parse(row.results);
+    } catch (e) { row.results = []; }
+    return row;
+  }
+
   async getTest(id) {
     const rows = await this.select("SELECT * FROM tests WHERE id = ?", [id]);
-    return rows[0] || null;
+    return this._parseTestRow(rows[0]) || null;
   }
 
   async getAllTests() {
-    return await this.select("SELECT * FROM tests");
+    const rows = await this.select("SELECT * FROM tests");
+    return rows.map(r => this._parseTestRow(r));
   }
 
   async putTest(test) {
-    const { id, moduleId, score, totalQuestions, createdAt, answers } = test;
+    const { id, moduleId, score, totalQuestions, duration, createdAt, answers, questions, results } = test;
     await this.execute(
-      "INSERT OR REPLACE INTO tests (id, moduleId, score, totalQuestions, createdAt, answers) VALUES (?, ?, ?, ?, ?, ?)",
-      [id, moduleId, score, totalQuestions, createdAt, JSON.stringify(answers)]
+      "INSERT OR REPLACE INTO tests (id, moduleId, score, totalQuestions, duration, createdAt, answers, questions, results) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, moduleId, score, totalQuestions, duration || 0, createdAt, JSON.stringify(answers || {}), JSON.stringify(questions || []), JSON.stringify(results || [])]
     );
   }
 
@@ -467,10 +512,10 @@ class DatabaseAdapter {
   }
 
   async putRecord(record) {
-    const { moduleId, entryId, action, duration, date, createdAt } = record;
+    const { moduleId, entryId, action, duration, count, date, createdAt } = record;
     await this.execute(
-      "INSERT INTO records (moduleId, entryId, action, duration, date, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
-      [moduleId, entryId, action, duration, date, createdAt]
+      "INSERT INTO records (moduleId, entryId, action, duration, count, date, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [moduleId, entryId, action, duration, count || 1, date, createdAt]
     );
   }
 
