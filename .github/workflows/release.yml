@@ -35,8 +35,33 @@ jobs:
           name: EasyLingo-Windows
           path: src-tauri/target/release/bundle/nsis/EasyLingo_2.0.0_x64-setup.exe
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Build Tauri app
+        run: npm run build
+        
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EasyLingo-macOS
+          path: src-tauri/target/release/bundle/dmg/EasyLingo_2.0.0_aarch64.dmg
+
   create-release:
-    needs: [build-windows]
+    needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -49,6 +74,12 @@ jobs:
         with:
           name: EasyLingo-Windows
           path: EasyLingo-Windows
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: EasyLingo-macOS
+          path: EasyLingo-macOS
           
       - name: Zip prompt-examples
         run: |
@@ -61,6 +92,7 @@ jobs:
         with:
           files: |
             EasyLingo-Windows/EasyLingo_2.0.0_x64-setup.exe
+            EasyLingo-macOS/EasyLingo_2.0.0_aarch64.dmg
             API_configuration.pdf
             prompt-examples.zip
           draft: false
