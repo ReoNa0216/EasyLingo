@@ -12,7 +12,7 @@
 
 ## 安装包
 
-正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.0.1 提交版待确认期间，可从[最新双平台构建及安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43801614199)下载（Actions 下载需要登录，产物保留 7 天）；本次包已包含新闻代理及 ZDF 地址修复。Windows 安装后的原生功能、macOS 签名完整性和启动检查均通过。各新闻源的实际访问结果见[审计记录](docs/submission-audit.md)。
+正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.0.1 提交版仍为草稿；本次加入 China Daily、将 NPR 设为英语默认源并精简代理提示，双平台安装包正在重新构建。各新闻源的实际访问结果见[审计记录](docs/submission-audit.md)。
 
 - Windows 10/11 x64：`EasyLingo_2.0.1_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
 - macOS Apple Silicon：`EasyLingo_2.0.1_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
@@ -28,7 +28,7 @@
 
 界面、图表、日历、文件解析器随安装包提供。已有词条的阅读和复习可离线使用；AI 和新闻抓取需要联网。软件会读取 Windows/macOS 系统代理设置；更改代理后请重启软件。新闻网站可能限制当前网络的访问或改变页面结构，界面会显示具体失败原因。
 
-日语新闻使用人民网日语版，英语提供 BBC、NPR、The Guardian，德语使用 ZDFheute。日语文章导入时保留来源及原文链接。各来源在直连与代理下的可用性分别测试，结果见审计记录。
+日语新闻使用人民网日语版；英语默认 NPR，另提供 China Daily（China 栏目最新英语文章）、BBC 和 The Guardian；德语使用 ZDFheute。BBC、Guardian 标注“需代理”，适用于部分网络下无法直连的情况。新闻导入均保留来源及原文链接。各来源在直连与代理下的可用性分别测试，结果见审计记录。
 
 ## 数据与隐私
 
@@ -65,7 +65,8 @@ npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 - 修复自定义模块修改、词条编辑关闭弹窗、模块删除残留词条、存储目录切换问题。
 - 修复短时复习不计数、快速重复评分、每日限额为 1 时抽不到词条、混合测试语言判分问题。
 - AI 请求改用原生网络连接并设置超时；错误提取结果显示失败；更新 PDF 解析器和前端内容净化。
-- 日语新闻改用人民网，修复新闻历史清空后重新加载旧记录的问题；日语新闻 AI 提取失败时保留预览供重试，重复点击不会重复导入。
+- 日语新闻改用人民网，修复新闻历史清空后重新加载旧记录的问题；全部新闻源的 AI 提取失败时保留预览供重试，重复点击不会重复导入。
+- 增加 China Daily 英语新闻，默认 NPR，BBC 与 Guardian 使用简短代理标签。
 - 移除运行时 CDN 依赖，补齐离线界面资源、开发署名、许可证、自动化回归与双平台构建。
 
 完整审计和验收记录见 [docs/submission-audit.md](docs/submission-audit.md)。

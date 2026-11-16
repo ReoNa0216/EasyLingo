@@ -99,6 +99,7 @@ test('news failures remain retryable and untrusted previews stay text', async ({
   let failAI = true;
   const payload = '<img src=x onerror="window.newsInjected=1">';
   await page.exposeFunction('nativeInvoke', async (cmd, args) => {
+    if (cmd === 'fetch_chinadaily_news') return [{ title: 'China Daily news', link: 'https://www.chinadaily.com.cn/a/202611/16/WS1.html', pubDate: '2026-11-16T10:22' }];
     if (cmd === 'fetch_people_news') return [{ title: '日本語ニュース', link: 'https://j.people.com.cn/n3/2026/1116/c1-1.html', pubDate: '2026-11-16T09:00' }];
     if (cmd === 'request_ai') return failAI
       ? { status: 401, body: '{"error":{"message":"invalid key"}}' }
@@ -115,8 +116,15 @@ test('news failures remain retryable and untrusted previews stay text', async ({
   await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
   await page.goto('http://127.0.0.1:1427');
   await page.waitForFunction(() => app.isReady);
-  for (const source of ['bbc', 'guardian', 'npr', 'people', 'zdf']) {
-    const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', people: 'People', zdf: 'ZDF' };
+  await page.evaluate(async () => { await app.switchModule('english'); app.switchModuleTab('upload'); });
+  await expect(page.locator('#panel-npr')).toBeVisible();
+  await expect(page.locator('#panel-bbc')).toBeHidden();
+  await expect(page.locator('#tab-bbc')).toContainText('需代理');
+  await expect(page.locator('#tab-guardian')).toContainText('需代理');
+  await page.locator('#tab-chinadaily').click();
+  await expect(page.locator('#panel-chinadaily')).toBeVisible();
+  for (const source of ['bbc', 'guardian', 'npr', 'people', 'zdf', 'chinadaily']) {
+    const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', people: 'People', zdf: 'ZDF', chinadaily: 'ChinaDaily' };
     const suffix = names[source];
     await page.evaluate(async source => {
       await app.switchModule(source === 'zdf' ? 'german' : source === 'people' ? 'japanese' : 'english');
@@ -134,19 +142,20 @@ test('news failures remain retryable and untrusted previews stay text', async ({
     // Exhausting the feed must reset persisted history before fetching again.
     await page.evaluate(suffix => app[`fetch${suffix}News`](), suffix);
     expect(await page.evaluate(suffix => app[`fetched${suffix}Feeds`].length, suffix)).toBe(1);
-    if (source === 'people') {
-      await db.putSetting({ id: 'apiKey', value: 'test-only' });
-      await page.evaluate(() => app.processPeopleContent());
-      expect((await db.getAllMaterials())[0].status).toBe('error');
-      expect(await page.evaluate(() => app.peopleCurrentArticle !== null)).toBe(true);
-      failAI = false;
-      await page.evaluate(() => Promise.all([app.processPeopleContent(), app.processPeopleContent()]));
-      const materials = await db.getAllMaterials();
-      expect(materials.filter(m => m.status === 'completed')).toHaveLength(1);
-      expect(materials.at(-1).moduleId).toBe('japanese');
-      expect(materials.at(-1).sourceFile).toBe('https://j.people.com.cn/n3/2026/1116/c1-1.html');
-      expect((await db.getAllEntries()).map(e => e.original)).toEqual(['猫']);
-    }
+    await db.putSetting({ id: 'apiKey', value: 'test-only' });
+    failAI = true;
+    await page.evaluate(suffix => app[`process${suffix}Content`](), suffix);
+    expect((await db.getAllMaterials()).at(-1).status).toBe('error');
+    expect(await page.evaluate(source => app[`${source}CurrentArticle`] !== null, source)).toBe(true);
+    failAI = false;
+    const completedBefore = (await db.getAllMaterials()).filter(m => m.status === 'completed').length;
+    await page.evaluate(suffix => Promise.all([app[`process${suffix}Content`](), app[`process${suffix}Content`]()]), suffix);
+    const materials = await db.getAllMaterials();
+    expect(materials.filter(m => m.status === 'completed')).toHaveLength(completedBefore + 1);
+    const material = materials.at(-1);
+    expect(material.moduleId).toBe(source === 'people' ? 'japanese' : source === 'zdf' ? 'german' : 'english');
+    expect(material.sourceFile).toBe(source === 'people' ? 'https://j.people.com.cn/n3/2026/1116/c1-1.html' : source === 'chinadaily' ? 'https://www.chinadaily.com.cn/a/202611/16/WS1.html' : `https://example.com/${source}`);
+    expect((await db.getEntriesByMaterial(material.id)).map(e => e.original)).toEqual(['猫']);
   }
   sql.close();
 });

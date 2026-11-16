@@ -94,12 +94,14 @@ const assert = require('node:assert/strict');
     console.log('Native SQLite backup transaction round trip passed');
     assert.deepEqual(errors, []);
     if (process.argv.includes('--news') || newsMode !== 'system') {
-      const news = await page.evaluate(async () => Promise.all(['bbc', 'guardian', 'npr', 'people', 'zdf'].map(async source => {
+      const news = await page.evaluate(async () => Promise.all(['bbc', 'guardian', 'npr', 'people', 'zdf', 'chinadaily'].map(async source => {
         let stage = 'list';
         try {
           const category = source === 'npr' ? 'news' : 'world';
           let url;
-          if (source === 'people') {
+          if (source === 'chinadaily') {
+            url = (await app.desktopFetchChinaDailyNews())[0]?.link;
+          } else if (source === 'people') {
             url = (await app.desktopFetchPeopleNews())[0]?.link;
           } else {
             const rss = await app.desktopFetchRSS(source, category);
@@ -115,7 +117,7 @@ const assert = require('node:assert/strict');
       for (const result of news) {
         if (result.error) { result.ui = { skipped: 'Native request failed' }; continue; }
         result.ui = await page.evaluate(async source => {
-          const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', people: 'People', zdf: 'ZDF' };
+          const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', people: 'People', zdf: 'ZDF', chinadaily: 'ChinaDaily' };
           const suffix = names[source];
           await app.switchModule(source === 'zdf' ? 'german' : source === 'people' ? 'japanese' : 'english');
           app[`fetched${suffix}Feeds`] = [];
@@ -130,23 +132,30 @@ const assert = require('node:assert/strict');
             alerts: window.smokeAlerts.slice(alertsBefore) };
         }, result.source);
       }
+      await page.evaluate(() => { app.switchModuleTab('upload'); app.switchEnglishNewsSource('chinadaily'); });
+      await page.locator('#news-import-container').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `artifacts/news-ui-${newsMode}.png`, fullPage: true });
       fs.writeFileSync('artifacts/native-news.json', JSON.stringify(news, null, 2));
       fs.writeFileSync(`artifacts/native-news-${newsMode}.json`, JSON.stringify({ mode: newsMode, checkedAt: new Date().toISOString(), news }, null, 2));
       console.log('Native news results:', news);
-      assert.ok(news.every(item => item.title && item.contentLength >= 100 && item.ui.contentLength >= 100), 'All five news sources must return article text through the native command and UI');
-      const imported = await page.evaluate(async () => {
-        await app.switchModule('japanese');
-        const sourceUrl = app.peopleCurrentArticle.link;
-        await app.processPeopleContent();
-        const materials = (await dbAdapter.getAllMaterials()).filter(m => m.source === '人民网日语版');
-        const material = materials.at(-1);
-        return { sourceUrl, material, entries: material ? await dbAdapter.getEntriesByMaterial(material.id) : [] };
-      });
-      assert.equal(imported.material.status, 'completed');
-      assert.equal(imported.material.moduleId, 'japanese');
-      assert.equal(imported.material.sourceFile, imported.sourceUrl);
-      assert.ok(imported.entries.length > 0);
-      console.log('People Japanese → mocked AI → saved entries with original source passed');
+      for (const item of news.filter(item => !item.error)) {
+        const imported = await page.evaluate(async source => {
+          const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', people: 'People', zdf: 'ZDF', chinadaily: 'ChinaDaily' };
+          const moduleId = source === 'people' ? 'japanese' : source === 'zdf' ? 'german' : 'english';
+          await app.switchModule(moduleId);
+          const sourceUrl = app[`${source}CurrentArticle`].link;
+          await app[`process${names[source]}Content`]();
+          const materials = (await dbAdapter.getAllMaterials()).filter(m => m.sourceFile === sourceUrl);
+          const material = materials.at(-1);
+          return { sourceUrl, moduleId, material, entries: material ? await dbAdapter.getEntriesByMaterial(material.id) : [] };
+        }, item.source);
+        assert.equal(imported.material.status, 'completed');
+        assert.equal(imported.material.moduleId, imported.moduleId);
+        assert.equal(imported.material.sourceFile, imported.sourceUrl);
+        assert.ok(imported.entries.length > 0);
+        console.log(`${item.source} → mocked AI → saved entries with original source passed`);
+      }
+      assert.ok(news.every(item => item.title && item.contentLength >= 100 && item.ui.contentLength >= 100), 'All six news sources must return article text through the native command and UI');
     }
     if (process.argv.includes('--export')) {
       console.log('Waiting for native Save dialog selection');

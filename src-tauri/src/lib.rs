@@ -1,4 +1,5 @@
 mod ai;
+mod china_daily;
 mod database;
 mod people_news;
 use serde_json::json;
@@ -57,6 +58,11 @@ async fn fetch_people_news() -> Result<Vec<people_news::Article>, String> {
     people_news::parse_list(&fetch_news_text(people_news::LIST_URL).await?)
 }
 
+#[tauri::command]
+async fn fetch_chinadaily_news() -> Result<Vec<china_daily::Article>, String> {
+    china_daily::parse_list(&fetch_news_text(china_daily::LIST_URL).await?)
+}
+
 async fn fetch_news_text(url: &str) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -77,6 +83,8 @@ async fn fetch_news_article(source: String, url: String, category: String) -> Re
     let _ = category;
     let url = if source == "people" {
         people_news::article_url(&url).ok_or("人民网文章地址无效")?.to_string()
+    } else if source == "chinadaily" {
+        china_daily::article_url(&url).ok_or("China Daily 文章地址无效")?.to_string()
     } else { url };
     let html = fetch_news_text(&url).await?;
     let document = scraper::Html::parse_document(&html);
@@ -166,11 +174,12 @@ async fn fetch_news_article(source: String, url: String, category: String) -> Re
             ".body-text p",
         ]),
         "people" => people_news::article_text(&document)?,
+        "chinadaily" => china_daily::article_text(&document)?,
         _ => extract_content(&document, &["article p", ".content p", "main p", ".body-text p"]),
     };
 
     let mut content = content;
-    if source != "people" && content.len() < 100 {
+    if !matches!(source.as_str(), "people" | "chinadaily") && content.len() < 100 {
         // 尝试从 meta 取摘要
         let selectors = [
             "meta[name='description']",
@@ -191,7 +200,7 @@ async fn fetch_news_article(source: String, url: String, category: String) -> Re
     Ok(json!({
         "title": title,
         "content": content.chars().take(5000).collect::<String>(),
-        "source": if source == "people" { "人民网日语版" } else { &source },
+        "source": match source.as_str() { "people" => "人民网日语版", "chinadaily" => "China Daily", _ => &source },
     }))
 }
 
@@ -238,6 +247,7 @@ pub fn run() {
             ai::request_ai,
             fetch_news_rss,
             fetch_people_news,
+            fetch_chinadaily_news,
             fetch_news_article,
             ensure_dir,
             path_exists
