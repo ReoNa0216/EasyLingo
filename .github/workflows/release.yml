@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -62,11 +66,31 @@ jobs:
           sleep 10
           kill -0 "$app_pid"
           kill "$app_pid"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EasyLingo-${{ matrix.platform }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
+  verify-windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: EasyLingo-Windows
+          path: installers
       - name: Install and verify Windows package
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $installer = (Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe).FullName
+          $installer = (Get-ChildItem installers/*.exe).FullName
           $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/CURRENTUSER', '/NS') -WindowStyle Hidden -PassThru -Wait
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
           $registration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\EasyLingo' -ErrorAction Stop
@@ -75,16 +99,18 @@ jobs:
           $installDir = $registration.InstallLocation.Trim('"')
           if (!(Test-Path -LiteralPath "$installDir/easylingo.exe")) { throw "Installed executable missing: $installDir" }
           Write-Output "Verifying installed version $($registration.DisplayVersion) at $installDir"
-          node scripts/native-smoke.cjs "$installDir/easylingo.exe"
+          node scripts/native-smoke.cjs "$installDir/easylingo.exe" 2>&1 | Tee-Object native-smoke.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: EasyLingo-${{ matrix.platform }}
-          path: ${{ matrix.artifact }}
-          if-no-files-found: error
-          retention-days: 30
+          name: Windows-validation
+          path: |
+            native-smoke.log
+            artifacts/native-about.png
+          retention-days: 7
   release:
-    needs: build
+    needs: [build, verify-windows]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -92,6 +118,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: EasyLingo-*
           path: installers
           merge-multiple: true
       - name: Checksums

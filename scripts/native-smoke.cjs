@@ -27,13 +27,20 @@ const assert = require('node:assert/strict');
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9337',
     WEBVIEW2_USER_DATA_FOLDER: path.resolve('artifacts/native-webview')
   } });
+  let launchError;
+  child.on('error', error => { launchError = error; });
+  child.stdout.on('data', chunk => console.log('APP:', String(chunk).trim()));
+  child.stderr.on('data', chunk => console.log('APP ERROR:', String(chunk).trim()));
   let browser;
+  let connectionError;
   try {
-    for (let i = 0; i < 40; i++) {
-      try { browser = await chromium.connectOverCDP('http://127.0.0.1:9337'); break; }
-      catch { await new Promise(resolve => setTimeout(resolve, 500)); }
+    for (let i = 0; i < 120; i++) {
+      if (launchError) throw launchError;
+      if (child.exitCode !== null) throw new Error(`Application exited before WebView2 connected: ${child.exitCode}`);
+      try { browser = await chromium.connectOverCDP('http://127.0.0.1:9337', { timeout: 1500 }); break; }
+      catch (error) { connectionError = error; await new Promise(resolve => setTimeout(resolve, 500)); }
     }
-    if (!browser) throw new Error('WebView2 debug endpoint did not start');
+    if (!browser) throw new Error(`WebView2 debug endpoint did not start (PID ${child.pid}, exit ${child.exitCode}): ${connectionError?.message}`);
     const page = browser.contexts()[0].pages()[0];
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
