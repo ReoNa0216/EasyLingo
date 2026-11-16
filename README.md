@@ -12,11 +12,11 @@
 
 ## 安装包
 
-正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.1.0 在 2.0.1 已验证功能基线上完成紫色界面与中英日字体改版，已通过[双平台构建与安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43813735978)。PR 和 Release 保持草稿，尚未正式发布。各新闻源的实际访问结果见[审计记录](docs/submission-audit.md)。
+正式提交版下载：[EasyLingo 2.1.0](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.0)。本版完成旧项目修复、紫色界面、中英日字体、新图标及配置指南，已通过[双平台构建与安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43853836214)。各新闻源的实际访问结果及验证范围见[审计记录](docs/submission-audit.md)。
 
 - Windows 10/11 x64：`EasyLingo_2.1.0_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
 - macOS Apple Silicon：`EasyLingo_2.1.0_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
-- 安装包尚未使用商业代码签名证书或 Apple 公证，系统可能要求确认来源。macOS 的首次运行行为仍需按目标设备系统版本验收。
+- 安装包尚未使用商业代码签名证书或 Apple 公证，系统可能要求确认来源。macOS 已验证包内应用启动，带下载隔离标记时的首次运行提示取决于系统版本。
 
 ## 界面预览
 
@@ -60,11 +60,17 @@ npm test
 cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 npm run test:ui
 npm run build:win
+# Windows 免安装试用构建，使用独立数据目录
+npm run tauri -- build --no-bundle --config scripts/preview.conf.json
 # Apple Silicon Mac
 npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 ```
 
 浏览器回归测试默认使用已安装的 Microsoft Edge；开发运行 `npm run dev`，使用 Node.js 提供本地静态服务。构建会自动生成本地前端资源。
+
+免安装试用构建的可执行文件位于 `src-tauri/target/release/easylingo.exe`，可复制到任意目录双击运行，运行环境要求与正式版相同。切换回正式版请重新运行正式构建命令。`node_modules/`、`src/vendor/`、`src-tauri/gen/` 和 `src-tauri/target/` 均可重新生成；清理后先运行 `npm ci`。
+
+配置指南的文字源为 `docs/api-configuration.md`。在装有微软雅黑的 Windows 上安装 Python `reportlab` 后，运行 `python scripts/build-guide.py` 可重新生成根目录 PDF；更新界面时同步替换 `docs/images/settings.png`。
 
 ## 2.1.0 界面更新
 
