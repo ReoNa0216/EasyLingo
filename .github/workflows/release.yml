@@ -67,9 +67,13 @@ jobs:
         shell: pwsh
         run: |
           $installer = (Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe).FullName
-          $installDir = Join-Path $env:RUNNER_TEMP 'EasyLingo-install-test'
-          $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/CURRENTUSER', "/D=$installDir") -WindowStyle Hidden -PassThru -Wait
+          $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/CURRENTUSER', '/NS') -WindowStyle Hidden -PassThru -Wait
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          $registration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\EasyLingo' -ErrorAction Stop
+          if ($registration.DisplayVersion -ne '2.0.1') { throw 'Unexpected installed version' }
+          $installDir = $registration.InstallLocation.Trim('"')
+          if (!(Test-Path -LiteralPath "$installDir/easylingo.exe")) { throw "Installed executable missing: $installDir" }
+          Write-Output "Verifying installed version $($registration.DisplayVersion) at $installDir"
           node scripts/native-smoke.cjs "$installDir/easylingo.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4

@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 (async () => {
   const exe = process.argv[2];
   if (!exe) throw new Error('Pass the audit executable path');
+  if (!fs.existsSync(exe)) throw new Error(`Executable does not exist: ${exe}`);
   fs.mkdirSync('artifacts', { recursive: true });
   const server = http.createServer((req, res) => {
     let body = '';
@@ -78,6 +79,21 @@ const assert = require('node:assert/strict');
     assert.equal(restored, true);
     console.log('Native SQLite backup transaction round trip passed');
     assert.deepEqual(errors, []);
+    if (process.argv.includes('--news')) {
+      const news = await page.evaluate(async () => Promise.all(['bbc', 'guardian', 'npr', 'asahi', 'zdf'].map(async source => {
+        try {
+          const rss = await app.desktopFetchRSS(source, 'world');
+          const document = new DOMParser().parseFromString(rss, 'text/xml');
+          const item = document.querySelector('item');
+          const url = item?.querySelector('link')?.textContent?.trim();
+          if (!url) return { source, status: 'no-article-links' };
+          const article = await app.desktopFetchArticle(source, url, 'world');
+          return { source, url, title: article.title, contentLength: article.content?.length || 0 };
+        } catch (error) { return { source, error: String(error) }; }
+      })));
+      fs.writeFileSync('artifacts/native-news.json', JSON.stringify(news, null, 2));
+      console.log('Native news results:', news);
+    }
     if (process.argv.includes('--export')) {
       console.log('Waiting for native Save dialog selection');
       await page.evaluate(() => app.exportData());
