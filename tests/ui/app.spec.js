@@ -287,3 +287,79 @@ test('exported backup can be restored after an application version update', asyn
   expect((await db.getAllEntries())[0].original).toBe('keep this word');
   sql.close();
 });
+
+test('legacy part-of-speech labels display in Chinese and Japanese labels can be edited', async ({ page }) => {
+  const { db, sql, invoke } = fixture();
+  await page.exposeFunction('nativeInvoke', invoke);
+  await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
+  await page.goto('http://127.0.0.1:1427');
+  await page.waitForFunction(() => app.isReady);
+  for (const [id, original, wordType] of [
+    [1, '学習', 'Noun'], [2, '猫', ' noun '],
+    [3, '読む', '五段动词（他动词）'], [4, '独自', '独自分类（自定义）'],
+    [5, '静か', '形容動詞'], [6, '新しい', 'Adjective']
+  ]) await db.putEntry({ id, moduleId: 'japanese', type: 'word', original, wordType });
+  await page.locator('#nav-japanese').click();
+  await page.locator('#tab-words').click();
+  for (const [id, label] of [
+    [1, '名词'], [2, '名词'],
+    [3, '五段动词（他动词）'], [4, '独自分类（自定义）'],
+    [5, '形容动词（な形容词）'], [6, '形容词']
+  ]) await expect(page.locator(`#entry-${id}`).getByText(label, { exact: true })).toBeVisible();
+  // Rendering does not rewrite stored data or infer a noun's conjugation class.
+  expect((await db.getEntry(1)).wordType).toBe('Noun');
+  await page.locator('#entry-1 button[title="编辑"]').click();
+  await expect(page.locator('#edit-wordType')).toHaveValue('名词');
+  await page.locator('#edit-wordType').fill('名词（サ变）');
+  await page.locator('#entry-edit-modal').getByRole('button', { name: '保存', exact: true }).click();
+  await page.reload();
+  await page.waitForFunction(() => app.isReady);
+  await page.locator('#nav-japanese').click();
+  await page.locator('#tab-words').click();
+  await expect(page.locator('#entry-1').getByText('名词（サ变）', { exact: true })).toBeVisible();
+  expect((await db.getEntry(1)).wordType).toBe('名词（サ变）');
+  await db.putEntry({ id: 7, moduleId: 'german', type: 'word', original: 'Buch', wordType: 'Substantiv', gender: 'n.' });
+  await page.locator('#nav-german').click();
+  await page.locator('#tab-words').click();
+  await page.locator('#entry-7 button[title="编辑"]').click();
+  await expect(page.locator('#edit-wordType')).toHaveCount(1);
+  await expect(page.locator('#edit-wordType')).toHaveValue('Substantiv');
+  await expect(page.locator('#edit-gender')).toHaveValue('n.');
+  sql.close();
+});
+
+test('Japanese extraction, retry and bulk enrichment send the teaching terminology rules', async ({ page }) => {
+  const { sql, invoke } = fixture();
+  const requests = [];
+  const word = { type: 'word', original: '学習(がくしゅう)', translation: '学习', wordType: '名词（サ变）' };
+  await page.exposeFunction('nativeInvoke', (command, args) => {
+    if (command !== 'request_ai') return invoke(command, args);
+    requests.push(args.body);
+    // An empty first response exercises the real material extraction retry path.
+    const content = requests.length === 1 ? '' : JSON.stringify([word]);
+    return { status: 200, body: JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }) };
+  });
+  await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
+  await page.goto('http://127.0.0.1:1427');
+  await page.waitForFunction(() => app.isReady);
+  const result = await page.evaluate(async () => {
+    const settings = { apiUrl: 'https://example.com/v1', apiKey: 'test-only', model: 'test-model', maxTokens: 4000 };
+    const extracted = await app.callAIForEntriesChunk('日本語を学習します。', app.modules.japanese, settings, 1, 1);
+    const enriched = [{ original: '学習' }];
+    await app.enrichEntriesCompleteWithAI(enriched, settings, 'japanese');
+    return { extracted, enriched };
+  });
+  expect(requests).toHaveLength(3);
+  for (const request of requests) {
+    const prompt = request.messages.find(message => message.role === 'user').content;
+    for (const term of ['中文日语学习术语', '名词（サ变）', '五段动词', '一段动词', 'サ变动词', 'カ变动词', '自动词', '他动词', 'い形容词', 'な形容词']) {
+      expect(prompt).toContain(term);
+    }
+    expect(prompt).not.toContain('以下德语教材');
+    expect(request.max_tokens).toBe(4000);
+  }
+  expect(requests[1].messages[0].content).toContain('日语教学专家');
+  expect(result.extracted[0].wordType).toBe('名词（サ变）');
+  expect(result.enriched[0].wordType).toBe('名词（サ变）');
+  sql.close();
+});

@@ -1,6 +1,6 @@
 {
   "name": "easylingo",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "A desktop language learning app powered by AI and SRS",
   "main": "src/index.html",
   "scripts": {

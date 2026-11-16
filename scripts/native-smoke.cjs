@@ -80,6 +80,20 @@ const assert = require('node:assert/strict');
       assert.match(text, /Hello EasyLingo/);
     }
     console.log('Native PDF/DOCX parsing passed');
+    const japaneseId = await page.evaluate(async () => {
+      const entry = { moduleId: 'japanese', type: 'word', original: '学習', translation: '学习', wordType: 'Noun' };
+      await dbAdapter.putEntry(entry);
+      await app.switchModule('japanese');
+      app.switchModuleTab('words');
+      return entry.id;
+    });
+    await page.locator(`#entry-${japaneseId}`).getByText('名词', { exact: true }).waitFor();
+    await page.locator(`#entry-${japaneseId} button[title="编辑"]`).click();
+    await page.locator('#edit-wordType').fill('名词（サ变）');
+    await page.locator('#entry-edit-modal').getByRole('button', { name: '保存', exact: true }).click();
+    await page.locator(`#entry-${japaneseId}`).getByText('名词（サ变）', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(async id => (await dbAdapter.getEntry(id)).wordType, japaneseId), '名词（サ变）');
+    console.log('Native Japanese part-of-speech display and editing passed');
     const restored = await page.evaluate(async () => {
       const data = { version: '2.0' };
       const tables = ['modules', 'materials', 'entries', 'cards', 'tests', 'records', 'settings'];

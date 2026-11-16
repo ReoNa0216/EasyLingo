@@ -554,7 +554,7 @@ ${placeholderText}`;
         const hints = {
           german: 'AI将自动识别词性（如名词der/die/das、动词等）并生成中文翻译和例句',
           english: 'AI将自动识别词性（如名词、动词等）并生成中文翻译和例句',
-          japanese: 'AI将自动识别词性（他动词·五段/一段、自动词·五段/一段、名词、い形容词、な形容动词等），为汉字标注平假名读音，并生成中文翻译和例句'
+          japanese: 'AI将标注日语词性与动词类别，为汉字标注读音，并生成中文翻译和例句'
         };
         aiHint.textContent = hints[moduleId] || hints.english;
       } else {
@@ -1142,7 +1142,7 @@ ${mod.customPrompt}
    - 汉字单词：整体标注在最后，如"安定(あんてい)" ❌禁止逐字注音
    - 片假名外来语：标注外来语原文，如"コンピュータ(computer)"
    - 纯平假名单词：保持原样
-   - 词性详细标注：他动词·五段/一段、自动词·五段/一段、名词、形容动词、形容词等
+   ${this.japaneseWordTypePrompt}
    
 2. 【短语 phrase】格式：汉字短语(读音)
    - 含汉字的短语：整体注音在最后的括号中，如"緊急に備える(きんきゅうにそなえる)"
@@ -1521,19 +1521,23 @@ ${hasCustomFormat ? `请返回JSON数组，确保格式与用户自定义示例�
     try {
       console.log(`Chunk ${chunkIndex}: Retrying with simplified prompt...`);
       
-      const simplePrompt = `从以下德语教材中提取学习条目。
+      const isJapanese = mod.id === 'japanese' || mod.language === 'Japanese';
+      const isGerman = mod.id === 'german' || mod.language === 'German';
+      const simplePrompt = `从以下${mod.name}教材中提取学习条目。
 
 教材内容：
 ${chunk.substring(0, 8000)}
 
 请返回JSON数组，每个条目包含：
 - type: "word"/"phrase"/"sentence"
-- original: 德语原文
+- original: ${mod.name}原文
 - translation: 中文翻译
-- wordType: 词的类型（仅word需要）
-- gender: 性别（仅word需要）
+- wordType: 中文词性（仅word需要）
+- gender: ${isGerman ? '德语名词的性别，m./f./n./pl.' : '留空'}
 - explanation: 用法解释
 - example: 例句
+
+${isJapanese ? this.japaneseWordTypePrompt : ''}
 
 请尽量多地提取，返回完整JSON数组：`;
 
@@ -1546,7 +1550,7 @@ ${chunk.substring(0, 8000)}
         body: JSON.stringify({
           model: settings.model,
           messages: [
-            { role: 'system', content: '你是德语教学专家。请返回有效的JSON数组。' },
+            { role: 'system', content: `你是${mod.name}教学专家。请返回有效的JSON数组。` },
             { role: 'user', content: simplePrompt }
           ],
           temperature: 0.5,
@@ -1770,6 +1774,15 @@ ${chunk.substring(0, 8000)}
     return entries;
   },
   
+  japaneseWordTypePrompt: `【日语词性 wordType】
+- 使用中文日语学习术语，不使用 Noun、Verb、Adjective 等英文标签。
+- 普通名词标为“名词”；可接する的名词标为“名词（サ变）”，如学習；不要把所有名词都标为サ变。
+- 动词区分“五段动词”“一段动词”“サ变动词”“カ变动词”，并按当前用法注明自他性，如“五段动词（他动词）”“一段动词（自动词）”。
+- サ变动词如する、勉強する；カ变动词如来る。不得将它们归入五段或一段。
+- い形容词标为“形容词（い形容词）”；な形容词标为“形容动词（な形容词）”。
+- 其他按实际词性标为副词、代词、连体词、助词、助动词、接续词、感叹词等；兼类按语境注明。
+- 保留有依据的分类；无法确定的活用类型或自他性不猜测。`,
+
   translateWordType(type) {
     const translations = {
       'Substantiv': '名词',
@@ -1790,9 +1803,28 @@ ${chunk.substring(0, 8000)}
       'Ordinalzahl': '序数词',
       'Interjektion': '感叹词',
       'Artikel': '冠词',
-      'Numerale': '数词'
+      'Numerale': '数词',
+      'Noun': '名词',
+      'Adjective': '形容词',
+      'Pronoun': '代词',
+      'Preposition': '介词',
+      'Conjunction': '连词',
+      'Interjection': '感叹词',
+      'Article': '冠词',
+      '名詞': '名词',
+      '動詞': '动词',
+      '形容詞': '形容词（い形容词）',
+      '形容動詞': '形容动词（な形容词）',
+      '副詞': '副词',
+      '助詞': '助词',
+      '助動詞': '助动词',
+      '連体詞': '连体词',
+      '接続詞': '接续词',
+      '感動詞': '感叹词'
     };
-    return translations[type] || type;
+    const label = type.trim();
+    const key = Object.keys(translations).find(key => key.toLowerCase() === label.toLowerCase());
+    return key ? translations[key] : type;
   },
   
   // 从localStorage加载已抓取的ZDF文章历史
@@ -3162,19 +3194,6 @@ ${chunk.substring(0, 8000)}
       ? '- gender: 德语名词的性别标记，必须是 "m."（阳性）、"f."（阴性）、"n."（中性）或 "pl."（复数），非名词则留空，严禁使用 "der"、"die"、"das"、"feminine"、"neuter"、"中"、"无" 等描述'
       : '- gender: 非德语语言此字段留空（英语等语言无需性别标记）';
     
-    // 日语特殊处理
-    const japaneseDesc = isJapanese ? `
-日语特殊要求：
-1. 含日文汉字的单词：original格式必须是"汉字(平假名)"，如"学生(がくせい)"
-2. 片假名外来语：original格式必须是"片假名(英语原文)"，如"コンピュータ(computer)"
-3. 纯平假名单词：保持原样
-4. wordType必须详细标注：
-   - 动词：他动词·五段/一段、自动词·五段/一段
-   - 名词：名词
-   - 形容词：い形容词/な形容动词
-   - 其他：副词、助词、感叹词等
-5. 示例句子格式：日语句子 中文翻译（例句汉字不注音，空格分隔），如"物価が安定しています。 物价稳定。"` : '';
-    
     // 用户自定义补全要求（非默认模块）- 支持Markdown格式
     const customPrompt = !isDefaultModule ? (mod.customPrompt ? `
 
@@ -3193,6 +3212,8 @@ ${mod.customPrompt}
     
     const prompt = isJapanese 
       ? `你是一位专业的日语教学专家。请为以下日语单词识别类型并补全完整信息。${customPrompt}
+
+${this.japaneseWordTypePrompt}
 
 【重要规则 - 格式规范】
 
@@ -3767,7 +3788,7 @@ ${wordsList}
     
     const genderField = isGerman && entry.type === 'word' ? `
       <div>
-        <label class="block text-sm font-medium text-primary-700 mb-1">词性</label>
+        <label class="block text-sm font-medium text-primary-700 mb-1">名词性别</label>
         <select id="edit-gender" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
           <option value="">无</option>
           <option value="m." ${entry.gender === 'm.' ? 'selected' : ''}>m. 阳性</option>
@@ -3776,9 +3797,11 @@ ${wordsList}
           <option value="pl." ${entry.gender === 'pl.' ? 'selected' : ''}>pl. 复数</option>
         </select>
       </div>
+    ` : '';
+    const wordTypeField = entry.type === 'word' ? `
       <div>
-        <label class="block text-sm font-medium text-primary-700 mb-1">词的类型</label>
-        <input type="text" id="edit-wordType" value="${this.escapeHtml(entry.wordType || '')}" placeholder="如：Substantiv, Verb, Adjektiv..." class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+        <label class="block text-sm font-medium text-primary-700 mb-1">词性</label>
+        <input type="text" id="edit-wordType" value="${this.escapeHtml(isJapanese ? this.translateWordType(entry.wordType || '') : (entry.wordType || ''))}" placeholder="${isJapanese ? '如：名词（サ变）、五段动词（他动词）' : '如：名词、动词、形容词'}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
       </div>
     ` : '';
     
@@ -3815,6 +3838,7 @@ ${wordsList}
             <input type="text" id="edit-translation" value="${this.escapeHtml(entry.translation)}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
           </div>
           ${genderField}
+          ${wordTypeField}
           ${explanationField}
         </div>
         <div class="flex gap-3 mt-6">
@@ -4080,8 +4104,8 @@ ${wordsList}
     // 所有语言在添加单词时都显示词类型输入框
     const wordTypeField = type === 'word' ? `
       <div>
-        <label class="block text-sm font-medium text-primary-700 mb-1">词的类型</label>
-        <input type="text" id="new-wordType" placeholder="${isJapanese ? '如：名词、动词·一类、形容词·一类...' : '如：名词、动词、形容词...'}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+        <label class="block text-sm font-medium text-primary-700 mb-1">词性</label>
+        <input type="text" id="new-wordType" placeholder="${isJapanese ? '如：名词（サ变）、五段动词（他动词）' : '如：名词、动词、形容词'}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
       </div>
     ` : '';
     
