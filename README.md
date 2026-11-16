@@ -12,7 +12,7 @@
 
 ## 安装包
 
-正式提交版下载：[EasyLingo 2.1.2](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.2)。本版完成跨语言和核心流程回归，修复词性、批量补全、出题判分、备份及跨模块操作问题。查看[构建与安装验收](https://github.com/ReoNa0216/EasyLingo/actions/workflows/release.yml)。各新闻源的实际访问结果及验证范围见[审计记录](docs/submission-audit.md)。
+正式提交版下载：[EasyLingo 2.1.2](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.2)。本版完成跨语言和核心流程回归，修复词性、批量补全、出题判分、备份及跨模块操作问题。查看[Windows 安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43890370271)和[双平台构建](https://github.com/ReoNa0216/EasyLingo/actions/runs/43886759494)。各新闻源的实际访问结果及验证范围见[审计记录](docs/submission-audit.md)。
 
 - Windows 10/11 x64：`EasyLingo_2.1.2_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
 - macOS Apple Silicon：`EasyLingo_2.1.2_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
