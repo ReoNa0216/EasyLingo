@@ -94,10 +94,15 @@ test('failed AI extraction is visible and PDF/Word parsers load locally', async 
 });
 
 test('news failures remain retryable and untrusted previews stay text', async ({ page }) => {
-  const { sql, invoke } = fixture();
+  const { db, sql, invoke } = fixture();
   let failArticle = true;
+  let failAI = true;
   const payload = '<img src=x onerror="window.newsInjected=1">';
   await page.exposeFunction('nativeInvoke', async (cmd, args) => {
+    if (cmd === 'fetch_people_news') return [{ title: '日本語ニュース', link: 'https://j.people.com.cn/n3/2026/1116/c1-1.html', pubDate: '2026-11-16T09:00' }];
+    if (cmd === 'request_ai') return failAI
+      ? { status: 401, body: '{"error":{"message":"invalid key"}}' }
+      : { status: 200, body: JSON.stringify({ choices: [{ message: { content: JSON.stringify([{ type: 'word', original: '猫', translation: '猫', explanation: 'ねこ', example: '猫がいます。' }]) }, finish_reason: 'stop' }] }) };
     if (cmd === 'fetch_news_rss') return `<rss><channel><item><title>News</title><link>https://example.com/${args.source}</link><description></description><pubDate><![CDATA[${payload}]]></pubDate></item></channel></rss>`;
     if (cmd === 'fetch_news_article') {
       if (failArticle) throw new Error('connection timeout');
@@ -110,11 +115,11 @@ test('news failures remain retryable and untrusted previews stay text', async ({
   await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
   await page.goto('http://127.0.0.1:1427');
   await page.waitForFunction(() => app.isReady);
-  for (const source of ['bbc', 'guardian', 'npr', 'asahi', 'zdf']) {
-    const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', asahi: 'Asahi', zdf: 'ZDF' };
+  for (const source of ['bbc', 'guardian', 'npr', 'people', 'zdf']) {
+    const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', people: 'People', zdf: 'ZDF' };
     const suffix = names[source];
     await page.evaluate(async source => {
-      await app.switchModule(source === 'zdf' ? 'german' : source === 'asahi' ? 'japanese' : 'english');
+      await app.switchModule(source === 'zdf' ? 'german' : source === 'people' ? 'japanese' : 'english');
     }, source);
     failArticle = true;
     await page.evaluate(suffix => app[`fetch${suffix}News`](), suffix);
@@ -126,6 +131,22 @@ test('news failures remain retryable and untrusted previews stay text', async ({
     await expect(page.locator(`#${source}-content`)).toContainText('Article body.');
     await expect(page.locator(`#${source}-content img`)).toHaveCount(0);
     expect(await page.evaluate(() => window.newsInjected)).toBeUndefined();
+    // Exhausting the feed must reset persisted history before fetching again.
+    await page.evaluate(suffix => app[`fetch${suffix}News`](), suffix);
+    expect(await page.evaluate(suffix => app[`fetched${suffix}Feeds`].length, suffix)).toBe(1);
+    if (source === 'people') {
+      await db.putSetting({ id: 'apiKey', value: 'test-only' });
+      await page.evaluate(() => app.processPeopleContent());
+      expect((await db.getAllMaterials())[0].status).toBe('error');
+      expect(await page.evaluate(() => app.peopleCurrentArticle !== null)).toBe(true);
+      failAI = false;
+      await page.evaluate(() => Promise.all([app.processPeopleContent(), app.processPeopleContent()]));
+      const materials = await db.getAllMaterials();
+      expect(materials.filter(m => m.status === 'completed')).toHaveLength(1);
+      expect(materials.at(-1).moduleId).toBe('japanese');
+      expect(materials.at(-1).sourceFile).toBe('https://j.people.com.cn/n3/2026/1116/c1-1.html');
+      expect((await db.getAllEntries()).map(e => e.original)).toEqual(['猫']);
+    }
   }
   sql.close();
 });

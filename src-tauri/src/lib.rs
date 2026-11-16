@@ -1,5 +1,6 @@
 mod ai;
 mod database;
+mod people_news;
 use serde_json::json;
 
 fn news_request_error(error: reqwest::Error) -> String {
@@ -45,17 +46,25 @@ async fn fetch_news_rss(source: String, category: String) -> Result<String, Stri
             format!("https://feeds.npr.org/{}/rss.xml", map)
         }
         "zdf" => "https://www.zdfheute.de/rss/zdf/nachrichten".to_string(),
-        "asahi" => "https://rss.asahi.com/rss/asahi/newsheadlines.rdf".to_string(),
         _ => return Err(format!("Unknown news source: {}", source)),
     };
 
+    fetch_news_text(&url).await
+}
+
+#[tauri::command]
+async fn fetch_people_news() -> Result<Vec<people_news::Article>, String> {
+    people_news::parse_list(&fetch_news_text(people_news::LIST_URL).await?)
+}
+
+async fn fetch_news_text(url: &str) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .build()
         .map_err(|e| e.to_string())?;
 
-    let response = client.get(&url).send().await.map_err(news_request_error)?;
+    let response = client.get(url).send().await.map_err(news_request_error)?;
     if !response.status().is_success() {
         return Err(news_status_error(response.status()));
     }
@@ -66,18 +75,10 @@ async fn fetch_news_rss(source: String, category: String) -> Result<String, Stri
 #[tauri::command]
 async fn fetch_news_article(source: String, url: String, category: String) -> Result<serde_json::Value, String> {
     let _ = category;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let response = client.get(&url).send().await.map_err(news_request_error)?;
-    if !response.status().is_success() {
-        return Err(news_status_error(response.status()));
-    }
-
-    let html = response.text().await.map_err(|e| e.to_string())?;
+    let url = if source == "people" {
+        people_news::article_url(&url).ok_or("人民网文章地址无效")?.to_string()
+    } else { url };
+    let html = fetch_news_text(&url).await?;
     let document = scraper::Html::parse_document(&html);
 
     // 提取标题
@@ -164,12 +165,12 @@ async fn fetch_news_article(source: String, url: String, category: String) -> Re
             "main p",
             ".body-text p",
         ]),
-        "asahi" => extract_asahi(&document),
+        "people" => people_news::article_text(&document)?,
         _ => extract_content(&document, &["article p", ".content p", "main p", ".body-text p"]),
     };
 
     let mut content = content;
-    if content.len() < 100 {
+    if source != "people" && content.len() < 100 {
         // 尝试从 meta 取摘要
         let selectors = [
             "meta[name='description']",
@@ -190,7 +191,7 @@ async fn fetch_news_article(source: String, url: String, category: String) -> Re
     Ok(json!({
         "title": title,
         "content": content.chars().take(5000).collect::<String>(),
-        "source": source,
+        "source": if source == "people" { "人民网日语版" } else { &source },
     }))
 }
 
@@ -206,60 +207,6 @@ fn extract_content(document: &scraper::Html, selectors: &[&str]) -> String {
             if joined.len() > 200 {
                 return joined;
             }
-        }
-    }
-    String::new()
-}
-
-fn extract_asahi(document: &scraper::Html) -> String {
-    let selectors = [
-        ".article__content p",
-        ".ArticleBody p",
-        "[data-uuid] p",
-        ".article_body p",
-        ".article p",
-        "article p",
-        ".main p",
-        ".content p",
-        ".main-content p",
-        ".article-text p",
-        "#article-body p",
-        ".story p",
-        ".news p",
-    ];
-    for s in selectors {
-        if let Ok(sel) = scraper::Selector::parse(s) {
-            let texts: Vec<String> = document
-                .select(&sel)
-                .map(|el| el.text().collect::<Vec<_>>().join("").trim().to_string())
-                .filter(|t| !t.is_empty())
-                .collect();
-            let joined = texts.join("\n\n");
-            if joined.len() > 200 {
-                return joined;
-            }
-        }
-    }
-    // fallback: find div with most paragraphs
-    if let Ok(div_sel) = scraper::Selector::parse("div") {
-        let mut best = String::new();
-        let mut max_p = 0usize;
-        for div in document.select(&div_sel) {
-            if let Ok(p_sel) = scraper::Selector::parse("p") {
-                let p_count = div.select(&p_sel).count();
-                if p_count > max_p {
-                    max_p = p_count;
-                    best = div
-                        .select(&p_sel)
-                        .map(|el| el.text().collect::<Vec<_>>().join("").trim().to_string())
-                        .filter(|t| !t.is_empty())
-                        .collect::<Vec<_>>()
-                        .join("\n\n");
-                }
-            }
-        }
-        if !best.is_empty() {
-            return best;
         }
     }
     String::new()
@@ -290,6 +237,7 @@ pub fn run() {
             database::database_batch,
             ai::request_ai,
             fetch_news_rss,
+            fetch_people_news,
             fetch_news_article,
             ensure_dir,
             path_exists

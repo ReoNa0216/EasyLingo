@@ -48,9 +48,9 @@ const app = {
   batchMode: { word: false, phrase: false, sentence: false },
   selectedEntries: { word: new Set(), phrase: new Set(), sentence: new Set() },
   
-  // 朝日新聞 获取状态（日语）
-  asahiCurrentArticle: null,
-  fetchedAsahiFeeds: [], // 已获取的朝日新聞文章链接
+  // 人民网日语版 获取状态（日语）
+  peopleCurrentArticle: null,
+  fetchedPeopleFeeds: [], // 已获取的人民网日语版文章链接
   
   // Module definitions
   modules: {
@@ -431,6 +431,11 @@ const app = {
       throw new Error('Tauri API not available. Please ensure you are running in Tauri desktop app.');
     }
     return await invoke('fetch_news_article', { source, url, category: category || '' });
+  },
+  async desktopFetchPeopleNews() {
+    const invoke = this.getInvoke();
+    if (!invoke) throw new Error('请在桌面应用中获取新闻');
+    return await invoke('fetch_people_news');
   },
   
   // Setup event listeners
@@ -1885,6 +1890,7 @@ ${chunk.substring(0, 8000)}
         
         if (confirm('本栏目所有最新文章都已抓取过。是否清空记录重新抓取？')) {
           this.fetchedBBCFeeds = [];
+          this.saveBBCHistory();
           return this.fetchBBCNews();
         }
         
@@ -2067,6 +2073,7 @@ ${chunk.substring(0, 8000)}
         
         if (confirm('本栏目所有最新文章都已抓取过。是否清空记录重新抓取？')) {
           this.fetchedGuardianFeeds = [];
+          this.saveGuardianHistory();
           return this.fetchGuardianNews();
         }
         
@@ -2251,6 +2258,7 @@ ${chunk.substring(0, 8000)}
         
         if (confirm('本栏目所有最新文章都已抓取过。是否清空记录重新抓取？')) {
           this.fetchedNPRFeeds = [];
+          this.saveNPRHistory();
           return this.fetchNPRNews();
         }
         
@@ -2429,34 +2437,34 @@ ${chunk.substring(0, 8000)}
       container.innerHTML = `
         <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
           <h4 class="text-lg font-bold mb-4">🇯🇵 从日语新闻源导入</h4>
-          <p class="text-sm text-primary-500 mb-3">自动抓取朝日新聞最新日语文章，AI提取学习条目。</p>
+          <p class="text-sm text-primary-500 mb-3">自动抓取人民网日语版最新日语文章，AI提取学习条目。</p>
           <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
             <p class="text-xs text-amber-700">新闻抓取需要能够访问来源网站；软件会读取系统代理设置。更改代理后请重启软件。</p>
           </div>
           
-          <!-- 朝日新聞 -->
+          <!-- 人民网日语版 -->
           <div class="flex flex-wrap gap-3 items-center mb-3">
-            <button onclick="app.fetchAsahiNews()" id="asahi-fetch-btn" class="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg transition-colors">
+            <button onclick="app.fetchPeopleNews()" id="people-fetch-btn" class="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg transition-colors">
               🔍 获取新闻文章
             </button>
-            <button onclick="app.clearAsahiHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
+            <button onclick="app.clearPeopleHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
               🗑️ 清空记录
             </button>
           </div>
-          <div class="text-sm text-primary-500">来源：www.asahi.com</div>
-          <div id="asahi-progress" class="hidden mt-3">
+          <div class="text-sm text-primary-500">来源：j.people.com.cn</div>
+          <div id="people-progress" class="hidden mt-3">
             <div class="flex items-center gap-2 text-sm text-primary-600">
               <svg class="animate-spin h-4 w-4 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span id="asahi-status">正在获取文章...</span>
+              <span id="people-status">正在获取文章...</span>
             </div>
           </div>
-          <div id="asahi-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
+          <div id="people-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
-            <div id="asahi-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-            <button onclick="app.processAsahiContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+            <div id="people-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+            <button onclick="app.processPeopleContent()" id="people-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
               🧠 AI提取学习条目
             </button>
           </div>
@@ -2777,79 +2785,58 @@ ${chunk.substring(0, 8000)}
     }
   },
   
-  // 从 localStorage 加载已抓取的朝日新聞文章历史
-  loadAsahiHistory() {
+  // 从 localStorage 加载已抓取的人民网日语版文章历史
+  loadPeopleHistory() {
     try {
-      const history = localStorage.getItem('asahi_fetched_history');
+      const history = localStorage.getItem('people_fetched_history');
       if (history) {
-        this.fetchedAsahiFeeds = JSON.parse(history);
-        console.log(`Loaded ${this.fetchedAsahiFeeds.length} Asahi articles from history`);
+        this.fetchedPeopleFeeds = JSON.parse(history);
+        console.log(`Loaded ${this.fetchedPeopleFeeds.length} People articles from history`);
       }
     } catch (e) {
-      console.error('Failed to load Asahi history:', e);
-      this.fetchedAsahiFeeds = [];
+      console.error('Failed to load People history:', e);
+      this.fetchedPeopleFeeds = [];
     }
   },
   
-  // 保存朝日新聞抓取历史到 localStorage
-  saveAsahiHistory() {
+  // 保存人民网日语版抓取历史到 localStorage
+  savePeopleHistory() {
     try {
-      localStorage.setItem('asahi_fetched_history', JSON.stringify(this.fetchedAsahiFeeds));
+      localStorage.setItem('people_fetched_history', JSON.stringify(this.fetchedPeopleFeeds));
     } catch (e) {
-      console.error('Failed to save Asahi history:', e);
+      console.error('Failed to save People history:', e);
     }
   },
   
-  // 清空朝日新聞抓取历史
-  async clearAsahiHistory() {
+  // 清空人民网日语版抓取历史
+  async clearPeopleHistory() {
     const confirmed = await this.confirmDialog('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。');
     if (!confirmed) return;
-    this.fetchedAsahiFeeds = [];
-    localStorage.removeItem('asahi_fetched_history');
+    this.fetchedPeopleFeeds = [];
+    localStorage.removeItem('people_fetched_history');
     await this.alertDialog('已清空抓取记录');
   },
   
-  // 从朝日新聞获取新闻
-  async fetchAsahiNews() {
-    if (this.fetchedAsahiFeeds.length === 0) {
-      this.loadAsahiHistory();
+  // 从人民网日语版获取新闻
+  async fetchPeopleNews() {
+    if (this.fetchedPeopleFeeds.length === 0) {
+      this.loadPeopleHistory();
     }
     
-    const btn = document.getElementById('asahi-fetch-btn');
-    const progress = document.getElementById('asahi-progress');
-    const status = document.getElementById('asahi-status');
-    const preview = document.getElementById('asahi-preview');
-    const contentDiv = document.getElementById('asahi-content');
+    const btn = document.getElementById('people-fetch-btn');
+    const progress = document.getElementById('people-progress');
+    const status = document.getElementById('people-status');
+    const preview = document.getElementById('people-preview');
+    const contentDiv = document.getElementById('people-content');
     
     if (btn) btn.disabled = true;
     if (progress) progress.classList.remove('hidden');
     if (preview) preview.classList.add('hidden');
-    if (status) status.textContent = '正在获取朝日新聞...';
+    if (status) status.textContent = '正在获取人民网日语版...';
     
     try {
-      const rssText = await this.desktopFetchRSS('asahi');
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(rssText, 'text/xml');
-      
-      const items = xmlDoc.querySelectorAll('item');
-      const articles = [];
-      
-      items.forEach(item => {
-        const title = item.querySelector('title')?.textContent || '';
-        const link = item.querySelector('link')?.textContent || '';
-        const description = item.querySelector('description')?.textContent || '';
-        // 朝日 RSS 使用 dc:date 而不是 pubDate
-        let pubDate = item.querySelector('pubDate')?.textContent || '';
-        if (!pubDate) {
-          // 尝试获取 dc:date (需要处理命名空间)
-          const dateEl = item.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', 'date')[0];
-          pubDate = dateEl?.textContent || '';
-        }
-        
-        if (link && !this.fetchedAsahiFeeds.includes(link)) {
-          articles.push({ title, link, description, pubDate });
-        }
-      });
+      const fetched = await this.desktopFetchPeopleNews();
+      const articles = fetched.filter(article => !this.fetchedPeopleFeeds.includes(article.link));
       
       // 按日期排序，处理无效日期的情况
       articles.sort((a, b) => {
@@ -2861,14 +2848,15 @@ ${chunk.substring(0, 8000)}
       });
       
       if (articles.length === 0) {
-        if (this.fetchedAsahiFeeds.length > 50) {
-          this.fetchedAsahiFeeds = this.fetchedAsahiFeeds.slice(-50);
-          this.saveAsahiHistory();
+        if (this.fetchedPeopleFeeds.length > 50) {
+          this.fetchedPeopleFeeds = this.fetchedPeopleFeeds.slice(-50);
+          this.savePeopleHistory();
         }
         
         if (confirm('所有最新文章都已抓取过。是否清空记录重新抓取？')) {
-          this.fetchedAsahiFeeds = [];
-          return this.fetchAsahiNews();
+          this.fetchedPeopleFeeds = [];
+          this.savePeopleHistory();
+          return this.fetchPeopleNews();
         }
         
         if (status) status.textContent = '暂无新文章';
@@ -2880,12 +2868,12 @@ ${chunk.substring(0, 8000)}
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleData = await this.desktopFetchArticle('asahi', selectedArticle.link);
+      const articleData = await this.desktopFetchArticle('people', selectedArticle.link);
       
       if (articleData.content) {
-        this.fetchedAsahiFeeds.push(selectedArticle.link);
-        this.saveAsahiHistory();
-        // 处理日期 - 朝日 RSS 使用 dc:date 格式
+        this.fetchedPeopleFeeds.push(selectedArticle.link);
+        this.savePeopleHistory();
+        // 显示来源文章的发布日期
         let dateStr = '日期未知';
         if (selectedArticle.pubDate) {
           const pubDate = new Date(selectedArticle.pubDate);
@@ -2894,21 +2882,21 @@ ${chunk.substring(0, 8000)}
           }
         }
         
-        this.asahiCurrentArticle = {
+        this.peopleCurrentArticle = {
           title: articleData.title || selectedArticle.title,
           content: articleData.content,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
-          source: articleData.source || '朝日新聞'
+          source: articleData.source || '人民网日语版'
         };
         
         if (contentDiv) {
-          const contentLength = this.asahiCurrentArticle.content.length;
+          const contentLength = this.peopleCurrentArticle.content.length;
           contentDiv.innerHTML = `
-            <div class="font-bold mb-2">${this.escapeHtml(this.asahiCurrentArticle.title)}</div>
-            <div class="text-xs text-gray-500 mb-2">${this.escapeHtml(this.asahiCurrentArticle.source)} · ${this.escapeHtml(this.asahiCurrentArticle.pubDate)} · ${contentLength}字</div>
-            <div class="text-xs text-gray-600 line-clamp-4">${this.escapeHtml(this.asahiCurrentArticle.content.substring(0, 300))}${contentLength > 300 ? '...' : ''}</div>
+            <div class="font-bold mb-2">${this.escapeHtml(this.peopleCurrentArticle.title)}</div>
+            <div class="text-xs text-gray-500 mb-2">${this.escapeHtml(this.peopleCurrentArticle.source)} · ${this.escapeHtml(this.peopleCurrentArticle.pubDate)} · ${contentLength}字</div>
+            <div class="text-xs text-gray-600 line-clamp-4">${this.escapeHtml(this.peopleCurrentArticle.content.substring(0, 300))}${contentLength > 300 ? '...' : ''}</div>
           `;
         }
         
@@ -2919,7 +2907,7 @@ ${chunk.substring(0, 8000)}
       }
       
     } catch (error) {
-      console.error('Asahi fetch error:', error);
+      console.error('People fetch error:', error);
       const message = '获取失败: ' + (error?.message || String(error));
       if (status) status.textContent = message;
       alert(message + '\n\n请检查网络连接或稍后重试。');
@@ -2929,43 +2917,55 @@ ${chunk.substring(0, 8000)}
     }
   },
   
-  // 处理朝日新聞内容（AI提取）
-  async processAsahiContent() {
-    if (!this.asahiCurrentArticle) {
+  // 处理人民网日语版内容（AI提取）
+  async processPeopleContent() {
+    if (this.processingPeople) return;
+    if (!this.peopleCurrentArticle) {
       alert('请先获取新闻文章');
       return;
     }
     
-    const progress = document.getElementById('asahi-progress');
-    const status = document.getElementById('asahi-status');
+    const progress = document.getElementById('people-progress');
+    const status = document.getElementById('people-status');
+    const button = document.getElementById('people-process-btn');
+    this.processingPeople = true;
+    if (button) button.disabled = true;
     
     try {
       progress.classList.remove('hidden');
       status.textContent = '正在使用AI提取学习条目...';
       
       const material = {
-        id: `asahi_${Date.now()}`,
-        moduleId: this.currentModule,
-        title: `朝日: ${this.asahiCurrentArticle.title.substring(0, 50)}...`,
-        content: this.asahiCurrentArticle.content,
-        sourceFile: this.asahiCurrentArticle.link,
-        source: this.asahiCurrentArticle.source,
+        id: `people_${Date.now()}`,
+        moduleId: 'japanese',
+        title: `人民网日语版: ${this.peopleCurrentArticle.title.substring(0, 50)}...`,
+        content: this.peopleCurrentArticle.content,
+        sourceFile: this.peopleCurrentArticle.link,
+        source: this.peopleCurrentArticle.source,
+        status: 'processing',
         createdAt: new Date()
       };
       
       await dbAdapter.putMaterial(material);
       await this.processMaterialWithAI(material);
+      const saved = await dbAdapter.getMaterial(material.id);
+      if (saved?.status !== 'completed') {
+        status.textContent = saved?.errorMsg || '提取未完成，请检查 AI 设置后重试';
+        return;
+      }
       
-      document.getElementById('asahi-preview').classList.add('hidden');
-      this.asahiCurrentArticle = null;
+      document.getElementById('people-preview').classList.add('hidden');
+      this.peopleCurrentArticle = null;
       status.textContent = '完成！';
       
-      alert('成功从朝日新聞中提取学习条目！');
+      alert('成功从人民网日语版中提取学习条目！');
       
     } catch (error) {
-      console.error('Asahi processing error:', error);
+      console.error('People processing error:', error);
       alert('处理失败: ' + error.message);
     } finally {
+      this.processingPeople = false;
+      if (button) button.disabled = false;
       if (progress) progress.classList.add('hidden');
     }
   },
