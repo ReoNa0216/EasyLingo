@@ -16,6 +16,7 @@
 
 - Windows 10/11 x64：`EasyLingo_2.1.0_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
 - macOS Apple Silicon：`EasyLingo_2.1.0_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
+- Windows 免安装试用：解压 `EasyLingo_2.1.0_Windows-preview.zip`，双击 `EasyLingo-2.1.0.exe`。试用数据使用独立目录。
 - 安装包尚未使用商业代码签名证书或 Apple 公证，系统可能要求确认来源。macOS 已验证包内应用启动，带下载隔离标记时的首次运行提示取决于系统版本。
 
 ## 界面预览
@@ -29,8 +30,8 @@
 ## 使用
 
 1. 选择德语、日语、英语或自建语言模块。
-2. 导入 TXT、Markdown、文本型 PDF、DOCX，或手动添加词条。扫描 PDF 需要先 OCR。
-3. 在设置中填写兼容 OpenAI 格式的 API 地址、密钥与模型名称，使用 AI 提取和出题。API 地址填写基础路径，例如供应商文档中的 `/v1`，不包含 `/chat/completions`。
+2. 按 [API 配置指南](docs/api-configuration.md) 填写地址、密钥、模型和输出长度。智谱 GLM-4-Plus 的 Max Tokens 使用 `4000`。API 地址填写基础路径，不包含 `/chat/completions`。
+3. 导入 TXT、Markdown、文本型 PDF、DOCX，或手动添加词条。选择文件后会自动开始 AI 提取；扫描 PDF 需要先 OCR。
 4. 按到期词条复习；测试支持选择、填空、翻译。翻译题对照参考答案自行评估。
 5. 在设置中导出 JSON 备份。恢复备份会替换当前数据，恢复前请备份；2.1.0 接受 v2.0 格式的完整 JSON 备份。
 

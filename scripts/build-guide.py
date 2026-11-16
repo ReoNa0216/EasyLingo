@@ -41,7 +41,7 @@ for block in (root/'docs/api-configuration.md').read_text(encoding='utf-8').spli
     elif block.startswith('!['):
         path = root/'docs'/re.search(r'\]\(([^)]+)\)', block).group(1)
         pic = Image(str(path))
-        width = 215 if path.name == 'settings.png' else (230 if 'create-key' in path.name else A4[0]-100)
+        width = 310 if path.name == 'settings.png' else (260 if 'create-key' in path.name else 340)
         pic.drawHeight = width * pic.imageHeight / pic.imageWidth
         pic.drawWidth = width
         pic.hAlign='CENTER'

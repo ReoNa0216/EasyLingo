@@ -12,7 +12,7 @@
 
 ![DeepSeek API keys 页面与创建入口](images/deepseek-api-keys.png)
 
-截图：DeepSeek 官网实际页面。紫框标出入口，账户记录已遮盖。
+截图：官网左侧「API keys」与右侧「创建 API key」按钮的局部特写。
 
 **2. 创建密钥。** 点击「创建 API key」，在名称框中填写 `EasyLingo`，再点击「创建」。这个名称方便你日后辨认用途。
 
@@ -32,7 +32,7 @@
 
 ![智谱标准 API key 页面与创建入口](images/zhipu-api-keys.png)
 
-截图：智谱官网实际页面。紫框标出入口，账户记录已遮盖。
+截图：官网左侧「标准 API key」与右上角「新建API Key」按钮的局部特写。
 
 **2. 创建密钥。** 点击右上角「新建API Key」，在「请输入 API Key 名称」中填写 `EasyLingo`，点击「确定」。
 
@@ -40,33 +40,36 @@
 
 **3. 复制完整密钥。** 创建完成后，将平台提供的完整 API Key 复制并暂存到你自己的安全位置。EasyLingo 的「API Key」栏接收完整密钥，列表中的「API Key ID」是标识编号，不能代替密钥。
 
-**4. 使用示例模型。** 本指南采用 `glm-4.7-flash`。如平台提示实名认证或模型开通，先按页面要求完成；如改用其他模型，可在 [官方模型文档](https://docs.bigmodel.cn/cn/guide/start/model-overview) 中核对模型 ID 与计费说明。
+**4. 使用示例模型。** 本指南采用 `glm-4-plus`，用于词义、语法解释、翻译和短文提取。其最大输出为 4K Tokens，在 EasyLingo 中将「Max Tokens」填写为 `4000`。如平台提示实名认证或模型开通，先按页面要求完成。
+
+**模型怎么选：** 已用 GLM-4-Plus 得到满意结果时，可继续使用。需要更长的输出可尝试 DeepSeek；希望降低费用可尝试官方列为免费的 `glm-4.7-flash`。更换后先检查几条中文释义、日语读音、德语词性和例句，再导入长材料。
 
 **选对密钥类型：**「个人版 Coding Plan」与标准 API 的密钥分开管理。配置本指南中的接口地址时，使用「标准 API key」页面取得的密钥。
 
 **准备完成：** 到第 3 页，使用表格中的智谱一列。
 
-官方参考：[GLM-4.7-Flash 调用示例](https://docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash)、[智谱 API Key 分类说明](https://docs.bigmodel.cn/cn/coding-plan/notice/api-key-management)。
+官方参考：[GLM-4-Plus 能力与输出上限](https://docs.bigmodel.cn/cn/guide/models/text/glm-4)、[GLM-4.7-Flash](https://docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash)、[模型价格](https://docs.bigmodel.cn/cn/guide/start/pricing)、[API Key 分类说明](https://docs.bigmodel.cn/cn/coding-plan/notice/api-key-management)。
 
 ## 03 将参数填入 EasyLingo
 
 **1. 打开「设置」。** 点击 EasyLingo 左侧栏底部的「设置」。
 
-**2. 按同一列填写以下三个字段。** 可以从此表复制地址和模型 ID；切换服务商时，三个字段一起更换。
+**2. 按同一列填写以下参数。** 可以从此表复制地址和模型 ID；切换服务商时，一并更换密钥和输出长度。
 
 | 设置中的字段 | DeepSeek | 智谱 |
 | --- | --- | --- |
 | API Base URL | `https://api.deepseek.com` | `https://open.bigmodel.cn/api/paas/v4` |
 | API Key | 第 1 页取得的完整密钥 | 第 2 页取得的完整密钥 |
-| 模型 | `deepseek-flash` | `glm-4.7-flash` |
+| 模型 | `deepseek-flash` | `glm-4-plus` |
+| Max Tokens | `8000` | `4000` |
 
 地址填到表中所示位置即可，EasyLingo 会自动补上 `/chat/completions`。粘贴密钥时去掉首尾空格；输入框中的 `sk-...` 只是提示文字。
 
 ![EasyLingo 2.1.0 设置界面](images/settings.png)
 
-**3. 保留初始值并保存。** 首次验证将「Max Tokens」设为 `8000`，「每日复习量」保留 `20`，点击底部「保存」。保存后继续下一页，实际生成词条来检查配置。
+**3. 保存并验证。**「Max Tokens」按上表填写，「每日复习量」可保留 `20`，点击设置底部「保存」。保存后继续下一页，实际生成词条来检查配置。
 
-截图：设置中的密钥和模型留空，按上表填入自己的配置。窗口较小时可滚动查看。
+截图：以 `glm-4-plus / 4000` 演示 AI 参数区域，密钥留空。填写自己的密钥后，使用设置底部的「保存」按钮。
 
 ## 04 用三个单词完成验证
 
@@ -98,7 +101,7 @@ sustainable
 
 ### 两个常用设置
 
-**Max Tokens** 控制单次 AI 回复的长度。英语或德语先用 `8000`；日语内容较长时可用 `16000`。出现输出截断时，先减少单次材料或词条数量，再考虑提高此值。
+**Max Tokens** 控制单次 AI 回复的长度，以所选模型的上限为准。GLM-4-Plus 使用 `4000`，日语也保持此值；出现截断时缩短材料或减少词条数量。DeepSeek 或 GLM-4.7-Flash 可先用 `8000`，需要更长输出时用 `16000`。
 
 **每日复习量** 默认 `20`，用于安排每天的复习数量，与 API 余额无关。
 
@@ -126,6 +129,6 @@ API Key 保存在本机数据库中，请妥善保管。AI 功能会把所选材
 
 修改「数据存储位置」后，重启应用才会生效。迁移顺序为：导出 JSON → 选择新目录并保存 → 重启 → 导入 JSON。
 
-官方参考：两家服务的入口、模型与接口参数链接见第 1、2 页；网页截图拍摄于 2026-11-16。截图保留实际操作控件，账户记录已遮盖，创建表单尚未提交。
+官方参考：两家服务的入口、模型与接口参数链接见第 1、2 页。截图于 2026-11-16 通过独立后台浏览器以 3 倍像素拍摄；局部特写仅保留操作控件，创建表单尚未提交。
 
 项目与下载：[github.com/ReoNa0216/EasyLingo](https://github.com/ReoNa0216/EasyLingo)
