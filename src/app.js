@@ -48,10 +48,14 @@ const app = {
   batchMode: { word: false, phrase: false, sentence: false },
   selectedEntries: { word: new Set(), phrase: new Set(), sentence: new Set() },
   
-  // 朝日新聞 获取状态（日语）
-  asahiCurrentArticle: null,
-  fetchedAsahiFeeds: [], // 已获取的朝日新聞文章链接
+  // 人民网日语版 获取状态（日语）
+  peopleCurrentArticle: null,
+  fetchedPeopleFeeds: [], // 已获取的人民网日语版文章链接
   
+  // China Daily 英语新闻
+  chinadailyCurrentArticle: null,
+  fetchedChinaDailyFeeds: [],
+
   // Module definitions
   modules: {
     german: { id: 'german', name: '德语', language: 'German', flag: 'de', code: 'DE' },
@@ -148,6 +152,15 @@ const app = {
     return window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
   },
 
+  async requestAI(url, options) {
+    const result = await this.getInvoke()('request_ai', {
+      url, apiKey: options.headers.Authorization.replace(/^Bearer /, ''),
+      body: JSON.parse(options.body)
+    });
+    return { ok: result.status >= 200 && result.status < 300, status: result.status,
+      text: async () => result.body, json: async () => JSON.parse(result.body) };
+  },
+
   async confirmDialog(message) {
     // 优先使用 Tauri Dialog API
     const invoke = this.getInvoke();
@@ -224,6 +237,7 @@ const app = {
       this.loadNPRHistory();
       this.loadGuardianHistory();
       
+      this.isReady = true;
       console.log('App initialized successfully');
     } catch (error) {
       console.error('Init error:', error);
@@ -235,20 +249,6 @@ const app = {
       // 显示错误信息
       const initErrorMsg = error?.message || error?.toString() || '未知错误';
       alert('应用初始化失败: ' + initErrorMsg + '\n\n请刷新页面重试。');
-      
-      // 检测数据库升级错误
-      if (error.name === 'UpgradeError' || (error.message && (error.message.includes('primary key') || error.message.includes('changing primary key')))) {
-        const shouldReset = confirm('检测到数据库结构需要更新。\n\n点击"确定"清空本地数据库并刷新页面（如有重要数据请先备份），或点击"取消"手动刷新。');
-        if (shouldReset) {
-          try {
-            await dbAdapter.clearAll();
-          } catch (e) {
-            console.error('Clear failed:', e);
-          }
-          location.reload();
-          return;
-        }
-      }
       
       // 如果初始化失败，重置状态允许重试
       this.isInitialized = false;
@@ -367,9 +367,9 @@ const app = {
         btn.className = 'nav-item w-full px-4 py-3 flex items-center gap-3 hover:bg-primary-800 transition-colors';
         btn.onclick = () => app.switchModule(mod.id);
         btn.innerHTML = `
-          <span class="fi fi-${mod.flag || 'un'} w-8 h-6 rounded shadow-sm"></span>
+          <span class="fi fi-${this.escapeHtml(mod.flag || 'un')} w-8 h-6 rounded shadow-sm"></span>
           <div class="text-left">
-            <div class="font-medium">${mod.name}</div>
+            <div class="font-medium">${this.escapeHtml(mod.name)}</div>
             <div class="text-xs text-primary-400" id="${mod.id}-count">0 条目</div>
           </div>
         `;
@@ -387,21 +387,24 @@ const app = {
         const card = document.createElement('div');
         card.id = `card-${mod.id}`;
         card.onclick = () => app.switchModule(mod.id);
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.onkeydown = event => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); card.click(); } };
         card.className = 'module-card bg-white rounded-xl p-6 shadow-lg cursor-pointer border border-primary-100';
         card.innerHTML = `
           <div class="flex items-center justify-between mb-4">
-            <div class="w-16 h-12 rounded-lg shadow-lg overflow-hidden">
-              <span class="fi fi-${mod.flag || 'un'} w-full h-full"></span>
+            <div class="module-flag-badge">
+              <span class="fi fi-${this.escapeHtml(mod.flag || 'un')} w-full h-full"></span>
             </div>
             <div class="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
-              <span class="text-primary-600 font-bold text-sm" id="${mod.id}-progress">0%</span>
+              <span class="text-primary-600 font-bold text-sm" id="${mod.id}-progress">0%</span><span class="text-primary-500">已记住</span>
             </div>
           </div>
-          <h4 class="text-xl font-bold mb-1">${mod.name}</h4>
-          <p class="text-sm text-primary-500 mb-3">${mod.language}</p>
+          <h4 class="text-xl font-bold mb-1">${this.escapeHtml(mod.name)}</h4>
+          <p class="text-sm text-primary-500 mb-3">${this.escapeHtml(mod.language)}</p>
           <div class="flex items-center justify-between text-sm">
             <span class="text-primary-600"><span id="${mod.id}-entries">0</span> 条目</span>
-            <span class="text-accent-600"><span id="${mod.id}-due">0</span> 到期未复习</span>
+            <span class="text-accent-600"><span id="${mod.id}-due">0</span> 待复习</span>
           </div>
           <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
             <div id="${mod.id}-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>
@@ -436,11 +439,34 @@ const app = {
     }
     return await invoke('fetch_news_article', { source, url, category: category || '' });
   },
+  async desktopFetchPeopleNews() {
+    const invoke = this.getInvoke();
+    if (!invoke) throw new Error('请在桌面应用中获取新闻');
+    return await invoke('fetch_people_news');
+  },
+
+  async desktopFetchChinaDailyNews() {
+    const invoke = this.getInvoke();
+    if (!invoke) throw new Error('请在桌面应用中获取新闻');
+    return await invoke('fetch_chinadaily_news');
+  },
   
   // Setup event listeners
   setupEventListeners() {
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
+      const settings = document.getElementById('settings-modal');
+      if (!settings.classList.contains('hidden')) {
+        if (e.key === 'Escape') { e.preventDefault(); this.closeSettings(); }
+        if (e.key === 'Tab') {
+          const fields = [...settings.querySelectorAll('input, button, select, textarea, a[href]')].filter(el => !el.disabled && el.getClientRects().length);
+          const first = fields[0], last = fields.at(-1);
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+        return;
+      }
+      if (e.defaultPrevented || document.querySelector('.fixed.inset-0:not(.hidden)') || e.target.matches('input, textarea, select, [contenteditable="true"]')) return;
       if (this.currentView === 'review') {
         if (e.key === ' ' || e.key === 'Enter') {
           e.preventDefault();
@@ -467,6 +493,7 @@ const app = {
   },
   
   async switchModule(moduleId) {
+    this.currentView = 'module';
     this.currentModule = moduleId;
     this.hideAllViews();
     document.getElementById('module-view').classList.remove('hidden');
@@ -480,7 +507,7 @@ const app = {
     const flagEl = document.getElementById('module-flag');
     const langEl = document.getElementById('module-lang');
     if (flagEl && langEl) {
-      flagEl.className = `fi fi-${mod.flag || 'un'}`;
+      flagEl.className = `fi fi-${this.escapeHtml(mod.flag || 'un')}`;
       langEl.textContent = mod.language;
     }
     document.getElementById('module-badge').classList.remove('hidden');
@@ -525,18 +552,18 @@ ${placeholderText}`;
     if (aiHint) {
       if (isDefaultModule) {
         const hints = {
-          german: '💡 AI将自动识别词性（如名词der/die/das、动词等）并生成中文翻译和例句',
-          english: '💡 AI将自动识别词性（如名词、动词等）并生成中文翻译和例句',
-          japanese: '💡 AI将自动识别词性（他动词·五段/一段、自动词·五段/一段、名词、い形容词、な形容动词等），为汉字标注平假名读音，并生成中文翻译和例句'
+          german: 'AI将自动识别词性（如名词der/die/das、动词等）并生成中文翻译和例句',
+          english: 'AI将自动识别词性（如名词、动词等）并生成中文翻译和例句',
+          japanese: 'AI将自动识别词性（他动词·五段/一段、自动词·五段/一段、名词、い形容词、な形容动词等），为汉字标注平假名读音，并生成中文翻译和例句'
         };
         aiHint.textContent = hints[moduleId] || hints.english;
       } else {
         // 非默认模块显示用户自定义提示
         const customPrompt = mod.customPrompt;
         if (customPrompt) {
-          aiHint.innerHTML = `💡 自定义提取要求：${customPrompt.substring(0, 50)}${customPrompt.length > 50 ? '...' : ''}`;
+          aiHint.textContent = `自定义提取要求：${customPrompt.substring(0, 50)}${customPrompt.length > 50 ? '...' : ''}`;
         } else {
-          aiHint.textContent = '💡 AI将根据输入内容自动补全信息';
+          aiHint.textContent = 'AI将根据输入内容自动补全信息';
         }
       }
     }
@@ -545,18 +572,17 @@ ${placeholderText}`;
     this.renderNewsImport(moduleId);
     
     // Update active nav
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('bg-primary-800'));
-    const navEl = document.getElementById(`nav-${moduleId}`);
-    if (navEl) navEl.classList.add('bg-primary-800');
+    this.setActiveNavigation(`nav-${moduleId}`);
     
     await this.loadModuleMaterials();
     this.currentView = 'module';
   },
   
   async loadDashboard() {
+    this.setActiveNavigation('nav-home');
     this.hideAllViews();
     document.getElementById('dashboard-view').classList.remove('hidden');
-    document.getElementById('page-title').textContent = '仪表盘';
+    document.getElementById('page-title').textContent = '学习概览';
     document.getElementById('module-badge').classList.add('hidden');
     this.currentView = 'dashboard';
     this.currentModule = null; // 重置为混合模式
@@ -597,13 +623,13 @@ ${placeholderText}`;
     // Update due count - show today's review progress vs daily goal
     const settings = await this.getSettings();
     const dailyGoal = settings.dailyLimit || 20;
-    const today = new Date().toISOString().split('T')[0];
+    const today = this.localDate();
     const allRecords = await dbAdapter.getAllRecords();
     const todayRecords = allRecords.filter(r => {
-      const recordDate = new Date(r.createdAt).toISOString().split('T')[0];
+      const recordDate = this.localDate(r.createdAt);
       return recordDate === today && r.action === 'review';
     });
-    const completedToday = todayRecords.reduce((sum, r) => sum + (r.count || 1), 0);
+    const completedToday = todayRecords.reduce((sum, r) => sum + (r.count ?? 1), 0);
     const remaining = Math.max(0, dailyGoal - completedToday);
     document.getElementById('due-count').textContent = `${completedToday}/${dailyGoal}`;
     
@@ -629,7 +655,7 @@ ${placeholderText}`;
           <span class="text-lg">${this.getActionIcon(r.action)}</span>
           <div>
             <div class="font-medium">${this.getActionText(r.action)}</div>
-            <div class="text-xs text-primary-500">${this.modules[r.moduleId]?.name || (r.moduleId ? '自定义模块' : '混合')}</div>
+            <div class="text-xs text-primary-500">${this.escapeHtml(this.modules[r.moduleId]?.name || (r.moduleId ? '自定义模块' : '混合'))}</div>
           </div>
         </div>
         <div class="flex items-center gap-3">
@@ -694,10 +720,11 @@ ${placeholderText}`;
       return;
     }
     
+    const moduleId = this.currentModule;
     for (const file of files) {
       try {
         const content = await this.parseFile(file);
-        await this.saveMaterial(file.name, content);
+        await this.saveMaterial(file.name, content, moduleId);
       } catch (error) {
         console.error('Error parsing file:', error);
         alert(`解析文件 ${file.name} 失败: ${error.message}`);
@@ -727,7 +754,11 @@ ${placeholderText}`;
   
   async parsePDF(file) {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdfjsLib = await import('./vendor/pdf.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.mjs';
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false, cMapUrl: './vendor/pdf-data/cmaps/', cMapPacked: true, standardFontDataUrl: './vendor/pdf-data/standard_fonts/', wasmUrl: './vendor/pdf-data/wasm/' });
+    const pdf = await loadingTask.promise;
+    try {
     let text = '';
     
     // 大PDF优化：每10页为一组处理，避免内存溢出
@@ -756,8 +787,8 @@ ${placeholderText}`;
       await new Promise(resolve => setTimeout(resolve, 0));
     }
     
-    console.log(`PDF parsed: ${pdf.numPages} pages, ${text.length} chars`);
     return text;
+    } finally { await loadingTask.destroy(); }
   },
   
   async parseDOCX(file) {
@@ -766,105 +797,15 @@ ${placeholderText}`;
     return result.value;
   },
   
-  async parsePPTX(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    
-    try {
-      // 使用pptx-parser库解析PPTX
-      const parser = new PptxParser();
-      const result = await parser.parse(arrayBuffer);
-      
-      // 提取所有幻灯片的文本
-      let allText = '';
-      if (result.slides && result.slides.length > 0) {
-        result.slides.forEach((slide, index) => {
-          allText += `\n--- 幻灯片 ${index + 1} ---\n`;
-          if (slide.text) {
-            allText += slide.text + '\n';
-          }
-          // 如果有shape对象也提取文本
-          if (slide.shapes && slide.shapes.length > 0) {
-            slide.shapes.forEach(shape => {
-              if (shape.text) {
-                allText += shape.text + '\n';
-              }
-            });
-          }
-        });
-      }
-      
-      console.log(`PPTX parsed: ${(result.slides && result.slides.length) || 0} slides`);
-      return allText || '[PPTX文件无法提取文本内容]';
-    } catch (error) {
-      console.error('PPTX parse error:', error);
-      // 如果解析失败，尝试使用备用方法
-      return await this.parsePPTXFallback(arrayBuffer);
-    }
-  },
-  
-  // PPTX备用解析方法（使用zip和XML解析）
-  async parsePPTXFallback(arrayBuffer) {
-    try {
-      // 加载JSZip库
-      const JSZip = window.JSZip || await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
-      const zip = await JSZip.loadAsync(arrayBuffer);
-      
-      let allText = '';
-      const slideFiles = [];
-      
-      // 查找所有幻灯片XML文件
-      zip.forEach((path, file) => {
-        if (path.match(/^ppt\/slides\/slide\d+\.xml$/)) {
-          slideFiles.push({ path, file });
-        }
-      });
-      
-      // 按顺序解析每个幻灯片
-      slideFiles.sort((a, b) => {
-        const numA = parseInt(a.path.match(/slide(\d+)\.xml/)[1]);
-        const numB = parseInt(b.path.match(/slide(\d+)\.xml/)[1]);
-        return numA - numB;
-      });
-      
-      for (let i = 0; i < slideFiles.length; i++) {
-        const { path, file } = slideFiles[i];
-        const xmlContent = await file.async('text');
-        // 使用DOMParser解析XML并提取文本
-        const text = this.extractTextFromPPTXSlide(xmlContent);
-        allText += `\n--- 幻灯片 ${i + 1} ---\n${text}\n`;
-      }
-      
-      return allText || '[PPTX备用解析也未能提取内容]';
-    } catch (fallbackError) {
-      console.error('PPTX fallback parse error:', fallbackError);
-      return '[PPTX文件解析失败]';
-    }
-  },
-  
-  // 从PPTX幻灯片XML中提取文本
-  extractTextFromPPTXSlide(xmlContent) {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlContent, 'application/xml');
-    
-    // 查找所有文本节点
-    const textNodes = xmlDoc.getElementsByTagName('a:t');
-    let texts = [];
-    for (let i = 0; i < textNodes.length; i++) {
-      const text = textNodes[i].textContent.trim();
-      if (text) texts.push(text);
-    }
-    
-    return texts.join(' ');
-  },
-  
   async parseText(file) {
     return await file.text();
   },
   
-  async saveMaterial(filename, content) {
+  async saveMaterial(filename, content, moduleId = this.currentModule) {
+    if (!content.trim()) throw new Error("文件没有可提取的文本，请检查文件或先进行 OCR");
     const material = {
-      id: `${this.currentModule}_${Date.now()}`,
-      moduleId: this.currentModule,
+      id: `${moduleId}_${Date.now()}`,
+      moduleId,
       title: filename,
       content: content.substring(0, 50000), // Store more content for AI processing
       sourceFile: filename,
@@ -881,11 +822,12 @@ ${placeholderText}`;
     }
     
     // 立即开始AI处理，提取学习条目
-    this.processMaterialWithAI(material);
+    await this.processMaterialWithAI(material);
   },
   
   // 使用AI处理材料，提取学习条目（支持大文件分块处理）
   async processMaterialWithAI(material) {
+    this.processingCount = (this.processingCount || 0) + 1;
     const settings = await this.getSettings();
     const mod = this.modules[material.moduleId];
     
@@ -893,6 +835,7 @@ ${placeholderText}`;
     
     try {
       let allEntries = [];
+      let failedChunks = 0;
       const content = material.content;
       
       // 大文件分块处理：每块约3000字符（控制在API限制内）
@@ -917,7 +860,7 @@ ${placeholderText}`;
             allEntries = allEntries.concat(entries);
           } catch (error) {
             console.error(`Chunk ${i + 1} failed:`, error);
-            // 继续处理下一个chunk，不中断整体流程
+            failedChunks++;
           }
           
           // 更新进度
@@ -994,14 +937,15 @@ ${placeholderText}`;
       console.log(`Saved ${savedCount} entries to database`);
       
       await dbAdapter.updateMaterial(material.id, { 
-        status: 'completed', 
+        status: failedChunks || savedCount < allEntries.length ? 'error' : 'completed',
+        errorMsg: failedChunks ? `${failedChunks} 个文本块提取失败；已保留成功的 ${savedCount} 条` : null,
         entryCount: savedCount 
       });
       
       await this.loadModuleMaterials();
       
       console.log(`Processing completed: ${savedCount} entries saved from ${allEntries.length} extracted`);
-      alert(`已成功提取 ${savedCount} 个学习条目（原文共 ${allEntries.length} 条）！`);
+      alert(`${failedChunks ? `有 ${failedChunks} 个文本块提取失败。` : ''}已成功提取 ${savedCount} 个学习条目（原文共 ${allEntries.length} 条）！`);
     } catch (error) {
       console.error('AI processing error:', error);
       const errorMsg = error?.message || error?.toString() || '未知错误';
@@ -1011,6 +955,8 @@ ${placeholderText}`;
         console.error('Failed to update material error status:', updateErr);
       }
       alert('处理失败: ' + errorMsg);
+    } finally {
+      this.processingCount--;
     }
   },
   
@@ -1233,7 +1179,7 @@ ${mod.customPrompt}
       ? `语言过滤：只提取英语内容，忽略所有中文文本。如果材料是中英混合的，只提取英语词汇和句子，不要提取中文内容。`
       : isJapanese
       ? `语言过滤：只提取日语内容（包括汉字、平假名、片假名），忽略所有中文文本。`
-      : `语言过滤：只提取${mod.language}内容，忽略中文文本。`;
+      : `语言过滤：只提取${this.escapeHtml(mod.language)}内容，忽略中文文本。`;
     
     // 非默认模块直接使用用户定义的Prompt
     const hasCustomFormat = !isDefaultModule && mod.customPrompt;
@@ -1321,7 +1267,7 @@ ${mod.customPrompt}
   \"example\": \"I usually go for a walk in the evening. 我通常在晚上散步。\"
 }`;
 
-    const prompt = `从以下${mod.name}教材内容中积极提取学习条目。这是第 ${chunkIndex}/${totalChunks} 部分。
+    const prompt = `从以下${this.escapeHtml(mod.name)}教材内容中积极提取学习条目。这是第 ${chunkIndex}/${totalChunks} 部分。
 
 ${germanPrompt}${englishPrompt}${japanesePrompt}${customModulePrompt}
 
@@ -1338,7 +1284,7 @@ ${chunk.substring(0, 5000)}
 
 ${hasCustomFormat ? `请返回JSON数组，确保格式与用户自定义示例一致。` : `请返回JSON格式，每个条目包含以下字段：
 - type: 条目类型 ("word" | "phrase" | "sentence")
-- original: 原文（${mod.language}文本，不含中文）${isJapanese ? '，【日语规范】word/短语整体注音"汉字(读音)"；sentence不注音' : ''}
+- original: 原文（${this.escapeHtml(mod.language)}文本，不含中文）${isJapanese ? '，【日语规范】word/短语整体注音"汉字(读音)"；sentence不注音' : ''}
 - translation: 中文翻译
 - wordType: 词的类型（仅word类型需要）
 - gender: 性别标记（德语：m./f./n./pl.；其他语言留空）
@@ -1350,7 +1296,7 @@ ${hasCustomFormat ? `请返回JSON数组，确保格式与用户自定义示例�
 
 请返回完整的JSON数组：`}`;
 
-    const response = await fetch(`${settings.apiUrl}/chat/completions`, {
+    const response = await this.requestAI(`${settings.apiUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1359,7 +1305,7 @@ ${hasCustomFormat ? `请返回JSON数组，确保格式与用户自定义示例�
       body: JSON.stringify({
         model: settings.model,
         messages: [
-          { role: 'system', content: `你是一位专业的${mod.name}教学专家，擅长从教材中系统性地提取学习要点。请返回有效的JSON数组。` },
+          { role: 'system', content: `你是一位专业的${this.escapeHtml(mod.name)}教学专家，擅长从教材中系统性地提取学习要点。请返回有效的JSON数组。` },
           { role: 'user', content: prompt }
         ],
         temperature: 0.3,
@@ -1591,7 +1537,7 @@ ${chunk.substring(0, 8000)}
 
 请尽量多地提取，返回完整JSON数组：`;
 
-      const response = await fetch(`${settings.apiUrl}/chat/completions`, {
+      const response = await this.requestAI(`${settings.apiUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1811,7 +1757,7 @@ ${chunk.substring(0, 8000)}
             gender: gender,
             wordType: wordType,
             srsLevel: 0,
-            nextReview: Date.now(),
+            nextReview: new Date().toISOString(),
             interval: 0,
             easeFactor: 2.5
           });
@@ -1968,6 +1914,7 @@ ${chunk.substring(0, 8000)}
         
         if (confirm('本栏目所有最新文章都已抓取过。是否清空记录重新抓取？')) {
           this.fetchedBBCFeeds = [];
+          this.saveBBCHistory();
           return this.fetchBBCNews();
         }
         
@@ -1978,14 +1925,14 @@ ${chunk.substring(0, 8000)}
       
       // 选择最新的一篇文章
       const selectedArticle = articles[0];
-      this.fetchedBBCFeeds.push(selectedArticle.link);
-      this.saveBBCHistory();
       
       if (status) status.textContent = '正在获取文章内容...';
       
       const articleData = await this.desktopFetchArticle('bbc', selectedArticle.link, this.bbcCategory);
       
       if (articleData.content) {
+        this.fetchedBBCFeeds.push(selectedArticle.link);
+        this.saveBBCHistory();
         // 解析日期，处理无效日期情况
         let dateStr = selectedArticle.pubDate;
         const pubDate = new Date(selectedArticle.pubDate);
@@ -2004,9 +1951,9 @@ ${chunk.substring(0, 8000)}
         
         if (contentDiv) {
           contentDiv.innerHTML = `
-            <h5 class="font-bold mb-2">${this.bbcCurrentArticle.title}</h5>
-            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</p>
-            <p class="text-xs text-gray-500 mb-2">${this.bbcCurrentArticle.content.substring(0, 300)}...</p>
+            <h5 class="font-bold mb-2">${this.escapeHtml(this.bbcCurrentArticle.title)}</h5>
+            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${this.escapeHtml(dateStr)}</p>
+            <p class="text-xs text-gray-500 mb-2">${this.escapeHtml(this.bbcCurrentArticle.content.substring(0, 300))}...</p>
           `;
         }
         if (preview) preview.classList.remove('hidden');
@@ -2027,46 +1974,7 @@ ${chunk.substring(0, 8000)}
   
   // 处理 BBC 内容（AI提取）
   async processBBCContent() {
-    if (!this.bbcCurrentArticle) {
-      alert('请先获取新闻文章');
-      return;
-    }
-    
-    const progress = document.getElementById('bbc-progress');
-    const status = document.getElementById('bbc-status');
-    
-    // 显示进度条并更新状态
-    if (progress) progress.classList.remove('hidden');
-    if (status) status.textContent = '正在使用AI提取学习条目...';
-    
-    try {
-      const material = {
-        id: `bbc_${Date.now()}`,
-        moduleId: this.currentModule,
-        title: `BBC: ${this.bbcCurrentArticle.title.substring(0, 50)}...`,
-        content: this.bbcCurrentArticle.content,
-        sourceFile: this.bbcCurrentArticle.link,
-        source: this.bbcCurrentArticle.source,
-        createdAt: new Date()
-      };
-      
-      await dbAdapter.putMaterial(material);
-      await this.processMaterialWithAI(material);
-      
-      const preview = document.getElementById('bbc-preview');
-      if (preview) preview.classList.add('hidden');
-      if (progress) progress.classList.add('hidden');
-      this.bbcCurrentArticle = null;
-      await this.loadModuleMaterials();
-      
-      await this.alertDialog('成功从 BBC 新闻中提取学习条目！');
-      
-    } catch (error) {
-      console.error('BBC processing error:', error);
-      const errorMsg = error?.message || error?.toString() || '未知错误';
-      if (status) status.textContent = '处理失败: ' + errorMsg;
-      if (progress) progress.classList.add('hidden');
-    }
+    return this.processNewsContent('bbc', 'english', 'BBC News');
   },
   
   // ==================== The Guardian 功能 ====================
@@ -2150,6 +2058,7 @@ ${chunk.substring(0, 8000)}
         
         if (confirm('本栏目所有最新文章都已抓取过。是否清空记录重新抓取？')) {
           this.fetchedGuardianFeeds = [];
+          this.saveGuardianHistory();
           return this.fetchGuardianNews();
         }
         
@@ -2160,14 +2069,14 @@ ${chunk.substring(0, 8000)}
       
       // 选择最新的一篇文章
       const selectedArticle = articles[0];
-      this.fetchedGuardianFeeds.push(selectedArticle.link);
-      this.saveGuardianHistory();
       
       if (status) status.textContent = '正在获取文章内容...';
       
       const articleData = await this.desktopFetchArticle('guardian', selectedArticle.link, this.guardianCategory);
       
       if (articleData.content) {
+        this.fetchedGuardianFeeds.push(selectedArticle.link);
+        this.saveGuardianHistory();
         const pubDate = new Date(selectedArticle.pubDate);
         const dateStr = pubDate.toLocaleDateString('zh-CN');
         
@@ -2182,9 +2091,9 @@ ${chunk.substring(0, 8000)}
         
         if (contentDiv) {
           contentDiv.innerHTML = `
-            <h5 class="font-bold mb-2">${this.guardianCurrentArticle.title}</h5>
-            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</p>
-            <p class="text-xs text-gray-500 mb-2">${this.guardianCurrentArticle.content.substring(0, 300)}...</p>
+            <h5 class="font-bold mb-2">${this.escapeHtml(this.guardianCurrentArticle.title)}</h5>
+            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${this.escapeHtml(dateStr)}</p>
+            <p class="text-xs text-gray-500 mb-2">${this.escapeHtml(this.guardianCurrentArticle.content.substring(0, 300))}...</p>
           `;
         }
         if (preview) preview.classList.remove('hidden');
@@ -2205,46 +2114,7 @@ ${chunk.substring(0, 8000)}
   
   // 处理 The Guardian 内容（AI提取）
   async processGuardianContent() {
-    if (!this.guardianCurrentArticle) {
-      alert('请先获取新闻文章');
-      return;
-    }
-    
-    const progress = document.getElementById('guardian-progress');
-    const status = document.getElementById('guardian-status');
-    
-    // 显示进度条并更新状态
-    if (progress) progress.classList.remove('hidden');
-    if (status) status.textContent = '正在使用AI提取学习条目...';
-    
-    try {
-      const material = {
-        id: `guardian_${Date.now()}`,
-        moduleId: this.currentModule,
-        title: `The Guardian: ${this.guardianCurrentArticle.title.substring(0, 50)}...`,
-        content: this.guardianCurrentArticle.content,
-        sourceFile: this.guardianCurrentArticle.link,
-        source: this.guardianCurrentArticle.source,
-        createdAt: new Date()
-      };
-      
-      await dbAdapter.putMaterial(material);
-      await this.processMaterialWithAI(material);
-      
-      const preview = document.getElementById('guardian-preview');
-      if (preview) preview.classList.add('hidden');
-      if (progress) progress.classList.add('hidden');
-      this.guardianCurrentArticle = null;
-      await this.loadModuleMaterials();
-      
-      await this.alertDialog('成功从 The Guardian 新闻中提取学习条目！');
-      
-    } catch (error) {
-      console.error('The Guardian processing error:', error);
-      const processErrorMsg = error?.message || error?.toString() || '未知错误';
-      if (status) status.textContent = '处理失败: ' + processErrorMsg;
-      if (progress) progress.classList.add('hidden');
-    }
+    return this.processNewsContent('guardian', 'english', 'The Guardian');
   },
   
   // ==================== NPR News 功能 ====================
@@ -2334,6 +2204,7 @@ ${chunk.substring(0, 8000)}
         
         if (confirm('本栏目所有最新文章都已抓取过。是否清空记录重新抓取？')) {
           this.fetchedNPRFeeds = [];
+          this.saveNPRHistory();
           return this.fetchNPRNews();
         }
         
@@ -2344,14 +2215,14 @@ ${chunk.substring(0, 8000)}
       
       // 选择最新的一篇文章
       const selectedArticle = articles[0];
-      this.fetchedNPRFeeds.push(selectedArticle.link);
-      this.saveNPRHistory();
       
       if (status) status.textContent = '正在获取文章内容...';
       
       const articleData = await this.desktopFetchArticle('npr', selectedArticle.link, this.nprCategory);
       
       if (articleData.content) {
+        this.fetchedNPRFeeds.push(selectedArticle.link);
+        this.saveNPRHistory();
         // 解析日期，处理无效日期情况
         let dateStr = selectedArticle.pubDate;
         const pubDate = new Date(selectedArticle.pubDate);
@@ -2370,9 +2241,9 @@ ${chunk.substring(0, 8000)}
         
         if (contentDiv) {
           contentDiv.innerHTML = `
-            <h5 class="font-bold mb-2">${this.nprCurrentArticle.title}</h5>
-            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</p>
-            <p class="text-xs text-gray-500 mb-2">${this.nprCurrentArticle.content.substring(0, 300)}...</p>
+            <h5 class="font-bold mb-2">${this.escapeHtml(this.nprCurrentArticle.title)}</h5>
+            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${this.escapeHtml(dateStr)}</p>
+            <p class="text-xs text-gray-500 mb-2">${this.escapeHtml(this.nprCurrentArticle.content.substring(0, 300))}...</p>
           `;
         }
         if (preview) preview.classList.remove('hidden');
@@ -2393,46 +2264,7 @@ ${chunk.substring(0, 8000)}
   
   // 处理 NPR 内容（AI提取）
   async processNPRContent() {
-    if (!this.nprCurrentArticle) {
-      alert('请先获取新闻文章');
-      return;
-    }
-    
-    const progress = document.getElementById('npr-progress');
-    const status = document.getElementById('npr-status');
-    
-    // 显示进度条并更新状态
-    if (progress) progress.classList.remove('hidden');
-    if (status) status.textContent = '正在使用AI提取学习条目...';
-    
-    try {
-      const material = {
-        id: `npr_${Date.now()}`,
-        moduleId: this.currentModule,
-        title: `NPR: ${this.nprCurrentArticle.title.substring(0, 50)}...`,
-        content: this.nprCurrentArticle.content,
-        sourceFile: this.nprCurrentArticle.link,
-        source: this.nprCurrentArticle.source,
-        createdAt: new Date()
-      };
-      
-      await dbAdapter.putMaterial(material);
-      await this.processMaterialWithAI(material);
-      
-      const preview = document.getElementById('npr-preview');
-      if (preview) preview.classList.add('hidden');
-      if (progress) progress.classList.add('hidden');
-      this.nprCurrentArticle = null;
-      await this.loadModuleMaterials();
-      
-      await this.alertDialog('成功从 NPR 新闻中提取学习条目！');
-      
-    } catch (error) {
-      console.error('NPR processing error:', error);
-      const processErrorMsg = error?.message || error?.toString() || '未知错误';
-      if (status) status.textContent = '处理失败: ' + processErrorMsg;
-      if (progress) progress.classList.add('hidden');
-    }
+    return this.processNewsContent('npr', 'english', 'NPR');
   },
   
   // 切换英语新闻源选项卡
@@ -2447,21 +2279,18 @@ ${chunk.substring(0, 8000)}
     if (selectedPanel) selectedPanel.classList.remove('hidden');
     
     // 更新选项卡样式
-    const tabs = ['bbc', 'npr', 'guardian'];
-    const colors = {
-      'bbc': { border: 'border-red-600', text: 'text-red-600' },
-      'npr': { border: 'border-blue-700', text: 'text-blue-700' },
-      'guardian': { border: 'border-blue-600', text: 'text-blue-600' }
-    };
-    
+    const tabs = ['npr', 'chinadaily', 'bbc', 'guardian'];
+
     tabs.forEach(tab => {
       const tabEl = document.getElementById(`tab-${tab}`);
       if (tabEl) {
         if (tab === source) {
           tabEl.classList.remove('border-transparent', 'text-gray-500');
-          tabEl.classList.add(colors[tab].border, colors[tab].text);
+          tabEl.classList.add('news-tab-active');
+          tabEl.setAttribute('aria-pressed', 'true');
         } else {
-          tabEl.classList.remove(colors[tab].border, colors[tab].text);
+          tabEl.classList.remove('news-tab-active');
+          tabEl.setAttribute('aria-pressed', 'false');
           tabEl.classList.add('border-transparent', 'text-gray-500');
         }
       }
@@ -2476,17 +2305,17 @@ ${chunk.substring(0, 8000)}
     if (moduleId === 'german') {
       container.innerHTML = `
         <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
-          <h4 class="text-lg font-bold mb-4">📰 从 ZDF Heute 导入新闻</h4>
-          <p class="text-sm text-primary-500 mb-3">自动抓取 ZDF Heute 最新文章，AI提取学习条目。每次抓取的文章不重复。</p>
-          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p class="text-xs text-amber-700">⚠️ 国内用户注意：获取新闻功能需要访问海外服务器，请开启 VPN 后使用。</p>
+          <h4 class="text-lg font-bold mb-4">从新闻开始</h4>
+          <p class="text-sm text-primary-500 mb-3">自动抓取 ZDF Heute 最新文章，提取学习条目。每次抓取的文章不重复。</p>
+          <div class="news-network-note mb-3">
+            <p class="text-xs text-primary-500">软件读取系统代理设置，更改后请重启。</p>
           </div>
           <div class="flex flex-wrap gap-3 items-center">
             <button onclick="app.fetchZDFNews()" id="zdf-fetch-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-              🔍 获取新闻文章
+              获取文章
             </button>
             <button onclick="app.clearZDFHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-              🗑️ 清空记录
+              清空记录
             </button>
             <span class="text-sm text-primary-500">来源：zdfheute.de</span>
           </div>
@@ -2502,8 +2331,8 @@ ${chunk.substring(0, 8000)}
           <div id="zdf-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
             <div id="zdf-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-            <button onclick="app.processZDFContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-              🧠 AI提取学习条目
+            <button onclick="app.processZDFContent()" id="zdf-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+              提取学习条目
             </button>
           </div>
         </div>
@@ -2511,36 +2340,36 @@ ${chunk.substring(0, 8000)}
     } else if (moduleId === 'japanese') {
       container.innerHTML = `
         <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
-          <h4 class="text-lg font-bold mb-4">🇯🇵 从日语新闻源导入</h4>
-          <p class="text-sm text-primary-500 mb-3">自动抓取朝日新聞最新日语文章，AI提取学习条目。</p>
-          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p class="text-xs text-amber-700">⚠️ 国内用户注意：获取新闻功能需要访问海外服务器，请开启 VPN 后使用。</p>
+          <h4 class="text-lg font-bold mb-4">从新闻开始</h4>
+          <p class="text-sm text-primary-500 mb-3">自动抓取人民网日语版最新日语文章，提取学习条目。</p>
+          <div class="news-network-note mb-3">
+            <p class="text-xs text-primary-500">软件读取系统代理设置，更改后请重启。</p>
           </div>
           
-          <!-- 朝日新聞 -->
+          <!-- 人民网日语版 -->
           <div class="flex flex-wrap gap-3 items-center mb-3">
-            <button onclick="app.fetchAsahiNews()" id="asahi-fetch-btn" class="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg transition-colors">
-              🔍 获取新闻文章
+            <button onclick="app.fetchPeopleNews()" id="people-fetch-btn" class="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg transition-colors">
+              获取文章
             </button>
-            <button onclick="app.clearAsahiHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-              🗑️ 清空记录
+            <button onclick="app.clearPeopleHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
+              清空记录
             </button>
           </div>
-          <div class="text-sm text-primary-500">来源：www.asahi.com</div>
-          <div id="asahi-progress" class="hidden mt-3">
+          <div class="text-sm text-primary-500">来源：j.people.com.cn</div>
+          <div id="people-progress" class="hidden mt-3">
             <div class="flex items-center gap-2 text-sm text-primary-600">
               <svg class="animate-spin h-4 w-4 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span id="asahi-status">正在获取文章...</span>
+              <span id="people-status">正在获取文章...</span>
             </div>
           </div>
-          <div id="asahi-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
+          <div id="people-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
-            <div id="asahi-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-            <button onclick="app.processAsahiContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-              🧠 AI提取学习条目
+            <div id="people-content" lang="ja" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+            <button onclick="app.processPeopleContent()" id="people-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+              提取学习条目
             </button>
           </div>
         </div>
@@ -2548,25 +2377,34 @@ ${chunk.substring(0, 8000)}
     } else if (moduleId === 'english') {
       container.innerHTML = `
         <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
-          <h4 class="text-lg font-bold mb-4">📰 从英语新闻源导入</h4>
-          <p class="text-sm text-primary-500 mb-3">自动抓取 BBC、NPR、The Guardian 最新英语文章，AI提取学习条目。</p>
-          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p class="text-xs text-amber-700">⚠️ 国内用户注意：获取新闻功能需要访问海外服务器，请开启 VPN 后使用。</p>
+          <h4 class="text-lg font-bold mb-4">从新闻开始</h4>
+          <p class="text-sm text-primary-500 mb-3">选择来源，获取最新文章。默认使用 NPR。</p>
+          <div class="news-network-note mb-3">
+            <p class="text-xs text-primary-500">软件读取系统代理设置，更改后请重启。</p>
           </div>
           
           <!-- 新闻源选项卡 -->
-          <div class="flex gap-2 mb-4 border-b border-gray-200">
-            <button onclick="app.switchEnglishNewsSource('bbc')" id="tab-bbc" class="px-4 py-2 text-sm font-medium border-b-2 border-red-600 text-red-600">
-              📺 BBC News
-            </button>
-            <button onclick="app.switchEnglishNewsSource('npr')" id="tab-npr" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-              📻 NPR
-            </button>
-            <button onclick="app.switchEnglishNewsSource('guardian')" id="tab-guardian" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-              📰 The Guardian
-            </button>
+          <div class="flex flex-wrap gap-2 mb-4 border-b border-gray-200">
+            <button onclick="app.switchEnglishNewsSource('npr')" id="tab-npr" class="news-tab-active px-4 py-2 text-sm font-medium border-b-2">NPR</button>
+            <button onclick="app.switchEnglishNewsSource('chinadaily')" id="tab-chinadaily" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">China Daily</button>
+            <button onclick="app.switchEnglishNewsSource('bbc')" id="tab-bbc" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">BBC News <span class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-primary-500">需代理</span></button>
+            <button onclick="app.switchEnglishNewsSource('guardian')" id="tab-guardian" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">The Guardian <span class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-primary-500">需代理</span></button>
           </div>
-          
+
+          <div id="panel-chinadaily" class="news-panel hidden">
+            <div class="flex flex-wrap gap-3 items-center mb-3">
+              <button onclick="app.fetchChinaDailyNews()" id="chinadaily-fetch-btn" class="px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg transition-colors">获取文章</button>
+              <button onclick="app.clearChinaDailyHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">清空记录</button>
+            </div>
+            <div class="text-sm text-primary-500">来源：www.chinadaily.com.cn（China 栏目最新英语文章）</div>
+            <div id="chinadaily-progress" class="hidden mt-3 text-sm text-primary-600"><span id="chinadaily-status">正在获取文章...</span></div>
+            <div id="chinadaily-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
+              <div class="font-medium text-sm mb-2">文章预览：</div>
+              <div id="chinadaily-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+              <button onclick="app.processChinaDailyContent()" id="chinadaily-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">提取学习条目</button>
+            </div>
+          </div>
+
           <!-- BBC News Panel -->
           <div id="panel-bbc" class="news-panel">
             <div class="flex flex-wrap gap-3 items-center mb-3">
@@ -2580,10 +2418,10 @@ ${chunk.substring(0, 8000)}
                 <option value="politics">🏛️ 政治</option>
               </select>
               <button onclick="app.fetchBBCNews()" id="bbc-fetch-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-                🔍 获取新闻文章
+                获取文章
               </button>
               <button onclick="app.clearBBCHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-                🗑️ 清空记录
+                清空记录
               </button>
             </div>
             <div class="text-sm text-primary-500">来源：bbc.com/news</div>
@@ -2599,8 +2437,8 @@ ${chunk.substring(0, 8000)}
             <div id="bbc-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="bbc-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-              <button onclick="app.processBBCContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
+              <button onclick="app.processBBCContent()" id="bbc-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                提取学习条目
               </button>
             </div>
           </div>
@@ -2609,7 +2447,7 @@ ${chunk.substring(0, 8000)}
           <div id="panel-npr" class="news-panel hidden">
             <div class="flex flex-wrap gap-3 items-center mb-3">
               <select id="npr-category" onchange="app.nprCategory = this.value" class="px-3 py-2 border border-primary-200 rounded-lg text-sm">
-                <option value="news">📰 头条</option>
+                <option value="news">头条</option>
                 <option value="world">🌍 国际</option>
                 <option value="usa">美国 (US)</option>
                 <option value="business">📈 商业</option>
@@ -2618,10 +2456,10 @@ ${chunk.substring(0, 8000)}
                 <option value="tech">💻 科技</option>
               </select>
               <button onclick="app.fetchNPRNews()" id="npr-fetch-btn" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg transition-colors">
-                🔍 获取新闻文章
+                获取文章
               </button>
               <button onclick="app.clearNPRHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-                🗑️ 清空记录
+                清空记录
               </button>
             </div>
             <div class="text-sm text-primary-500">来源：npr.org</div>
@@ -2637,8 +2475,8 @@ ${chunk.substring(0, 8000)}
             <div id="npr-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="npr-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-              <button onclick="app.processNPRContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
+              <button onclick="app.processNPRContent()" id="npr-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                提取学习条目
               </button>
             </div>
           </div>
@@ -2656,10 +2494,10 @@ ${chunk.substring(0, 8000)}
                 <option value="culture">🎨 文化</option>
               </select>
               <button onclick="app.fetchGuardianNews()" id="guardian-fetch-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-                🔍 获取新闻文章
+                获取文章
               </button>
               <button onclick="app.clearGuardianHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-                🗑️ 清空记录
+                清空记录
               </button>
             </div>
             <div class="text-sm text-primary-500">来源：theguardian.com</div>
@@ -2675,16 +2513,16 @@ ${chunk.substring(0, 8000)}
             <div id="guardian-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="guardian-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-              <button onclick="app.processGuardianContent()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
+              <button onclick="app.processGuardianContent()" id="guardian-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
+                提取学习条目
               </button>
             </div>
           </div>
         </div>
       `;
       
-      // 初始化显示 BBC 选项卡
-      this.switchEnglishNewsSource('bbc');
+      // 默认显示 NPR 选项卡
+      this.switchEnglishNewsSource('npr');
     } else {
       // 其他语言暂无新闻源
       container.innerHTML = '';
@@ -2760,10 +2598,6 @@ ${chunk.substring(0, 8000)}
         }
       }
       
-      // 记录已获取并保存
-      this.fetchedZDFFeeds.push(selectedArticle.link);
-      this.saveZDFHistory();
-      
       // 获取正文内容（通过全文 RSS 或简介）
       status.textContent = '正在解析文章内容...';
       
@@ -2776,6 +2610,9 @@ ${chunk.substring(0, 8000)}
       } catch (e) {
         console.log('无法获取完整内容，使用简介');
       }
+      if (!fullContent.trim()) throw new Error('未获取到文章内容，请稍后重试');
+      this.fetchedZDFFeeds.push(selectedArticle.link);
+      this.saveZDFHistory();
       
       // 解析日期
       let dateStr = selectedArticle.pubDate;
@@ -2798,16 +2635,18 @@ ${chunk.substring(0, 8000)}
       
       // 显示预览
       contentDiv.innerHTML = `
-        <div class="font-bold mb-1">${selectedArticle.title}</div>
-        <div class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</div>
-        <div class="text-gray-600">${fullContent.substring(0, 500)}...</div>
+        <div class="font-bold mb-1">${this.escapeHtml(selectedArticle.title)}</div>
+        <div class="text-xs text-amber-600 mb-2">📅 发布日期：${this.escapeHtml(dateStr)}</div>
+        <div class="text-gray-600">${this.escapeHtml(fullContent.substring(0, 500))}...</div>
       `;
       preview.classList.remove('hidden');
       status.textContent = '获取成功！';
       
     } catch (error) {
       console.error('ZDF fetch error:', error);
-      alert('获取失败: ' + error.message + '\n\n请检查网络连接或稍后重试。');
+      const message = '获取失败: ' + (error?.message || String(error));
+      if (status) status.textContent = message;
+      alert(message + '\n\n请检查网络连接或稍后重试。');
     } finally {
       btn.disabled = false;
       setTimeout(() => progress.classList.add('hidden'), 2000);
@@ -2816,122 +2655,61 @@ ${chunk.substring(0, 8000)}
   
   // 处理 ZDF 内容（AI提取）
   async processZDFContent() {
-    if (!this.zdfCurrentArticle) {
-      alert('请先获取新闻文章');
-      return;
-    }
-    
-    const progress = document.getElementById('zdf-progress');
-    const status = document.getElementById('zdf-status');
-    
-    try {
-      progress.classList.remove('hidden');
-      status.textContent = '正在使用AI提取学习条目...';
-      
-      // 保存为材料
-      const material = {
-        id: `zdf_${Date.now()}`,
-        moduleId: this.currentModule,
-        title: `ZDF: ${this.zdfCurrentArticle.title.substring(0, 50)}...`,
-        content: this.zdfCurrentArticle.content,
-        sourceFile: this.zdfCurrentArticle.link,
-        source: this.zdfCurrentArticle.source,
-        createdAt: new Date()
-      };
-      
-      await dbAdapter.putMaterial(material);
-      
-      // 使用AI处理
-      await this.processMaterialWithAI(material);
-      
-      // 清空状态
-      document.getElementById('zdf-preview').classList.add('hidden');
-      this.zdfCurrentArticle = null;
-      status.textContent = '完成！';
-      
-      alert('成功从 ZDF 新闻中提取学习条目！');
-      
-    } catch (error) {
-      console.error('ZDF processing error:', error);
-      alert('处理失败: ' + error.message);
-    } finally {
-      setTimeout(() => progress.classList.add('hidden'), 2000);
-    }
+    return this.processNewsContent('zdf', 'german', 'ZDFheute');
   },
   
-  // 从 localStorage 加载已抓取的朝日新聞文章历史
-  loadAsahiHistory() {
+  // 从 localStorage 加载已抓取的人民网日语版文章历史
+  loadPeopleHistory() {
     try {
-      const history = localStorage.getItem('asahi_fetched_history');
+      const history = localStorage.getItem('people_fetched_history');
       if (history) {
-        this.fetchedAsahiFeeds = JSON.parse(history);
-        console.log(`Loaded ${this.fetchedAsahiFeeds.length} Asahi articles from history`);
+        this.fetchedPeopleFeeds = JSON.parse(history);
+        console.log(`Loaded ${this.fetchedPeopleFeeds.length} People articles from history`);
       }
     } catch (e) {
-      console.error('Failed to load Asahi history:', e);
-      this.fetchedAsahiFeeds = [];
+      console.error('Failed to load People history:', e);
+      this.fetchedPeopleFeeds = [];
     }
   },
   
-  // 保存朝日新聞抓取历史到 localStorage
-  saveAsahiHistory() {
+  // 保存人民网日语版抓取历史到 localStorage
+  savePeopleHistory() {
     try {
-      localStorage.setItem('asahi_fetched_history', JSON.stringify(this.fetchedAsahiFeeds));
+      localStorage.setItem('people_fetched_history', JSON.stringify(this.fetchedPeopleFeeds));
     } catch (e) {
-      console.error('Failed to save Asahi history:', e);
+      console.error('Failed to save People history:', e);
     }
   },
   
-  // 清空朝日新聞抓取历史
-  async clearAsahiHistory() {
+  // 清空人民网日语版抓取历史
+  async clearPeopleHistory() {
     const confirmed = await this.confirmDialog('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。');
     if (!confirmed) return;
-    this.fetchedAsahiFeeds = [];
-    localStorage.removeItem('asahi_fetched_history');
+    this.fetchedPeopleFeeds = [];
+    localStorage.removeItem('people_fetched_history');
     await this.alertDialog('已清空抓取记录');
   },
   
-  // 从朝日新聞获取新闻
-  async fetchAsahiNews() {
-    if (this.fetchedAsahiFeeds.length === 0) {
-      this.loadAsahiHistory();
+  // 从人民网日语版获取新闻
+  async fetchPeopleNews() {
+    if (this.fetchedPeopleFeeds.length === 0) {
+      this.loadPeopleHistory();
     }
     
-    const btn = document.getElementById('asahi-fetch-btn');
-    const progress = document.getElementById('asahi-progress');
-    const status = document.getElementById('asahi-status');
-    const preview = document.getElementById('asahi-preview');
-    const contentDiv = document.getElementById('asahi-content');
+    const btn = document.getElementById('people-fetch-btn');
+    const progress = document.getElementById('people-progress');
+    const status = document.getElementById('people-status');
+    const preview = document.getElementById('people-preview');
+    const contentDiv = document.getElementById('people-content');
     
     if (btn) btn.disabled = true;
     if (progress) progress.classList.remove('hidden');
     if (preview) preview.classList.add('hidden');
-    if (status) status.textContent = '正在获取朝日新聞...';
+    if (status) status.textContent = '正在获取人民网日语版...';
     
     try {
-      const rssText = await this.desktopFetchRSS('asahi');
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(rssText, 'text/xml');
-      
-      const items = xmlDoc.querySelectorAll('item');
-      const articles = [];
-      
-      items.forEach(item => {
-        const title = item.querySelector('title')?.textContent || '';
-        const link = item.querySelector('link')?.textContent || '';
-        const description = item.querySelector('description')?.textContent || '';
-        // 朝日 RSS 使用 dc:date 而不是 pubDate
-        let pubDate = item.querySelector('pubDate')?.textContent || '';
-        if (!pubDate) {
-          // 尝试获取 dc:date (需要处理命名空间)
-          const dateEl = item.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', 'date')[0];
-          pubDate = dateEl?.textContent || '';
-        }
-        
-        if (link && !this.fetchedAsahiFeeds.includes(link)) {
-          articles.push({ title, link, description, pubDate });
-        }
-      });
+      const fetched = await this.desktopFetchPeopleNews();
+      const articles = fetched.filter(article => !this.fetchedPeopleFeeds.includes(article.link));
       
       // 按日期排序，处理无效日期的情况
       articles.sort((a, b) => {
@@ -2943,14 +2721,15 @@ ${chunk.substring(0, 8000)}
       });
       
       if (articles.length === 0) {
-        if (this.fetchedAsahiFeeds.length > 50) {
-          this.fetchedAsahiFeeds = this.fetchedAsahiFeeds.slice(-50);
-          this.saveAsahiHistory();
+        if (this.fetchedPeopleFeeds.length > 50) {
+          this.fetchedPeopleFeeds = this.fetchedPeopleFeeds.slice(-50);
+          this.savePeopleHistory();
         }
         
         if (confirm('所有最新文章都已抓取过。是否清空记录重新抓取？')) {
-          this.fetchedAsahiFeeds = [];
-          return this.fetchAsahiNews();
+          this.fetchedPeopleFeeds = [];
+          this.savePeopleHistory();
+          return this.fetchPeopleNews();
         }
         
         if (status) status.textContent = '暂无新文章';
@@ -2959,15 +2738,15 @@ ${chunk.substring(0, 8000)}
       }
       
       const selectedArticle = articles[0];
-      this.fetchedAsahiFeeds.push(selectedArticle.link);
-      this.saveAsahiHistory();
       
       if (status) status.textContent = '正在获取文章内容...';
       
-      const articleData = await this.desktopFetchArticle('asahi', selectedArticle.link);
+      const articleData = await this.desktopFetchArticle('people', selectedArticle.link);
       
       if (articleData.content) {
-        // 处理日期 - 朝日 RSS 使用 dc:date 格式
+        this.fetchedPeopleFeeds.push(selectedArticle.link);
+        this.savePeopleHistory();
+        // 显示来源文章的发布日期
         let dateStr = '日期未知';
         if (selectedArticle.pubDate) {
           const pubDate = new Date(selectedArticle.pubDate);
@@ -2976,21 +2755,21 @@ ${chunk.substring(0, 8000)}
           }
         }
         
-        this.asahiCurrentArticle = {
+        this.peopleCurrentArticle = {
           title: articleData.title || selectedArticle.title,
           content: articleData.content,
           description: selectedArticle.description,
           link: selectedArticle.link,
           pubDate: dateStr,
-          source: articleData.source || '朝日新聞'
+          source: articleData.source || '人民网日语版'
         };
         
         if (contentDiv) {
-          const contentLength = this.asahiCurrentArticle.content.length;
+          const contentLength = this.peopleCurrentArticle.content.length;
           contentDiv.innerHTML = `
-            <div class="font-bold mb-2">${this.escapeHtml(this.asahiCurrentArticle.title)}</div>
-            <div class="text-xs text-gray-500 mb-2">${this.asahiCurrentArticle.source} · ${this.asahiCurrentArticle.pubDate} · ${contentLength}字</div>
-            <div class="text-xs text-gray-600 line-clamp-4">${this.escapeHtml(this.asahiCurrentArticle.content.substring(0, 300))}${contentLength > 300 ? '...' : ''}</div>
+            <div class="font-bold mb-2">${this.escapeHtml(this.peopleCurrentArticle.title)}</div>
+            <div class="flex flex-wrap gap-3 text-xs text-gray-500 mb-2"><span>${this.escapeHtml(this.peopleCurrentArticle.source)}</span><span>${this.escapeHtml(this.peopleCurrentArticle.pubDate)}</span><span>${contentLength}字</span></div>
+            <div class="text-xs text-gray-600 line-clamp-4">${this.escapeHtml(this.peopleCurrentArticle.content.substring(0, 300))}${contentLength > 300 ? '...' : ''}</div>
           `;
         }
         
@@ -3001,57 +2780,213 @@ ${chunk.substring(0, 8000)}
       }
       
     } catch (error) {
-      console.error('Asahi fetch error:', error);
-      alert('获取失败: ' + error.message + '\n\n请检查网络连接或稍后重试。');
+      console.error('People fetch error:', error);
+      const message = '获取失败: ' + (error?.message || String(error));
+      if (status) status.textContent = message;
+      alert(message + '\n\n请检查网络连接或稍后重试。');
     } finally {
       if (btn) btn.disabled = false;
       setTimeout(() => progress?.classList.add('hidden'), 2000);
     }
   },
   
-  // 处理朝日新聞内容（AI提取）
-  async processAsahiContent() {
-    if (!this.asahiCurrentArticle) {
-      alert('请先获取新闻文章');
-      return;
-    }
-    
-    const progress = document.getElementById('asahi-progress');
-    const status = document.getElementById('asahi-status');
-    
+  // 处理人民网日语版内容（AI提取）
+  async processPeopleContent() {
+    return this.processNewsContent('people', 'japanese', '人民网日语版');
+  },
+
+  // 从 localStorage 加载已抓取的China Daily文章历史
+  loadChinaDailyHistory() {
     try {
-      progress.classList.remove('hidden');
-      status.textContent = '正在使用AI提取学习条目...';
-      
-      const material = {
-        id: `asahi_${Date.now()}`,
-        moduleId: this.currentModule,
-        title: `朝日: ${this.asahiCurrentArticle.title.substring(0, 50)}...`,
-        content: this.asahiCurrentArticle.content,
-        sourceFile: this.asahiCurrentArticle.link,
-        source: this.asahiCurrentArticle.source,
-        createdAt: new Date()
-      };
-      
-      await dbAdapter.putMaterial(material);
-      await this.processMaterialWithAI(material);
-      
-      document.getElementById('asahi-preview').classList.add('hidden');
-      this.asahiCurrentArticle = null;
-      status.textContent = '完成！';
-      
-      alert('成功从朝日新聞中提取学习条目！');
-      
-    } catch (error) {
-      console.error('Asahi processing error:', error);
-      alert('处理失败: ' + error.message);
-    } finally {
-      if (progress) progress.classList.add('hidden');
+      const history = localStorage.getItem('chinadaily_fetched_history');
+      if (history) {
+        this.fetchedChinaDailyFeeds = JSON.parse(history);
+        console.log(`Loaded ${this.fetchedChinaDailyFeeds.length} ChinaDaily articles from history`);
+      }
+    } catch (e) {
+      console.error('Failed to load ChinaDaily history:', e);
+      this.fetchedChinaDailyFeeds = [];
     }
   },
-  
+
+  // 保存China Daily抓取历史到 localStorage
+  saveChinaDailyHistory() {
+    try {
+      localStorage.setItem('chinadaily_fetched_history', JSON.stringify(this.fetchedChinaDailyFeeds));
+    } catch (e) {
+      console.error('Failed to save ChinaDaily history:', e);
+    }
+  },
+
+  // 清空China Daily抓取历史
+  async clearChinaDailyHistory() {
+    const confirmed = await this.confirmDialog('确定要清空已抓取的文章记录吗？清空后可以重新抓取之前的文章。');
+    if (!confirmed) return;
+    this.fetchedChinaDailyFeeds = [];
+    localStorage.removeItem('chinadaily_fetched_history');
+    await this.alertDialog('已清空抓取记录');
+  },
+
+  // 从China Daily获取新闻
+  async fetchChinaDailyNews() {
+    if (this.fetchedChinaDailyFeeds.length === 0) {
+      this.loadChinaDailyHistory();
+    }
+
+    const btn = document.getElementById('chinadaily-fetch-btn');
+    const progress = document.getElementById('chinadaily-progress');
+    const status = document.getElementById('chinadaily-status');
+    const preview = document.getElementById('chinadaily-preview');
+    const contentDiv = document.getElementById('chinadaily-content');
+
+    if (btn) btn.disabled = true;
+    if (progress) progress.classList.remove('hidden');
+    if (preview) preview.classList.add('hidden');
+    if (status) status.textContent = '正在获取China Daily...';
+
+    try {
+      const fetched = await this.desktopFetchChinaDailyNews();
+      const articles = fetched.filter(article => !this.fetchedChinaDailyFeeds.includes(article.link));
+
+      // 按日期排序，处理无效日期的情况
+      articles.sort((a, b) => {
+        const dateA = new Date(a.pubDate);
+        const dateB = new Date(b.pubDate);
+        if (isNaN(dateA)) return 1;
+        if (isNaN(dateB)) return -1;
+        return dateB - dateA;
+      });
+
+      if (articles.length === 0) {
+        if (this.fetchedChinaDailyFeeds.length > 50) {
+          this.fetchedChinaDailyFeeds = this.fetchedChinaDailyFeeds.slice(-50);
+          this.saveChinaDailyHistory();
+        }
+
+        if (confirm('所有最新文章都已抓取过。是否清空记录重新抓取？')) {
+          this.fetchedChinaDailyFeeds = [];
+          this.saveChinaDailyHistory();
+          return this.fetchChinaDailyNews();
+        }
+
+        if (status) status.textContent = '暂无新文章';
+        if (btn) btn.disabled = false;
+        return;
+      }
+
+      const selectedArticle = articles[0];
+
+      if (status) status.textContent = '正在获取文章内容...';
+
+      const articleData = await this.desktopFetchArticle('chinadaily', selectedArticle.link);
+
+      if (articleData.content) {
+        this.fetchedChinaDailyFeeds.push(selectedArticle.link);
+        this.saveChinaDailyHistory();
+        // 显示来源文章的发布日期
+        let dateStr = '日期未知';
+        if (selectedArticle.pubDate) {
+          const pubDate = new Date(selectedArticle.pubDate);
+          if (!isNaN(pubDate)) {
+            dateStr = pubDate.toLocaleDateString('en-US');
+          }
+        }
+
+        this.chinadailyCurrentArticle = {
+          title: articleData.title || selectedArticle.title,
+          content: articleData.content,
+          description: selectedArticle.description,
+          link: selectedArticle.link,
+          pubDate: dateStr,
+          source: articleData.source || 'China Daily'
+        };
+
+        if (contentDiv) {
+          const contentLength = this.chinadailyCurrentArticle.content.length;
+          contentDiv.innerHTML = `
+            <div class="font-bold mb-2">${this.escapeHtml(this.chinadailyCurrentArticle.title)}</div>
+            <div class="flex flex-wrap gap-3 text-xs text-gray-500 mb-2"><span>${this.escapeHtml(this.chinadailyCurrentArticle.source)}</span><span>${this.escapeHtml(this.chinadailyCurrentArticle.pubDate)}</span><span>${contentLength}字</span></div>
+            <div class="text-xs text-gray-600 line-clamp-4">${this.escapeHtml(this.chinadailyCurrentArticle.content.substring(0, 300))}${contentLength > 300 ? '...' : ''}</div>
+          `;
+        }
+
+        if (preview) preview.classList.remove('hidden');
+        if (status) status.textContent = '获取成功！';
+      } else {
+        throw new Error('无法解析文章内容');
+      }
+
+    } catch (error) {
+      console.error('ChinaDaily fetch error:', error);
+      const message = '获取失败: ' + (error?.message || String(error));
+      if (status) status.textContent = message;
+      alert(message + '\n\n请检查网络连接或稍后重试。');
+    } finally {
+      if (btn) btn.disabled = false;
+      setTimeout(() => progress?.classList.add('hidden'), 2000);
+    }
+  },
+
+  // 处理China Daily内容（AI提取）
+  async processChinaDailyContent() {
+    return this.processNewsContent('chinadaily', 'english', 'China Daily');
+  },
+
+  // 所有新闻来源共用保存与提取流程，失败时保留预览供重试。
+  async processNewsContent(source, moduleId, label) {
+    const processingKey = `processingNews_${source}`;
+    if (this[processingKey]) return;
+    const article = this[`${source}CurrentArticle`];
+    if (!article) {
+      await this.alertDialog('请先获取新闻文章');
+      return;
+    }
+    const progress = document.getElementById(`${source}-progress`);
+    const status = document.getElementById(`${source}-status`);
+    const button = document.getElementById(`${source}-process-btn`);
+    this[processingKey] = true;
+    if (button) button.disabled = true;
+    if (progress) progress.classList.remove('hidden');
+    if (status) status.textContent = '正在使用AI提取学习条目...';
+    try {
+      const material = {
+        id: `${source}_${Date.now()}`,
+        moduleId,
+        title: `${label}: ${article.title.substring(0, 50)}`,
+        content: article.content,
+        sourceFile: article.link,
+        source: article.source || label,
+        status: 'processing',
+        createdAt: new Date()
+      };
+      await dbAdapter.putMaterial(material);
+      await this.processMaterialWithAI(material);
+      const saved = await dbAdapter.getMaterial(material.id);
+      if (saved?.status !== 'completed') {
+        if (status) status.textContent = saved?.errorMsg || '提取未完成，请检查 AI 设置后重试';
+        return;
+      }
+      // 用户在提取期间获取了另一篇文章时，保留新文章的预览。
+      if (this[`${source}CurrentArticle`] === article) {
+        document.getElementById(`${source}-preview`)?.classList.add('hidden');
+        this[`${source}CurrentArticle`] = null;
+      }
+      if (status) status.textContent = '完成！';
+      if (progress) progress.classList.add('hidden');
+      await this.alertDialog(`成功从 ${label} 中提取学习条目！`);
+    } catch (error) {
+      const message = '处理失败: ' + (error?.message || String(error));
+      if (status) status.textContent = message;
+      await this.alertDialog(message);
+    } finally {
+      this[processingKey] = false;
+      if (button) button.disabled = false;
+    }
+  },
+
   // 批量导入词汇（简化版 - 只需单词列表，AI补全所有信息）
   async bulkImportVocabulary() {
+    if (this.bulkImporting) return;
     const textArea = document.getElementById('bulk-import-text');
     const text = textArea.value.trim();
     
@@ -3065,12 +3000,14 @@ ${chunk.substring(0, 8000)}
       return;
     }
     
+    const moduleId = this.currentModule;
     const settings = await this.getSettings();
     if (!settings.apiKey) {
       alert('未配置AI API，请先在设置中配置API密钥');
       return;
     }
     
+    this.bulkImporting = true;
     try {
       // 解析单词列表（纯单词，无需词性格式）
       const words = this.parseSimpleWordList(text);
@@ -3082,7 +3019,7 @@ ${chunk.substring(0, 8000)}
       
       // 确认导入
       const preview = words.slice(0, 10).join(', ');
-      const confirmed = confirm(`解析到 ${words.length} 个词条\n\n预览前10个：${preview}${words.length > 10 ? '...' : ''}\n\n确认导入？`);
+      const confirmed = await this.confirmDialog(`解析到 ${words.length} 个词条\n\n预览前10个：${preview}${words.length > 10 ? '...' : ''}\n\n确认导入？`);
       if (!confirmed) return;
       
       const progressDiv = document.getElementById('bulk-import-progress');
@@ -3099,7 +3036,7 @@ ${chunk.substring(0, 8000)}
         gender: '',
         wordType: '',
         srsLevel: 0,
-        nextReview: Date.now(),
+        nextReview: new Date().toISOString(),
         interval: 0,
         efactor: 2.5
       }));
@@ -3111,7 +3048,7 @@ ${chunk.substring(0, 8000)}
         const batch = entries.slice(i, i + batchSize);
         statusSpan.textContent = `正在使用AI补全词条信息... (${Math.min(i + batchSize, entries.length)}/${entries.length})`;
         
-        await this.enrichEntriesCompleteWithAI(batch, settings);
+        await this.enrichEntriesCompleteWithAI(batch, settings, moduleId);
         
         // 添加延迟避免频率限制
         if (i + batchSize < entries.length) {
@@ -3122,10 +3059,10 @@ ${chunk.substring(0, 8000)}
       progressDiv.classList.add('hidden');
       
       // 添加模块ID和字符串ID（与学习材料提取保持一致）
-      const isJapaneseModule = this.currentModule === 'japanese';
-      const isEnglishModule = this.currentModule === 'english';
+      const isJapaneseModule = moduleId === 'japanese';
+      const isEnglishModule = moduleId === 'english';
       entries.forEach(entry => {
-        entry.moduleId = this.currentModule;
+        entry.moduleId = moduleId;
         entry.id = `entry_${this.currentModule}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         // 自动修复英语 original/translation 颠倒的问题
@@ -3151,22 +3088,25 @@ ${chunk.substring(0, 8000)}
       
       // 保存到数据库
       console.log('Saving entries to DB:', entries.length);
+      let savedCount = 0;
       for (let i = 0; i < entries.length; i++) {
         try {
           await dbAdapter.putEntry(entries[i]);
+          savedCount++;
         } catch (err) {
           console.error('Failed to add entry:', entries[i], err);
         }
       }
       
       // 刷新仪表板
-      await this.loadDashboard();
+      await this.switchModule(moduleId);
       await this.loadEntries();
+      await this.updateSidebarStats();
       
       // 清空输入框
       textArea.value = '';
       
-      alert(`成功导入 ${entries.length} 个词汇！AI已自动补全词性、翻译、用法和例句。`);
+      alert(`成功导入 ${savedCount}/${entries.length} 个词汇！AI已自动补全词性、翻译、用法和例句。`);
       
       // 切换到单词标签
       this.switchModuleTab('words');
@@ -3174,16 +3114,10 @@ ${chunk.substring(0, 8000)}
     } catch (error) {
       console.error('Bulk import failed:', error);
       
-      // 检测数据库升级错误
-      if (error.name === 'UpgradeError' || (error.message && error.message.includes('primary key'))) {
-        const shouldReset = confirm('数据库结构需要更新才能继续导入。\n\n点击"确定"清空本地数据并刷新页面（建议先导出重要数据），或点击"取消"手动刷新。');
-        if (shouldReset) {
-          await dbAdapter.clearAll();
-          location.reload();
-        }
-      } else {
-        alert('导入失败: ' + error.message);
-      }
+      alert('导入失败: ' + (error.message || error));
+    } finally {
+      this.bulkImporting = false;
+      document.getElementById('bulk-import-progress').classList.add('hidden');
     }
   },
   
@@ -3212,12 +3146,12 @@ ${chunk.substring(0, 8000)}
   },
   
   // AI完整补全：词性、翻译、解释、例句
-  async enrichEntriesCompleteWithAI(entries, settings) {
-    const isGerman = this.currentModule === 'german';
-    const isJapanese = this.currentModule === 'japanese';
-    const isEnglish = this.currentModule === 'english';
+  async enrichEntriesCompleteWithAI(entries, settings, moduleId = this.currentModule) {
+    const isGerman = moduleId === 'german';
+    const isJapanese = moduleId === 'japanese';
+    const isEnglish = moduleId === 'english';
     const isDefaultModule = isGerman || isJapanese || isEnglish;
-    const mod = this.modules[this.currentModule];
+    const mod = this.modules[moduleId];
     
     const wordsList = entries.map(e => e.original).join('\n');
     
@@ -3295,7 +3229,7 @@ ${wordsList}
 
 返回格式：[{"original": "...", "translation": "...", "wordType": "...", "gender": "", "explanation": "...", "example": "..."}]`
       : `
-${userRequirement || `你是一位专业的${mod.name}教学专家。请为以下${mod.language}单词识别并补全完整信息。`}
+${userRequirement || `你是一位专业的${this.escapeHtml(mod.name)}教学专家。请为以下${this.escapeHtml(mod.language)}单词识别并补全完整信息。`}
 
 【重要格式约束】
 - 返回格式：合法JSON数组
@@ -3309,14 +3243,14 @@ ${userRequirement || `你是一位专业的${mod.name}教学专家。请为以�
 请为以下单词补全信息：
 ${wordsList}
 
-返回格式：[{"original": "...", "translation": "...", "wordType": "中文词性(如:名词/动词/形容词/情态动词)", "gender": "m./f./n./pl.或留空", "explanation": "...", "example": "${mod.name}例句 中文翻译（无括号）"}]`
+返回格式：[{"original": "...", "translation": "...", "wordType": "中文词性(如:名词/动词/形容词/情态动词)", "gender": "m./f./n./pl.或留空", "explanation": "...", "example": "${this.escapeHtml(mod.name)}例句 中文翻译（无括号）"}]`
 
     let retries = 0;
     const maxRetries = 2;
     
     while (retries <= maxRetries) {
       try {
-        const response = await fetch(`${settings.apiUrl}/chat/completions`, {
+        const response = await this.requestAI(`${settings.apiUrl}/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -3325,7 +3259,7 @@ ${wordsList}
           body: JSON.stringify({
             model: settings.model,
             messages: [
-              { role: 'system', content: `你是一位专业的${mod.name}教学专家，擅长提供准确的词性标注、中文翻译和实用的示例。请返回有效的JSON数组。${isGerman ? '特别注意：德语情态动词können/müssen/dürfen/sollen/wollen/mögen必须标注为"情态动词"而不是"动词"。' : ''}` },
+              { role: 'system', content: `你是一位专业的${this.escapeHtml(mod.name)}教学专家，擅长提供准确的词性标注、中文翻译和实用的示例。请返回有效的JSON数组。${isGerman ? '特别注意：德语情态动词können/müssen/dürfen/sollen/wollen/mögen必须标注为"情态动词"而不是"动词"。' : ''}` },
               { role: 'user', content: prompt }
             ],
             temperature: 0.3,
@@ -3556,7 +3490,7 @@ ${wordsList}
           gender: gender,
           wordType: typePart,
           srsLevel: 0,
-          nextReview: Date.now(),
+          nextReview: new Date().toISOString(),
           interval: 0,
           easeFactor: 2.5
         });
@@ -3571,6 +3505,7 @@ ${wordsList}
     
     const materials = await dbAdapter.getMaterialsByModule(this.currentModule);
     const container = document.getElementById('materials-list');
+    document.getElementById('panel-upload').classList.toggle('has-materials', materials.length > 0);
     
     if (materials.length === 0) {
       container.innerHTML = '<p class="text-primary-500 text-center py-8">暂无语料，请上传文件</p>';
@@ -3600,7 +3535,7 @@ ${wordsList}
           <span class="text-2xl">📄</span>
           <div>
             <div class="font-medium flex items-center gap-2">
-              ${m.title}
+              ${this.escapeHtml(m.title)}
               ${statusBadge}
             </div>
             <div class="text-xs text-primary-500">${new Date(m.createdAt).toLocaleDateString()}</div>
@@ -3631,12 +3566,22 @@ ${wordsList}
     await this.loadEntries();
   },
   
+  setActiveNavigation(id) {
+    document.querySelectorAll('#app-sidebar .nav-item').forEach(button => {
+      const active = button.id === id;
+      button.classList.toggle('bg-primary-800', active);
+      if (active) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    });
+  },
+
   // 切换模块内标签
   switchModuleTab(tab) {
     // 更新按钮样式
     ['upload', 'words', 'phrases', 'sentences'].forEach(t => {
       const btn = document.getElementById(`tab-${t}`);
       const panel = document.getElementById(`panel-${t}`);
+      btn.setAttribute('aria-pressed', String(t === tab));
       if (t === tab) {
         btn.className = 'px-4 py-2 bg-primary-600 text-white rounded-lg transition-colors';
         panel.classList.remove('hidden');
@@ -3749,9 +3694,9 @@ ${wordsList}
     let typeBadge = '';
     if (type === 'word') {
       // 只有德语显示性别，其他语言只显示词类
-      const gender = (isGerman && entry.gender) ? `<span class="text-accent-600 font-bold">${entry.gender}</span> ` : '';
+      const gender = (isGerman && entry.gender) ? `<span class="text-accent-600 font-bold">${this.safeRichText(entry.gender)}</span> ` : '';
       // 显示词的类型（如有）
-      const wordTypeLabel = entry.wordType ? `<span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs ml-1">${this.translateWordType(entry.wordType)}</span>` : '';
+      const wordTypeLabel = entry.wordType ? `<span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs ml-1">${this.escapeHtml(this.translateWordType(entry.wordType))}</span>` : '';
       typeBadge = `<span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">单词</span> ${gender}${wordTypeLabel}`;
     } else if (type === 'phrase') {
       typeBadge = `<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">短语</span>`;
@@ -3794,13 +3739,13 @@ ${wordsList}
             <div class="flex-1">
               <div class="flex items-center gap-2 mb-1 flex-wrap">
                 ${typeBadge}
-                <span class="text-lg font-bold text-primary-900">${entry.original}</span>
+                <span lang="${isJapanese ? 'ja' : ''}" class="text-lg font-bold text-primary-900">${this.safeRichText(entry.original)}</span>
               </div>
-              <div class="text-primary-700 mb-2">${entry.translation || '<span class="text-gray-400">暂无翻译</span>'}</div>
+              <div class="text-primary-700 mb-2">${this.safeRichText(entry.translation) || '<span class="text-gray-400">暂无翻译</span>'}</div>
               ${entry.explanation ? (isCustomModule ? 
-                `<div class="text-sm text-primary-600 mb-2 prose prose-sm max-w-none markdown-content">${marked.parse(entry.explanation)}</div>` : 
-                `<div class="text-sm text-primary-500 mb-1">💡 ${entry.explanation}</div>`) : ''}
-              ${entry.example ? `<div class="text-sm text-accent-600 mt-2">📖 ${entry.example}</div>` : ''}
+                `<div class="text-sm text-primary-600 mb-2 prose prose-sm max-w-none markdown-content">${this.safeMarkdown(entry.explanation)}</div>` :
+                `<div class="text-sm text-primary-500 mb-1">${this.safeRichText(entry.explanation)}</div>`) : ''}
+              ${entry.example ? `<div lang="${isJapanese ? 'ja' : ''}" class="text-sm text-accent-600 mt-2">${this.safeRichText(entry.example)}</div>` : ''}
             </div>
           </div>
           ${actionsHtml}
@@ -3833,40 +3778,41 @@ ${wordsList}
       </div>
       <div>
         <label class="block text-sm font-medium text-primary-700 mb-1">词的类型</label>
-        <input type="text" id="edit-wordType" value="${entry.wordType || ''}" placeholder="如：Substantiv, Verb, Adjektiv..." class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+        <input type="text" id="edit-wordType" value="${this.escapeHtml(entry.wordType || '')}" placeholder="如：Substantiv, Verb, Adjektiv..." class="w-full px-3 py-2 border border-primary-200 rounded-lg">
       </div>
     ` : '';
     
     const explanationField = entry.type !== 'sentence' ? (isCustomModule ? `
       <div>
         <label class="block text-sm font-medium text-primary-700 mb-1">用法解释（支持 Markdown 格式）</label>
-        <textarea id="edit-explanation" rows="6" placeholder="支持 Markdown 表格、标题、列表等格式" class="w-full px-3 py-2 border border-primary-200 rounded-lg font-mono text-sm">${entry.explanation || ''}</textarea>
+        <textarea id="edit-explanation" rows="6" placeholder="支持 Markdown 表格、标题、列表等格式" class="w-full px-3 py-2 border border-primary-200 rounded-lg font-mono text-sm">${this.escapeHtml(entry.explanation || '')}</textarea>
         <p class="text-xs text-primary-400 mt-1">支持 Markdown 语法：**粗体**、*斜体*、| 表格 |、# 标题、- 列表</p>
       </div>
     ` : `
       <div>
         <label class="block text-sm font-medium text-primary-700 mb-1">用法解释</label>
-        <textarea id="edit-explanation" rows="2" class="w-full px-3 py-2 border border-primary-200 rounded-lg">${entry.explanation || ''}</textarea>
+        <textarea id="edit-explanation" rows="2" class="w-full px-3 py-2 border border-primary-200 rounded-lg">${this.escapeHtml(entry.explanation || '')}</textarea>
       </div>
       <div>
         <label class="block text-sm font-medium text-primary-700 mb-1">例句</label>
-        <textarea id="edit-example" rows="2" class="w-full px-3 py-2 border border-primary-200 rounded-lg">${entry.example || ''}</textarea>
+        <textarea id="edit-example" lang="${isJapanese ? 'ja' : ''}" rows="2" class="w-full px-3 py-2 border border-primary-200 rounded-lg">${this.escapeHtml(entry.example || '')}</textarea>
       </div>
     `) : '';
     
     const modal = document.createElement('div');
+    modal.id = 'entry-edit-modal';
     modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
     modal.innerHTML = `
       <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
         <h3 class="text-xl font-bold mb-4">编辑${entry.type === 'word' ? '单词' : entry.type === 'phrase' ? '短语' : '语句'}</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-primary-700 mb-1">${(this.modules[this.currentModule] && this.modules[this.currentModule].language) || '外语'}原文</label>
-            <input type="text" id="edit-original" value="${entry.original}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+            <label class="block text-sm font-medium text-primary-700 mb-1">${this.escapeHtml((this.modules[this.currentModule] && this.modules[this.currentModule].language) || '外语')}原文</label>
+            <input type="text" id="edit-original" lang="${isJapanese ? 'ja' : ''}" value="${this.escapeHtml(entry.original)}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
           </div>
           <div>
             <label class="block text-sm font-medium text-primary-700 mb-1">中文翻译</label>
-            <input type="text" id="edit-translation" value="${entry.translation}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+            <input type="text" id="edit-translation" value="${this.escapeHtml(entry.translation)}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
           </div>
           ${genderField}
           ${explanationField}
@@ -3902,7 +3848,7 @@ ${wordsList}
     await dbAdapter.updateEntry(entryId, update);
     
     // 关闭模态框并刷新
-    document.querySelector('.fixed.inset-0').remove();
+    document.getElementById('entry-edit-modal').remove();
     this.loadEntries();
   },
   
@@ -4278,6 +4224,8 @@ ${wordsList}
       ...selectedPhrases,
       ...selectedSentences
     ]);
+    const selectedIds = new Set(this.reviewQueue.map(e => e.id));
+    this.reviewQueue.push(...shuffle(allEntries.filter(e => !selectedIds.has(e.id))).slice(0, totalLimit - this.reviewQueue.length));
     
     await this.beginReviewSession();
   },
@@ -4291,7 +4239,7 @@ ${wordsList}
       <label class="flex items-center p-3 bg-primary-50 rounded-lg cursor-pointer hover:bg-primary-100 transition-colors">
         <input type="checkbox" value="${mod.id}" class="mixed-review-checkbox w-5 h-5 text-accent-500 rounded border-primary-300 focus:ring-accent-500 mr-3">
         <div class="flex items-center">
-          <div class="font-semibold text-primary-800">${mod.name}</div>
+          <div class="font-semibold text-primary-800">${this.escapeHtml(mod.name)}</div>
         </div>
       </label>
     `).join('');
@@ -4313,7 +4261,7 @@ ${wordsList}
       <label class="flex items-center p-3 bg-primary-50 rounded-lg cursor-pointer hover:bg-primary-100 transition-colors">
         <input type="checkbox" value="${mod.id}" class="quick-test-checkbox w-5 h-5 text-accent-500 rounded border-primary-300 focus:ring-accent-500 mr-3">
         <div class="flex items-center">
-          <div class="font-semibold text-primary-800">${mod.name}</div>
+          <div class="font-semibold text-primary-800">${this.escapeHtml(mod.name)}</div>
         </div>
       </label>
     `).join('');
@@ -4502,6 +4450,8 @@ ${wordsList}
       return;
     }
     
+    const reviewModules = [...new Set(this.reviewQueue.map(entry => entry.moduleId))];
+    this.currentModule = reviewModules.length === 1 ? reviewModules[0] : null;
     this.hideAllViews();
     document.getElementById('review-view').classList.remove('hidden');
     document.getElementById('page-title').textContent = '复习模式';
@@ -4540,9 +4490,9 @@ ${wordsList}
     
     // 类型标签
     let typeLabel = '';
-    if (entry.type === 'word') typeLabel = '📚 单词';
-    else if (entry.type === 'phrase') typeLabel = '💬 短语';
-    else typeLabel = '📝 语句';
+    if (entry.type === 'word') typeLabel = '单词';
+    else if (entry.type === 'phrase') typeLabel = '短语';
+    else typeLabel = '语句';
     
     // 词性标签（仅单词）
     let genderLabel = '';
@@ -4553,16 +4503,18 @@ ${wordsList}
         'n.': 'text-green-600',
         'pl.': 'text-purple-600'
       }[entry.gender] || 'text-primary-600';
-      genderLabel = `<span class="${genderLabel} font-bold text-xl">${entry.gender}</span>`;
+      genderLabel = `<span class="${genderColor} font-bold text-xl">${this.safeRichText(entry.gender)}</span>`;
     }
     
-    document.getElementById('review-context').textContent = `${typeLabel} | SRS Level: ${entry.srsLevel} | 间隔: ${entry.interval}天`;
+    document.getElementById('review-context').textContent = `${typeLabel}，等级 ${entry.srsLevel}，间隔 ${entry.interval} 天`;
     
+    document.getElementById('review-question').lang = entry.moduleId === 'japanese' || this.modules[entry.moduleId]?.language === 'Japanese' ? 'ja' : '';
+
     // 正面显示原文
     document.getElementById('review-question').innerHTML = `
       <div class="flex items-center justify-center gap-3 mb-4 max-w-full">
         ${genderLabel}
-        <div class="text-3xl font-bold text-primary-900 break-words max-w-full px-4">${entry.original}</div>
+        <div class="text-3xl font-bold text-primary-900 break-words max-w-full px-4">${this.safeRichText(entry.original)}</div>
       </div>
     `;
     
@@ -4571,7 +4523,7 @@ ${wordsList}
       <div class="space-y-4 text-left">
         <div class="p-4 bg-green-50 rounded-lg">
           <div class="text-sm text-green-600 mb-1">翻译</div>
-          <div class="text-xl text-green-900">${entry.translation}</div>
+          <div class="text-xl text-green-900">${this.safeRichText(entry.translation)}</div>
         </div>
     `;
     
@@ -4579,8 +4531,8 @@ ${wordsList}
       // 检测是否为自定义模块，如果是则使用 Markdown 渲染
       const isCustomModule = entry.moduleId && entry.moduleId.startsWith('custom_');
       const explanationContent = isCustomModule 
-        ? marked.parse(entry.explanation)
-        : entry.explanation;
+        ? this.safeMarkdown(entry.explanation)
+        : this.safeRichText(entry.explanation);
       const contentClass = isCustomModule ? 'markdown-content' : '';
       
       answerHtml += `
@@ -4595,7 +4547,7 @@ ${wordsList}
       answerHtml += `
         <div class="p-4 bg-accent-50 rounded-lg">
           <div class="text-sm text-accent-600 mb-1">例句</div>
-          <div class="text-primary-800 italic">${entry.example}</div>
+          <div lang="${entry.moduleId === 'japanese' ? 'ja' : ''}" class="text-primary-800">${this.safeRichText(entry.example)}</div>
         </div>
       `;
     }
@@ -4616,9 +4568,12 @@ ${wordsList}
   },
   
   async rateCard(rating) {
-    const entry = this.reviewQueue[this.currentReviewIndex];
+    if (this.ratingInProgress || this.currentReviewIndex >= this.reviewQueue.length) return;
+    this.ratingInProgress = true;
+    try {
+    const entry = { ...this.reviewQueue[this.currentReviewIndex] };
     
-    // SM-2 Algorithm
+    // Spaced review scheduling
     if (rating >= 3) {
       // Correct
       if (entry.srsLevel === 0) {
@@ -4648,6 +4603,7 @@ ${wordsList}
     
     this.currentReviewIndex++;
     this.showCurrentCard();
+    } finally { this.ratingInProgress = false; }
   },
   
   async finishReview() {
@@ -4666,13 +4622,13 @@ ${wordsList}
     
     const reviewedCount = this.reviewQueue.length;
     
-    if (duration > 0) {
+    if (reviewedCount > 0) {
       if (this.currentModule) {
         // 单个模块复习：记录到当前模块
         await this.recordActivity('review', duration, reviewedCount);
       } else {
         // 混合复习：按实际学习时间分配到各语言
-        const date = new Date().toISOString().split('T')[0];
+        const date = this.localDate();
         const moduleTimes = this.moduleStudyTimes || {};
         
         // 先添加一条混合复习的汇总记录（moduleId为null表示混合）
@@ -4716,7 +4672,7 @@ ${wordsList}
   },
   
   async exitReview() {
-    const confirmed = await this.confirmDialog('确定要退出复习吗？进度将不会保存。');
+    const confirmed = await this.confirmDialog('确定要退出复习吗？已评分词条的复习进度已保存。');
     if (confirmed) {
       this.stopStudyTimer(); // 停止计时（不保存）
       this.loadDashboard();
@@ -4973,11 +4929,11 @@ ${wordsList}
         }
       }
       
-      return questions;
+      return questions.map(q => ({ ...q, moduleId: selectedEntries[0]?.moduleId, language: this.modules[selectedEntries[0]?.moduleId]?.language }));
     } catch (error) {
       console.warn(`AI generation failed for ${type} in ${moduleName}:`, error);
       // AI失败时使用本地备用方案
-      return this.generateFallbackQuestionsByType(selectedEntries, count, type, moduleName);
+      return this.generateFallbackQuestionsByType(selectedEntries, count, type, moduleName).map(q => ({ ...q, moduleId: selectedEntries[0]?.moduleId, language: this.modules[selectedEntries[0]?.moduleId]?.language }));
     }
   },
   
@@ -5015,8 +4971,8 @@ ${wordsList}
           const wrongOptions = Object.values(genders).filter(g => g !== correctArticle);
           
           questionText = entry.example 
-            ? `例句: "${entry.example}"\n\n选择正确的定冠词：_____ ${entry.original}`
-            : `选择正确的定冠词：_____ ${entry.original}`;
+            ? `例句: "${this.safeRichText(entry.example)}"\n\n选择正确的定冠词：_____ ${this.safeRichText(entry.original)}`
+            : `选择正确的定冠词：_____ ${this.safeRichText(entry.original)}`;
           options = [
             { label: 'A', text: correctArticle, correct: true },
             { label: 'B', text: wrongOptions[0], correct: false },
@@ -5041,8 +4997,8 @@ ${wordsList}
         } else {
           // 默认：词汇意思选择
           questionText = entry.example 
-            ? `例句: "${entry.example}"\n\n"${entry.original}" 的意思是什么？`
-            : `"${entry.original}" 的中文意思是什么？`;
+            ? `例句: "${this.safeRichText(entry.example)}"\n\n"${this.safeRichText(entry.original)}" 的意思是什么？`
+            : `"${this.safeRichText(entry.original)}" 的中文意思是什么？`;
           options = [
             { label: 'A', text: entry.translation, correct: true },
             { label: 'B', text: '[近似含义 1]', correct: false },
@@ -5061,7 +5017,7 @@ ${wordsList}
           question: questionText,
           options: options.map(o => `${o.label}. ${o.text}`),
           answer: correctOption.label,
-          explanation: `${entry.original} 的意思是 ${entry.translation}${entry.gender ? `，性别：${entry.gender}` : ''}${entry.example ? '\n例句: ' + entry.example : ''}`
+          explanation: `${this.safeRichText(entry.original)} 的意思是 ${this.safeRichText(entry.translation)}${entry.gender ? `，性别：${this.safeRichText(entry.gender)}` : ''}${entry.example ? '\n例句: ' + entry.example : ''}`
         });
       } else if (type === 'fill') {
         // 根据条目类型确定答案：phrase类型用完整短语，word类型用第一个词
@@ -5076,7 +5032,7 @@ ${wordsList}
           if (entry.example && entry.example.includes(firstWord)) {
             maskedQuestion = entry.example.replace(firstWord, '_____');
           } else {
-            maskedQuestion = `请用适当的表达填空：_____（${entry.translation}）`;
+            maskedQuestion = `请用适当的表达填空：_____（${this.safeRichText(entry.translation)}）`;
           }
         } else {
           const words = entry.original.split(/\s+/);
@@ -5086,17 +5042,17 @@ ${wordsList}
         // 在句末添加所填词的中文提示
         questions.push({
           type: 'fill',
-          question: `填空：${maskedQuestion}（${entry.translation}）`,
+          question: `填空：${maskedQuestion}（${this.safeRichText(entry.translation)}）`,
           answer: keyword,
-          explanation: `正确答案是 "${keyword}"，意思是 ${entry.translation}${entry.example ? '\n例句: ' + entry.example : ''}`
+          explanation: `正确答案是 "${keyword}"，意思是 ${this.safeRichText(entry.translation)}${entry.example ? '\n例句: ' + entry.example : ''}`
         });
       } else {
         // 翻译题：直接给句子中文（翻译成外语）
         questions.push({
           type: 'translation',
-          question: `翻译：将下列句子翻译成${mod.name || '外'}语：\n"${entry.translation}"`,
+          question: `翻译：将下列句子翻译成${mod.name || '外'}语：\n"${this.safeRichText(entry.translation)}"`,
           answer: entry.original,
-          explanation: `参考答案: ${entry.original}${entry.example ? '\n例句: ' + entry.example : ''}`
+          explanation: `参考答案: ${this.safeRichText(entry.original)}${entry.example ? '\n例句: ' + entry.example : ''}`
         });
       }
     }
@@ -5289,7 +5245,7 @@ ${typePrompts[type]}
   "explanation": "解析说明"
 }]`;
 
-    const response = await fetch(`${settings.apiUrl}/chat/completions`, {
+    const response = await this.requestAI(`${settings.apiUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -5572,14 +5528,14 @@ ${typePrompts[type]}
         };
         
         const questionText = cleanExample 
-          ? `例句: "${cleanExample}"\n\n请选择正确的${entryMod?.name || ''}翻译："${entry.original}" 的意思是什么？`
-          : `请选择正确的${entryMod?.name || ''}翻译："${entry.original}" 的中文意思是什么？`;
+          ? `例句: "${cleanExample}"\n\n请选择正确的${entryMod?.name || ''}翻译："${this.safeRichText(entry.original)}" 的意思是什么？`
+          : `请选择正确的${entryMod?.name || ''}翻译："${this.safeRichText(entry.original)}" 的中文意思是什么？`;
         questions.push({
           type: 'choice',
           question: questionText,
           options: options.map(o => `${o.label}. ${cleanOptionText(o.text)}`),
           answer: correctOption.label,
-          explanation: `${entry.original} 的意思是 ${entry.translation}${entry.explanation ? '，' + entry.explanation : ''}${entry.example ? '\n例句: ' + entry.example : ''}`
+          explanation: `${this.safeRichText(entry.original)} 的意思是 ${this.safeRichText(entry.translation)}${entry.explanation ? '，' + entry.explanation : ''}${entry.example ? '\n例句: ' + entry.example : ''}`
         });
       } else if (type === 'fill') {
         // 填空题：优先从例句中抽取关键词
@@ -5600,7 +5556,7 @@ ${typePrompts[type]}
             maskedQuestion = cleanExample.replace(firstWord, '_____');
           } else {
             // 无法安全替换，使用通用填空提示
-            maskedQuestion = `请用适当的表达填空：_____（${entry.translation}）`;
+            maskedQuestion = `请用适当的表达填空：_____（${this.safeRichText(entry.translation)}）`;
           }
         } else {
           const words = entry.original.split(/\s+/);
@@ -5611,17 +5567,17 @@ ${typePrompts[type]}
         // 在句末添加中文提示
         questions.push({
           type: 'fill',
-          question: `填空：${maskedQuestion}（${entry.translation}）`,
+          question: `填空：${maskedQuestion}（${this.safeRichText(entry.translation)}）`,
           answer: keyword,
-          explanation: `正确答案是 "${keyword}"，意思是 ${entry.translation}${entry.example ? '\n例句: ' + entry.example : ''}`
+          explanation: `正确答案是 "${keyword}"，意思是 ${this.safeRichText(entry.translation)}${entry.example ? '\n例句: ' + entry.example : ''}`
         });
       } else if (type === 'translation') {
         // 翻译题：给中文让用户翻译成外语
         questions.push({
           type: 'translation',
-          question: `翻译：将下列句子翻译成${entryMod?.name || '外'}语：\n"${entry.translation}"`,
+          question: `翻译：将下列句子翻译成${entryMod?.name || '外'}语：\n"${this.safeRichText(entry.translation)}"`,
           answer: entry.original,
-          explanation: `参考答案: ${entry.original}${entry.example ? '\n例句: ' + entry.example : ''}`
+          explanation: `参考答案: ${this.safeRichText(entry.original)}${entry.example ? '\n例句: ' + entry.example : ''}`
         });
       }
     }
@@ -5658,7 +5614,7 @@ Requirements:
   - Options should be relevant to the question context
   - Avoid contradictory or nonsensical distractors`;
 
-    const response = await fetch(`${settings.apiUrl}/chat/completions`, {
+    const response = await this.requestAI(`${settings.apiUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -5745,12 +5701,19 @@ Requirements:
   },
   
   showTest() {
+    this.testData.questions = this.testData.questions.filter(q => q && typeof q.question === 'string' && typeof q.answer === 'string' && ['choice', 'fill', 'translation'].includes(q.type) && (q.type !== 'choice' || (Array.isArray(q.options) && q.options.length >= 2 && q.options.every(o => typeof o === 'string') && /^[A-D]/i.test(q.answer))));
+    if (!this.testData.questions.length) {
+      alert('没有生成有效题目，请检查 API 配置后重试');
+      this.loadDashboard();
+      return;
+    }
     this.hideAllViews();
     document.getElementById('test-view').classList.remove('hidden');
     document.getElementById('page-title').textContent = '测试中';
     this.currentView = 'test';
     
     // 开始计时
+    this.testData.submitted = false;
     this.startStudyTimer();
     
     const container = document.getElementById('test-container');
@@ -5774,8 +5737,8 @@ Requirements:
           <div class="space-y-2 mt-4">
             ${q.options.map((opt, optIdx) => `
               <label class="flex items-center gap-3 p-3 rounded-lg hover:bg-primary-50 cursor-pointer transition-colors">
-                <input type="radio" name="q${idx}" value="${opt[0]}" class="w-4 h-4 text-accent-500">
-                <span>${opt}</span>
+                <input type="radio" name="q${idx}" value="${this.escapeHtml(opt[0])}" class="w-4 h-4 text-accent-500">
+                <span>${this.escapeHtml(opt)}</span>
               </label>
             `).join('')}
           </div>
@@ -5798,7 +5761,7 @@ Requirements:
         <div class="flex items-start gap-4">
           <span class="flex-shrink-0 w-8 h-8 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center font-bold">${idx + 1}</span>
           <div class="flex-1">
-            <p class="font-medium text-lg">${q.question}</p>
+            <p class="font-medium text-lg">${this.safeRichText(q.question)}</p>
             ${optionsHtml}
           </div>
         </div>
@@ -5813,6 +5776,8 @@ Requirements:
     let scorableCount = 0; // 参与计分的题目数
     const results = [];
     
+    if (this.testData.submitted) return;
+    this.testData.submitted = true;
     this.testData.questions.forEach((q, idx) => {
       const input = document.querySelector(`[name="q${idx}"]`);
       const userAnswer = input ? (input.type === 'radio' ? 
@@ -5833,7 +5798,7 @@ Requirements:
         scorableCount++;
       } else {
         // 填空题：使用标准化比较（考虑冠词差异）
-        isCorrect = this.isAnswerEquivalent(userAnswer, q.answer);
+        isCorrect = this.isAnswerEquivalent(userAnswer, q.answer, q.language || this.modules[q.moduleId]?.language);
         if (isCorrect) correct++;
         scorableCount++;
       }
@@ -5850,10 +5815,10 @@ Requirements:
         // 翻译题显示用户答案和参考答案
         questionEl.innerHTML += `
           <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div class="font-medium text-blue-600 mb-2">📝 您的答案</div>
-            <div class="text-primary-700 mb-3 p-2 bg-white rounded">${userAnswer || '（未作答）'}</div>
-            <div class="font-medium text-blue-600 mb-1">📖 参考答案</div>
-            <div class="text-primary-700">${q.answer}</div>
+            <div class="font-medium text-blue-600 mb-2">您的答案</div>
+            <div class="text-primary-700 mb-3 p-2 bg-white rounded">${this.escapeHtml(userAnswer || '（未作答）')}</div>
+            <div class="font-medium text-blue-600 mb-1">参考答案</div>
+            <div class="text-primary-700">${this.safeRichText(q.answer)}</div>
             <div class="text-sm text-primary-500 mt-2">翻译题由您自行评估</div>
           </div>
         `;
@@ -5862,8 +5827,8 @@ Requirements:
         questionEl.classList.add('border-green-300', 'bg-green-50');
         questionEl.innerHTML += `
           <div class="mt-4 p-4 bg-white rounded-lg">
-            <div class="font-medium text-green-600 mb-1">✅ 您的答案: ${userAnswer || '（未作答）'} 回答正确！</div>
-            <div class="text-primary-600 mt-2">${q.explanation || ''}</div>
+            <div class="font-medium text-green-600 mb-1">✅ 您的答案: ${this.escapeHtml(userAnswer || '（未作答）')} 回答正确！</div>
+            <div class="text-primary-600 mt-2">${this.safeRichText(q.explanation || '')}</div>
           </div>
         `;
       } else {
@@ -5871,9 +5836,9 @@ Requirements:
         questionEl.classList.add('border-red-300', 'bg-red-50');
         questionEl.innerHTML += `
           <div class="mt-4 p-4 bg-white rounded-lg">
-            <div class="font-medium text-red-600 mb-1">❌ 您的答案: ${userAnswer || '（未作答）'}</div>
-            <div class="font-medium text-green-600 mb-1">✅ 正确答案: ${q.answer}</div>
-            <div class="text-primary-600 mt-2">${q.explanation}</div>
+            <div class="font-medium text-red-600 mb-1">❌ 您的答案: ${this.escapeHtml(userAnswer || '（未作答）')}</div>
+            <div class="font-medium text-green-600 mb-1">✅ 正确答案: ${this.safeRichText(q.answer)}</div>
+            <div class="text-primary-600 mt-2">${this.safeRichText(q.explanation)}</div>
           </div>
         `;
       }
@@ -5904,12 +5869,12 @@ Requirements:
       answers: this.testData.answers,
       results: results,
       score: score,
-      duration: duration > 0 ? duration : this.testData.questions.length * 2,
+      duration: duration,
       createdAt: new Date()
     });
     
     // 记录学习时长和测试完成情况（只记录一次）
-    const testDuration = duration > 0 ? duration : this.testData.questions.length * 2;
+    const testDuration = duration;
     await this.recordActivity('test', testDuration, this.testData.questions.length);
     
     // Show result modal
@@ -5976,7 +5941,7 @@ Requirements:
             <div class="flex-1 cursor-pointer" onclick="app.showTestReview('${t.id}')">
               <div class="flex items-center justify-between">
                 <div>
-                  <div class="font-medium">${t.moduleId ? (this.modules[t.moduleId]?.name || '自定义模块') : '混合测试'}</div>
+                  <div class="font-medium">${this.escapeHtml(t.moduleId ? (this.modules[t.moduleId]?.name || '自定义模块') : '混合测试')}</div>
                   <div class="text-sm text-primary-500">${new Date(t.createdAt).toLocaleString()}</div>
                 </div>
                 <div class="text-right">
@@ -6060,7 +6025,7 @@ Requirements:
         <div class="p-4 border rounded-lg ${borderClass}">
           <div class="font-medium mb-2">
             <span class="text-primary-500">${idx + 1}.</span>
-            ${r.question.question}
+            ${this.safeRichText(r.question.question)}
             ${isTranslation ? '<span class="text-xs text-blue-500 ml-2">(翻译题)</span>' : ''}
           </div>
           
@@ -6075,7 +6040,7 @@ Requirements:
                 
                 return `
                   <div class="text-sm ${optClass}">
-                    ${opt} 
+                    ${this.escapeHtml(opt)}
                     ${isCorrectOpt ? '✅' : ''} 
                     ${isUserOpt && isWrong ? '❌ (你选了这个)' : ''}
                   </div>
@@ -6085,16 +6050,16 @@ Requirements:
           ` : `
             <div class="text-sm ml-4 space-y-1">
               <div class="${isTranslation ? 'text-blue-600' : 'text-green-600'}">
-                参考答案: ${r.question.answer}
+                参考答案: ${this.safeRichText(r.question.answer)}
               </div>
               <div class="${isWrong ? 'text-red-600' : 'text-primary-700'}">
-                你的答案: ${r.userAnswer || '未作答'}
+                你的答案: ${this.escapeHtml(r.userAnswer || '未作答')}
               </div>
             </div>
           `}
           
           <div class="text-sm text-primary-600 mt-2 ml-4">
-            <span class="font-medium">解析:</span> ${r.question.explanation}
+            <span class="font-medium">解析:</span> ${this.safeRichText(r.question.explanation)}
           </div>
         </div>
       `}).join('');
@@ -6109,6 +6074,7 @@ Requirements:
   
   // Calendar
   async showCalendar() {
+    this.setActiveNavigation('nav-calendar');
     this.hideAllViews();
     document.getElementById('calendar-view').classList.remove('hidden');
     document.getElementById('page-title').textContent = '学习日历';
@@ -6118,6 +6084,9 @@ Requirements:
     if (!this.calendar) {
       this.calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
         initialView: 'dayGridMonth',
+        locale: 'zh-cn',
+        buttonText: { today: '今天', month: '月', week: '周' },
+        height: 'auto',
         headerToolbar: {
           left: 'prev,next today',
           center: 'title',
@@ -6143,7 +6112,7 @@ Requirements:
     const dateMap = {};
     
     records.forEach(r => {
-      const date = new Date(r.createdAt).toISOString().split('T')[0];
+      const date = this.localDate(r.createdAt);
       if (!dateMap[date]) {
         dateMap[date] = { duration: 0, actions: new Set() };
       }
@@ -6174,7 +6143,7 @@ Requirements:
           <span class="text-lg">${this.getActionIcon(r.action)}</span>
           <div>
             <div class="font-medium">${this.getActionText(r.action)}</div>
-            <div class="text-xs text-primary-500">${this.modules[r.moduleId]?.name || '通用'}</div>
+            <div class="text-xs text-primary-500">${this.escapeHtml(this.modules[r.moduleId]?.name || '通用')}</div>
           </div>
         </div>
         <div class="text-right text-sm">
@@ -6187,6 +6156,7 @@ Requirements:
   
   // Statistics
   async showStats() {
+    this.setActiveNavigation('nav-stats');
     this.hideAllViews();
     document.getElementById('stats-view').classList.remove('hidden');
     document.getElementById('page-title').textContent = '数据统计';
@@ -6198,7 +6168,7 @@ Requirements:
     const tests = await dbAdapter.getAllTests();
     
     // Total time
-    const totalMinutes = records.reduce((sum, r) => sum + r.duration, 0);
+    const totalMinutes = records.filter(r => r.action !== 'review_detail').reduce((sum, r) => sum + r.duration, 0);
     document.getElementById('stat-total-time').textContent = `${Math.round(totalMinutes / 60 * 10) / 10}小时`;
     
     // Total days (unique dates with activity)
@@ -6224,7 +6194,7 @@ Requirements:
   async populateModuleSelects() {
     const modules = await dbAdapter.getAllModules();
     const moduleOptions = modules.map(m => 
-      `<option value="${m.id}">${m.name}</option>`
+      `<option value="${m.id}">${this.escapeHtml(m.name)}</option>`
     ).join('');
     
     // 学习趋势和复习统计下拉菜单（不包含混合测试选项）
@@ -6257,7 +6227,7 @@ Requirements:
   
   // Get filtered records by module
   getFilteredRecords(records, moduleId) {
-    if (moduleId === 'all' || !moduleId) return records;
+    if (moduleId === 'all' || !moduleId) return records.filter(r => r.action !== 'review_detail');
     return records.filter(r => r.moduleId === moduleId);
   },
   
@@ -6317,9 +6287,9 @@ Requirements:
         // Group by week
         const weekStart = new Date(date);
         weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-        key = weekStart.toISOString().split('T')[0];
+        key = this.localDate(weekStart);
       } else {
-        key = date.toISOString().split('T')[0];
+        key = this.localDate(date);
       }
       dailyMinutes[key] = (dailyMinutes[key] || 0) + r.duration;
     });
@@ -6331,9 +6301,9 @@ Requirements:
       } else if (viewType === 'weeks') {
         const weekStart = new Date(d);
         weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-        key = weekStart.toISOString().split('T')[0];
+        key = this.localDate(weekStart);
       } else {
-        key = d.toISOString().split('T')[0];
+        key = this.localDate(d);
       }
       return dailyMinutes[key] || 0;
     });
@@ -6348,14 +6318,15 @@ Requirements:
         datasets: [{
           label: '学习时长（分钟）',
           data: data,
-          borderColor: '#f59e0b',
-          backgroundColor: viewType === 'week' ? 'rgba(245, 158, 11, 0.1)' : '#f59e0b',
+          borderColor: '#7b5aa3',
+          backgroundColor: viewType === 'week' ? 'rgba(123, 90, 163, 0.1)' : '#7b5aa3',
           fill: viewType === 'week',
           tension: 0.4
         }]
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { 
           legend: { display: false },
           tooltip: {
@@ -6380,17 +6351,21 @@ Requirements:
   // Update Module Distribution Chart (doughnut with percentages)
   async updateModuleDistributionChart(records) {
     const moduleMinutes = {};
-    records.forEach(r => {
-      const mod = r.moduleId || 'german';
+    records.filter(r => r.action !== 'review_detail').forEach(r => {
+      const mod = r.moduleId || 'mixed';
       moduleMinutes[mod] = (moduleMinutes[mod] || 0) + r.duration;
     });
     
-    const labels = Object.keys(moduleMinutes).map(k => (this.modules[k] && this.modules[k].name) || k);
+    const labels = Object.keys(moduleMinutes).map(k => (this.modules[k] && this.modules[k].name) || (k === 'mixed' ? '混合' : k));
     const data = Object.values(moduleMinutes);
     const total = data.reduce((sum, v) => sum + v, 0);
     
+    const empty = document.getElementById('module-distribution-empty');
+    empty.classList.toggle('hidden', total > 0);
+    document.getElementById('module-distribution-chart').parentElement.classList.toggle('hidden', total === 0);
+
     // Generate distinct colors
-    const colors = ['#f59e0b', '#10b981', '#486581', '#8b5cf6', '#ec4899', '#14b8a6'];
+    const colors = ['#5f479a', '#806d9e', '#ad6598', '#a4abd6', '#652a41', '#c2afd3'];
     
     const distCtx = document.getElementById('module-distribution-chart').getContext('2d');
     if (this.charts.dist) this.charts.dist.destroy();
@@ -6405,6 +6380,7 @@ Requirements:
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { 
             position: 'bottom',
@@ -6412,7 +6388,7 @@ Requirements:
               generateLabels: (chart) => {
                 const data = chart.data;
                 return data.labels.map((label, i) => ({
-                  text: `${label} (${((data.datasets[0].data[i] / total) * 100).toFixed(1)}%)`,
+                  text: `${label} (${(total ? (data.datasets[0].data[i] / total) * 100 : 0).toFixed(1)}%)`,
                   fillStyle: data.datasets[0].backgroundColor[i],
                   hidden: false,
                   index: i
@@ -6444,7 +6420,7 @@ Requirements:
     // Group by date and add sequence number for same day
     const testGroups = {};
     filteredTests.forEach(t => {
-      const date = new Date(t.createdAt).toISOString().split('T')[0];
+      const date = this.localDate(new Date(t.createdAt));
       if (!testGroups[date]) testGroups[date] = [];
       testGroups[date].push(t);
     });
@@ -6483,6 +6459,7 @@ Requirements:
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { 
           legend: { display: false },
           tooltip: {
@@ -6510,7 +6487,7 @@ Requirements:
     // 获取各模块的学习进度
     const progressData = [];
     const labels = [];
-    const colors = ['#f59e0b', '#10b981', '#486581', '#8b5cf6', '#ec4899'];
+    const colors = ['#5f479a', '#806d9e', '#ad6598', '#a4abd6', '#652a41'];
     
     for (const [key, mod] of Object.entries(this.modules)) {
       const entries = await dbAdapter.getEntriesByModule(key);
@@ -6537,6 +6514,7 @@ Requirements:
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { 
           legend: { display: false },
           tooltip: {
@@ -6568,6 +6546,7 @@ Requirements:
   
   // Settings
   async showSettings() {
+    this.settingsReturnFocus = document.activeElement;
     const settings = await this.getSettings();
     document.getElementById('setting-api-url').value = settings.apiUrl;
     document.getElementById('setting-api-key').value = settings.apiKey || '';
@@ -6580,6 +6559,8 @@ Requirements:
     document.getElementById('setting-data-path').value = dataPath;
     
     document.getElementById('settings-modal').classList.remove('hidden');
+    document.querySelector('#settings-modal .settings-body').scrollTop = 0;
+    document.getElementById('setting-api-url').focus();
   },
 
   // 选择数据存储路径
@@ -6647,12 +6628,27 @@ Requirements:
   
   closeSettings() {
     document.getElementById('settings-modal').classList.add('hidden');
+    if (this.settingsReturnFocus?.isConnected) this.settingsReturnFocus.focus();
+    this.settingsReturnFocus = null;
   },
   
   async saveSettings() {
+    const url = document.getElementById('setting-api-url').value.trim().replace(/\/+$/, '');
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname))) throw new Error();
+      for (const id of ['setting-max-tokens', 'setting-daily-limit']) {
+        const value = Number(document.getElementById(id).value);
+        if (!Number.isSafeInteger(value) || value < 1) throw new Error();
+      }
+    } catch {
+      await this.alertDialog('请填写有效的 HTTPS API 地址，以及大于 0 的整数限制。本机服务支持 HTTP。');
+      return;
+    }
+    document.getElementById('setting-api-url').value = url;
     await dbAdapter.putSetting({ id: 'apiUrl', value: document.getElementById('setting-api-url').value });
-    await dbAdapter.putSetting({ id: 'apiKey', value: document.getElementById('setting-api-key').value });
-    await dbAdapter.putSetting({ id: 'model', value: document.getElementById('setting-model').value });
+    await dbAdapter.putSetting({ id: 'apiKey', value: document.getElementById('setting-api-key').value.trim() });
+    await dbAdapter.putSetting({ id: 'model', value: document.getElementById('setting-model').value.trim() });
     await dbAdapter.putSetting({ id: 'maxTokens', value: parseInt(document.getElementById('setting-max-tokens').value) || 8000 });
     await dbAdapter.putSetting({ id: 'dailyLimit', value: parseInt(document.getElementById('setting-daily-limit').value) || 20 });
     
@@ -6677,8 +6673,8 @@ Requirements:
       apiUrl: apiUrlValue,
       apiKey: (apiKey && apiKey.value) || '',
       model: (model && model.value) || '',
-      maxTokens: (maxTokens && maxTokens.value) || 8000,
-      dailyLimit: (dailyLimit && dailyLimit.value) || 20
+      maxTokens: Number(maxTokens?.value) || 8000,
+      dailyLimit: Number(dailyLimit?.value) || 20
     };
   },
   
@@ -6693,7 +6689,7 @@ Requirements:
         <div class="mb-4">
           <div class="w-12 h-12 border-4 border-primary-200 border-t-accent-500 rounded-full animate-spin mx-auto"></div>
         </div>
-        <h3 class="text-lg font-bold mb-2">${message}</h3>
+        <h3 class="text-lg font-bold mb-2">${this.escapeHtml(message)}</h3>
         <p class="text-primary-500 text-sm">请稍候...</p>
       </div>
     `;
@@ -6708,6 +6704,10 @@ Requirements:
   },
   
   async exportData() {
+    if (this.processingCount || this.bulkImporting || this.currentView === 'review' || this.currentView === 'test') {
+      await this.alertDialog('请先完成当前导入、复习或测试，再导出备份');
+      return;
+    }
     // 检查 Tauri API 是否可用
     if (!window.__TAURI__) {
       await this.alertDialog('导出功能需要 Tauri 桌面环境，当前不可用');
@@ -6715,7 +6715,7 @@ Requirements:
     }
     
     // 确保数据库已初始化
-    if (!dbAdapter.db) {
+    if (!dbAdapter.dbPath) {
       await dbAdapter.init();
     }
     
@@ -6731,13 +6731,14 @@ Requirements:
         cards: await dbAdapter.getAllCards(),
         tests: await dbAdapter.getAllTests(),
         records: await dbAdapter.getAllRecords(),
-        settings: await dbAdapter.getAllSettings(),
+        settings: (await dbAdapter.getAllSettings()).filter(s => s.id !== 'apiKey'),
         exportDate: new Date().toISOString(),
+        // Backup schema version is independent of the application release number.
         version: '2.0'
       };
       
       const jsonContent = JSON.stringify(data, null, 2);
-      const defaultName = `EasyLingo_backup_${new Date().toISOString().split('T')[0]}.json`;
+      const defaultName = `EasyLingo_backup_${this.localDate()}.json`;
       
       this.closeProgressDialog();
       
@@ -6763,10 +6764,7 @@ Requirements:
       this.showProgressDialog('正在导出数据');
       
       // 使用 Tauri FS API 写入文件
-      await invoke('write_file', {
-        path: savePath,
-        contents: jsonContent
-      });
+      await invoke('plugin:fs|write_text_file', new TextEncoder().encode(jsonContent), { headers: { path: encodeURIComponent(savePath) } });
       
       this.closeProgressDialog();
       await this.alertDialog(`✅ 数据导出成功！\n保存路径: ${savePath}`);
@@ -6779,109 +6777,27 @@ Requirements:
   },
   
   async importData(event) {
-    console.log('[Import] 开始导入...');
     const file = event.target.files[0];
-    if (!file) {
-      console.log('[Import] 没有选择文件');
-      return;
-    }
-    console.log('[Import] 选择的文件:', file.name);
-    
-    // 确保数据库已初始化
-    if (!dbAdapter.db) {
-      console.log('[Import] 初始化数据库...');
-      await dbAdapter.init();
-    }
-    
-    console.log('[Import] 显示确认对话框...');
-    const confirmed = await this.confirmDialog('导入数据将覆盖现有所有数据，确定继续吗？');
-    console.log('[Import] 用户确认:', confirmed);
-    if (!confirmed) {
-      // 重置文件输入
-      event.target.value = '';
-      return;
-    }
-    
-    // 显示进度对话框
-    this.showProgressDialog('正在导入数据');
-    
+    if (!file) return;
     try {
-      console.log('[Import] 读取文件内容...');
-      const text = await file.text();
-      console.log('[Import] 文件大小:', text.length, '字符');
-      
-      console.log('[Import] 解析 JSON...');
-      const data = JSON.parse(text);
-      console.log('[Import] JSON 解析成功，包含:', Object.keys(data));
-      
-      // 更新进度提示
-      const modal = document.getElementById('progress-modal');
-      if (modal) {
-        modal.querySelector('h3').textContent = '正在导入数据';
-        modal.querySelector('p').textContent = '正在清空旧数据...';
+      if (this.processingCount || this.bulkImporting || this.currentView === 'review' || this.currentView === 'test') {
+        throw new Error('请先完成当前导入、复习或测试，再恢复备份');
       }
-      
-      console.log('[Import] 清空旧数据...');
-      await dbAdapter.clearAll();
-      console.log('[Import] 清空完成');
-      
-      // 更新进度提示
-      if (modal) {
-        modal.querySelector('p').textContent = '正在写入新数据...';
-      }
-      
-      console.log('[Import] 开始写入数据...');
-      if (data.modules) {
-        console.log('[Import] 写入 modules:', data.modules.length);
-        await dbAdapter.bulkPut("modules", data.modules);
-      }
-      if (data.materials) {
-        console.log('[Import] 写入 materials:', data.materials.length);
-        await dbAdapter.bulkPut("materials", data.materials);
-      }
-      if (data.entries) {
-        console.log('[Import] 写入 entries:', data.entries.length);
-        await dbAdapter.bulkPut("entries", data.entries);
-      }
-      if (data.cards) {
-        console.log('[Import] 写入 cards:', data.cards.length);
-        await dbAdapter.bulkPut("cards", data.cards);
-      }
-      if (data.tests) {
-        console.log('[Import] 写入 tests:', data.tests.length);
-        await dbAdapter.bulkPut("tests", data.tests);
-      }
-      if (data.records) {
-        console.log('[Import] 写入 records:', data.records.length);
-        await dbAdapter.bulkPut("records", data.records);
-      }
-      if (data.settings) {
-        console.log('[Import] 写入 settings:', data.settings.length);
-        await dbAdapter.bulkPut("settings", data.settings);
-      }
-      
-      console.log('[Import] 写入完成，关闭对话框...');
+      const data = JSON.parse(await file.text());
+      if (!await this.confirmDialog('导入备份将替换当前学习数据。请先导出当前数据；确认继续？')) return;
+      this.showProgressDialog('正在恢复备份');
+      await dbAdapter.restoreBackup(data);
       this.closeProgressDialog();
-      console.log('[Import] 显示成功提示...');
-      await this.alertDialog('✅ 数据导入成功！');
-      
-      // 重置文件输入
-      event.target.value = '';
-      
-      // 重新加载页面数据
-      await this.loadDashboard();
-      await this.loadCustomModules();
-      
+      await this.alertDialog('数据导入成功，应用将刷新。');
+      location.reload();
     } catch (error) {
-      console.error('[Import] 错误:', error);
-      console.error('[Import] 错误堆栈:', error.stack);
       this.closeProgressDialog();
-      await this.alertDialog('❌ 导入失败: ' + error.message);
+      await this.alertDialog('导入失败，原有数据已保留：' + (error.message || error));
+    } finally {
       event.target.value = '';
     }
-    console.log('[Import] 导入流程结束');
   },
-  
+
   // Utility Functions
   
   // 开始学习计时
@@ -6929,9 +6845,9 @@ Requirements:
   
   // 实时更新今日学习时长显示
   async updateTodayMinutesDisplay() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = this.localDate();
     const todayRecords = (await dbAdapter.getAllRecords()).filter(r => 
-      new Date(r.createdAt).toISOString().split('T')[0] === today &&
+      this.localDate(r.createdAt) === today &&
       r.action !== 'review_detail' // 排除混合复习的详细记录，避免重复统计
     );
     const recordedMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
@@ -6946,7 +6862,7 @@ Requirements:
   async recordActivity(action, duration, count = 1) {
     await dbAdapter.putRecord({
       id: `record_${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
+      date: this.localDate(),
       moduleId: this.currentModule,
       duration: duration,
       count: count,
@@ -6959,9 +6875,9 @@ Requirements:
   
   async updateSidebarStats() {
     // Today's minutes
-    const today = new Date().toISOString().split('T')[0];
+    const today = this.localDate();
     const todayRecords = (await dbAdapter.getAllRecords()).filter(r => 
-      new Date(r.createdAt).toISOString().split('T')[0] === today &&
+      this.localDate(r.createdAt) === today &&
       r.action !== 'review_detail' // 排除混合复习的详细记录，避免重复统计
     );
     const todayMinutes = todayRecords.reduce((sum, r) => sum + r.duration, 0);
@@ -7011,11 +6927,46 @@ Requirements:
   
   async previewMaterial(id) {
     const material = await dbAdapter.getMaterial(id);
-    if (material) {
-      alert(`预览: ${material.title}\n\n${material.content.substring(0, 500)}...`);
-    }
+    if (!material) return;
+    document.getElementById('material-preview-modal')?.remove();
+    this.materialPreviewReturn = document.activeElement;
+    const modal = document.createElement('div');
+    modal.id = 'material-preview-modal';
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'material-preview-title');
+    modal.innerHTML = `
+      <div class="bg-white rounded-xl p-6 w-full max-w-3xl">
+        <div class="flex items-start justify-between gap-4 mb-4">
+          <div class="min-w-0">
+            <h3 id="material-preview-title" class="text-xl font-bold break-words">${this.escapeHtml(material.title)}</h3>
+            <p class="text-sm text-primary-500 mt-2">${this.escapeHtml(material.source || '导入材料')}</p>
+          </div>
+          <button type="button" onclick="app.closeMaterialPreview()" class="px-3 py-2 bg-primary-100 text-primary-700 rounded-lg flex-shrink-0">关闭</button>
+        </div>
+        ${material.status === 'error' ? `<p class="p-3 mb-4 bg-red-50 text-red-700 rounded-lg">${this.escapeHtml(material.errorMsg || '提取失败，请检查 AI 设置后重新导入。')}</p>` : ''}
+        <div lang="${material.moduleId === 'japanese' ? 'ja' : ''}" class="whitespace-pre-wrap break-words text-primary-800 leading-relaxed max-h-[60vh] overflow-y-auto" tabindex="0">${this.escapeHtml(material.content || '')}</div>
+      </div>`;
+    modal.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); this.closeMaterialPreview(); }
+      if (event.key === 'Tab') {
+        const focusable = [...modal.querySelectorAll('button, [tabindex="0"]')];
+        const first = focusable[0], last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    });
+    document.body.appendChild(modal);
+    modal.querySelector('button').focus();
   },
-  
+
+  closeMaterialPreview() {
+    document.getElementById('material-preview-modal')?.remove();
+    if (this.materialPreviewReturn?.isConnected) this.materialPreviewReturn.focus();
+    this.materialPreviewReturn = null;
+  },
+
   async deleteMaterial(id) {
     const confirmed = await this.confirmDialog('确定要删除这个材料吗？相关的学习条目也会被删除。');
     if (confirmed) {
@@ -7027,13 +6978,23 @@ Requirements:
   },
   
   // 辅助方法：HTML转义，防止XSS
-  escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+  localDate(value = new Date()) {
+    const date = new Date(value);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   },
-  
+
+  escapeHtml(text) {
+    return String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  },
+
+  safeRichText(text) {
+    return DOMPurify.sanitize(String(text ?? ''), { ALLOWED_TAGS: ['ruby', 'rt', 'rp', 'b', 'strong', 'i', 'em', 'br'], ALLOWED_ATTR: [] });
+  },
+
+  safeMarkdown(text) {
+    return DOMPurify.sanitize(marked.parse(String(text ?? '')), { ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'h1', 'h2', 'h3', 'blockquote', 'code', 'pre', 'ruby', 'rt', 'rp'], ALLOWED_ATTR: [] });
+  },
+
   // Custom Module Functions
   showAddModuleModal() {
     document.getElementById('add-module-modal').classList.remove('hidden');
@@ -7270,9 +7231,9 @@ Requirements:
       btn.className = 'nav-item w-full px-4 py-3 flex items-center gap-3 hover:bg-primary-800 transition-colors';
       btn.onclick = () => app.switchModule(mod.id);
       btn.innerHTML = `
-        <span class="fi fi-${mod.flag || 'un'} w-8 h-6 rounded shadow-sm"></span>
+        <span class="fi fi-${this.escapeHtml(mod.flag || 'un')} w-8 h-6 rounded shadow-sm"></span>
         <div class="text-left">
-          <div class="font-medium">${mod.name}</div>
+          <div class="font-medium">${this.escapeHtml(mod.name)}</div>
           <div class="text-xs text-primary-400" id="${mod.id}-count">0 语料</div>
         </div>
       `;
@@ -7288,21 +7249,24 @@ Requirements:
       const card = document.createElement('div');
       card.id = `card-${mod.id}`;
       card.onclick = () => app.switchModule(mod.id);
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.onkeydown = event => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); card.click(); } };
       card.className = 'module-card bg-white rounded-xl p-6 shadow-lg cursor-pointer border border-primary-100';
       card.innerHTML = `
         <div class="flex items-center justify-between mb-4">
-          <div class="w-16 h-12 rounded-lg shadow-lg overflow-hidden">
-            <span class="fi fi-${mod.flag || 'un'} w-full h-full"></span>
+          <div class="module-flag-badge">
+            <span class="fi fi-${this.escapeHtml(mod.flag || 'un')} w-full h-full"></span>
           </div>
           <div class="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
-            <span class="text-primary-600 font-bold text-sm" id="${mod.id}-progress">0%</span>
+            <span class="text-primary-600 font-bold text-sm" id="${mod.id}-progress">0%</span><span class="text-primary-500">已记住</span>
           </div>
         </div>
-        <h4 class="text-xl font-bold mb-1">${mod.name}</h4>
-        <p class="text-sm text-primary-500 mb-3">${mod.language}</p>
+        <h4 class="text-xl font-bold mb-1">${this.escapeHtml(mod.name)}</h4>
+        <p class="text-sm text-primary-500 mb-3">${this.escapeHtml(mod.language)}</p>
         <div class="flex items-center justify-between text-sm">
           <span class="text-primary-600"><span id="${mod.id}-entries">0</span> 条目</span>
-          <span class="text-accent-600"><span id="${mod.id}-due">0</span> 到期未复习</span>
+          <span class="text-accent-600"><span id="${mod.id}-due">0</span> 待复习</span>
         </div>
         <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
           <div id="${mod.id}-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>
@@ -7416,8 +7380,8 @@ Requirements:
   
   async refreshModuleUI() {
     // Re-render custom modules
-    await this.loadCustomModules();
-    await this.renderModuleNav();
+    document.querySelectorAll('[id^="card-custom_"]').forEach(el => el.remove());
+    this.renderCustomModules();
     await this.loadDashboard();
   },
   

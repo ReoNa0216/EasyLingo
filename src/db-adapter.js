@@ -51,13 +51,6 @@ class DatabaseAdapter {
       db: this.dbPath
     });
     
-    // 检查是否需要重新创建表（表结构变更时）
-    const needsRecreate = await this.checkTableSchema();
-    if (needsRecreate) {
-      console.log('[DB] Table schema changed, recreating tables...');
-      await this.dropTables();
-    }
-    
     await this.createTables();
     
     // 迁移：添加缺失的列
@@ -71,7 +64,7 @@ class DatabaseAdapter {
     return await invoke('plugin:sql|execute', { 
       db: this.dbPath,
       query: sql,
-      values: params
+      values: params.map(value => value instanceof Date ? value.toISOString() : value ?? null)
     });
   }
 
@@ -80,7 +73,7 @@ class DatabaseAdapter {
     return await invoke('plugin:sql|select', { 
       db: this.dbPath,
       query: sql,
-      values: params
+      values: params.map(value => value instanceof Date ? value.toISOString() : value ?? null)
     });
   }
 
@@ -186,47 +179,6 @@ class DatabaseAdapter {
     `);
   }
 
-  // 检查表结构是否需要重建
-  async checkTableSchema() {
-    try {
-      // 检查 entries 表
-      const entriesInfo = await this.select("PRAGMA table_info(entries)");
-      const entriesColumns = entriesInfo.map(col => col.name);
-      const entriesRequired = ['wordType', 'example', 'srsLevel'];
-      const entriesMissing = entriesRequired.filter(col => !entriesColumns.includes(col));
-      
-      // 检查 materials 表
-      const materialsInfo = await this.select("PRAGMA table_info(materials)");
-      const materialsColumns = materialsInfo.map(col => col.name);
-      const materialsRequired = ['sourceFile', 'source', 'progress', 'partialCount'];
-      const materialsMissing = materialsRequired.filter(col => !materialsColumns.includes(col));
-      
-      if (entriesMissing.length > 0 || materialsMissing.length > 0) {
-        console.log('[DB] Missing columns detected - entries:', entriesMissing, 'materials:', materialsMissing);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // 删除所有表（用于重建）
-  async dropTables() {
-    try {
-      await this.execute("DROP TABLE IF EXISTS entries");
-      await this.execute("DROP TABLE IF EXISTS cards");
-      await this.execute("DROP TABLE IF EXISTS materials");
-      await this.execute("DROP TABLE IF EXISTS modules");
-      await this.execute("DROP TABLE IF EXISTS tests");
-      await this.execute("DROP TABLE IF EXISTS records");
-      await this.execute("DROP TABLE IF EXISTS settings");
-      console.log('[DB] All tables dropped');
-    } catch (e) {
-      console.error('[DB] Error dropping tables:', e);
-    }
-  }
-
   // 迁移：添加缺失的列
   async migrateTables() {
     try {
@@ -294,10 +246,90 @@ class DatabaseAdapter {
         await this.execute("ALTER TABLE records ADD COLUMN count INTEGER DEFAULT 1");
       }
       
+      // v2.0 bulk import stored millisecond timestamps in TEXT columns.
+      for (const table of ['modules', 'materials', 'entries', 'cards', 'tests', 'records']) {
+        const fields = table === 'entries' ? ['createdAt', 'nextReview'] : ['createdAt'];
+        for (const field of fields) {
+          await this.execute(`UPDATE ${table} SET ${field} = strftime('%Y-%m-%dT%H:%M:%fZ', CAST(${field} AS REAL) / 1000, 'unixepoch') WHERE ${field} NOT GLOB '*[^0-9.]*' AND CAST(${field} AS REAL) BETWEEN 1000000000000 AND 9999999999999`);
+        }
+      }
       console.log('[DB] Migration complete');
     } catch (e) {
-      console.warn('[DB] Migration error:', e);
+      throw new Error('数据库迁移失败，原数据已保留：' + (e.message || e));
     }
+  }
+
+  async validateColumns(table, data) {
+    const columns = (await this.select(`PRAGMA table_info(${table})`)).map(c => c.name);
+    for (const key of Object.keys(data)) {
+      if (!columns.includes(key)) throw new Error(`不支持的字段: ${table}.${key}`);
+    }
+  }
+
+  async batch(statements) {
+    return this.getInvoke()('database_batch', { db: this.dbPath, statements });
+  }
+
+  async restoreBackup(data) {
+    const tables = ['modules', 'materials', 'entries', 'cards', 'tests', 'records', 'settings'];
+    if (!data || !['2.0', '2.0.0', '2.0.1'].includes(data.version)) {
+      throw new Error('请选择 EasyLingo 2.0 或更新版本导出的完整备份');
+    }
+    for (const table of tables) {
+      if (!Array.isArray(data[table])) throw new Error(`备份缺少 ${table} 数据`);
+      const ids = new Set();
+      for (const row of data[table]) {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`无效的 ${table} 记录`);
+        await this.validateColumns(table, row);
+        const schema = await this.select(`PRAGMA table_info(${table})`);
+        for (const column of schema) {
+          const value = row[column.name];
+          if (value == null) continue;
+          if (['INTEGER', 'REAL'].includes(column.type) && (typeof value !== 'number' || !Number.isFinite(value))) {
+            throw new Error(`备份数字字段无效: ${table}.${column.name}`);
+          }
+          if (column.type === 'TEXT' && !(table === 'tests' && ['answers', 'questions', 'results'].includes(column.name)) && typeof value !== 'string') {
+            throw new Error(`备份文本字段无效: ${table}.${column.name}`);
+          }
+        }
+        if (table === 'tests') {
+          for (const field of ['questions', 'results']) {
+            const list = typeof row[field] === 'string' ? JSON.parse(row[field]) : row[field];
+            if (list != null && !Array.isArray(list)) throw new Error(`备份测试字段无效: ${field}`);
+            for (const item of list || []) {
+              const question = field === 'results' ? item?.question : item;
+              if (!question || typeof question !== 'object' || (question.options != null && (!Array.isArray(question.options) || question.options.some(o => typeof o !== 'string')))) throw new Error('备份题目格式无效');
+            }
+          }
+        }
+        if (row.id == null || ids.has(row.id)) throw new Error(`无效或重复的 ${table} ID`);
+        ids.add(row.id);
+        if (['entries', 'cards', 'records'].includes(table) && !Number.isSafeInteger(row.id)) throw new Error(`无效的 ${table} ID`);
+        if (['modules', 'materials', 'tests'].includes(table) && !/^[a-zA-Z0-9_-]+$/.test(row.id)) throw new Error(`无效的 ${table} ID`);
+      }
+    }
+    const modules = new Set(data.modules.map(row => row.id));
+    const entries = new Set(data.entries.map(row => row.id));
+    for (const row of [...data.materials, ...data.entries]) {
+      if (!modules.has(row.moduleId)) throw new Error('备份包含不存在的语言模块');
+    }
+    for (const row of data.cards) {
+      if (!entries.has(row.entryId)) throw new Error('备份卡片对应的词条不存在');
+    }
+    const statements = tables.map(table => ({ query: `DELETE FROM ${table}`, values: [] }));
+    for (const table of tables) {
+      for (const row of data[table]) {
+        const keys = Object.keys(row);
+        statements.push({
+          query: `INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`,
+          values: keys.map(key => {
+            const value = row[key];
+            return value !== null && typeof value === 'object' ? JSON.stringify(value) : value;
+          })
+        });
+      }
+    }
+    await this.batch(statements);
   }
 
   // modules
@@ -319,10 +351,13 @@ class DatabaseAdapter {
   }
 
   async deleteModule(id) {
-    await this.execute("DELETE FROM modules WHERE id = ?", [id]);
+    await this.batch(['cards', 'entries', 'materials', 'tests', 'records'].map(table => ({
+      query: `DELETE FROM ${table} WHERE moduleId = ?`, values: [id]
+    })).concat([{ query: 'DELETE FROM modules WHERE id = ?', values: [id] }]));
   }
 
   async updateModule(id, changes) {
+    await this.validateColumns('modules', changes);
     const sets = [];
     const values = [];
     for (const [key, value] of Object.entries(changes)) {
@@ -344,14 +379,15 @@ class DatabaseAdapter {
   }
 
   async putMaterial(material) {
-    const { id, moduleId, title, content, sourceFile, source, status, createdAt, entryCount, errorMsg } = material;
+    const { id, moduleId, title, content, sourceFile, source, status, createdAt, entryCount, errorMsg, progress, partialCount } = material;
     await this.execute(
-      "INSERT OR REPLACE INTO materials (id, moduleId, title, content, sourceFile, source, status, createdAt, entryCount, errorMsg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, moduleId, title, content, sourceFile || null, source || null, status, createdAt, entryCount || 0, errorMsg]
+      "INSERT OR REPLACE INTO materials (id, moduleId, title, content, sourceFile, source, status, createdAt, entryCount, errorMsg, progress, partialCount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, moduleId, title, content, sourceFile || null, source || null, status, createdAt, entryCount || 0, errorMsg, progress || 0, partialCount || 0]
     );
   }
 
   async updateMaterial(id, changes) {
+    await this.validateColumns('materials', changes);
     const sets = [];
     const values = [];
     for (const [key, value] of Object.entries(changes)) {
@@ -363,7 +399,11 @@ class DatabaseAdapter {
   }
 
   async deleteMaterial(id) {
-    await this.execute("DELETE FROM materials WHERE id = ?", [id]);
+    await this.batch([
+      { query: 'DELETE FROM cards WHERE materialId = ?', values: [id] },
+      { query: 'DELETE FROM entries WHERE materialId = ?', values: [id] },
+      { query: 'DELETE FROM materials WHERE id = ?', values: [id] }
+    ]);
   }
 
   async deleteMaterialsByModule(moduleId) {
@@ -389,6 +429,7 @@ class DatabaseAdapter {
   }
 
   async putEntry(entry) {
+    await this.validateColumns('entries', entry);
     // v1.1.0 的 id 是字符串，v2.0 的 id 是 INTEGER AUTOINCREMENT
     // 如果 id 是字符串（旧版本数据），忽略它让数据库生成新 id
     const hasNumericId = entry.id && typeof entry.id === 'number';
@@ -417,6 +458,7 @@ class DatabaseAdapter {
   }
 
   async updateEntry(id, changes) {
+    await this.validateColumns('entries', changes);
     const sets = [];
     const values = [];
     for (const [key, value] of Object.entries(changes)) {
@@ -498,7 +540,7 @@ class DatabaseAdapter {
     const { id, moduleId, score, totalQuestions, duration, createdAt, answers, questions, results } = test;
     await this.execute(
       "INSERT OR REPLACE INTO tests (id, moduleId, score, totalQuestions, duration, createdAt, answers, questions, results) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, moduleId, score, totalQuestions, duration || 0, createdAt, JSON.stringify(answers || {}), JSON.stringify(questions || []), JSON.stringify(results || [])]
+      [id, moduleId, score, totalQuestions ?? questions?.length ?? 0, duration || 0, createdAt, JSON.stringify(answers || {}), JSON.stringify(questions || []), JSON.stringify(results || [])]
     );
   }
 
@@ -515,7 +557,7 @@ class DatabaseAdapter {
     const { moduleId, entryId, action, duration, count, date, createdAt } = record;
     await this.execute(
       "INSERT INTO records (moduleId, entryId, action, duration, count, date, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [moduleId, entryId, action, duration, count || 1, date, createdAt]
+      [moduleId, entryId, action, duration, count ?? 1, date, createdAt]
     );
   }
 
@@ -555,6 +597,8 @@ class DatabaseAdapter {
       if (table === 'modules') await this.putModule(item);
       else if (table === 'materials') await this.putMaterial(item);
       else if (table === 'entries') await this.putEntry(item);
+      else if (table === 'cards') await this.putCard(item);
+      else if (table === 'records') await this.putRecord(item);
       else if (table === 'tests') await this.putTest(item);
       else if (table === 'settings') await this.putSetting(item);
     }
@@ -573,16 +617,13 @@ class DatabaseAdapter {
 
   // close
   async close() {
-    // SQLite 通过插件管理，不需要显式关闭
-    console.log('[DB] Connection closed');
+    await this.getInvoke()('plugin:sql|close', { db: this.dbPath });
   }
 
   // 设置自定义数据路径
   async setCustomPath(path) {
     const invoke = this.getInvoke();
     await invoke('ensure_dir', { path });
-    this.customPath = path;
-    this.dbPath = `sqlite:${path}/polylingo.db`;
     localStorage.setItem('polylingo_db_path', path);
     return true;
   }
@@ -598,8 +639,7 @@ class DatabaseAdapter {
   // 重置为默认路径
   resetToDefault() {
     localStorage.removeItem('polylingo_db_path');
-    this.customPath = null;
-    this.dbPath = null;
+
   }
 
   // 额外辅助方法
