@@ -61,11 +61,12 @@ class DatabaseAdapter {
 
   async execute(sql, params = []) {
     const invoke = this.getInvoke();
-    return await invoke('plugin:sql|execute', { 
+    const [rowsAffected, lastInsertId] = await invoke('plugin:sql|execute', {
       db: this.dbPath,
       query: sql,
       values: params.map(value => value instanceof Date ? value.toISOString() : value ?? null)
     });
+    return { rowsAffected, lastInsertId };
   }
 
   async select(sql, params = []) {

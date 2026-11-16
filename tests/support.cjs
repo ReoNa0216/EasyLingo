@@ -13,7 +13,7 @@ function fixture() {
     if (command === 'plugin:sql|select') return sql.prepare(args.query).all(...args.values);
     if (command === 'plugin:sql|execute') {
       const r = sql.prepare(args.query).run(...args.values);
-      return { lastInsertId: Number(r.lastInsertRowid), rowsAffected: r.changes };
+      return [Number(r.changes), Number(r.lastInsertRowid)];
     }
     if (command === 'database_batch') {
       sql.exec('BEGIN');

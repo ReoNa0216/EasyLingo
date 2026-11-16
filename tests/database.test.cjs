@@ -21,6 +21,8 @@ test('complete backup restores cards, history, test arrays and zero counts', asy
   await db.putModule({ id: 'english', name: '英语' });
   const entry = { moduleId: 'english', original: 'hello', nextReview: new Date(), createdAt: new Date() };
   await db.putEntry(entry);
+  assert.ok(Number.isInteger(entry.id) && entry.id > 0);
+  assert.equal((await db.getEntry(entry.id)).original, 'hello');
   await db.putCard({ entryId: entry.id, moduleId: 'english', front: 'hello', back: '你好' });
   await db.putRecord({ moduleId: 'english', count: 0, action: 'review_detail' });
   await db.putTest({ id: 'test_1', questions: [{ question: 'hello?' }], results: [] });
@@ -28,6 +30,7 @@ test('complete backup restores cards, history, test arrays and zero counts', asy
   for (const t of ['modules','materials','entries','cards','tests','records','settings']) data[t] = await db.select(`SELECT * FROM ${t}`);
   await db.restoreBackup(JSON.parse(JSON.stringify(data)));
   assert.equal((await db.getAllCards()).length, 1);
+  assert.equal((await db.getAllCards())[0].entryId, entry.id);
   assert.equal((await db.getAllRecords())[0].count, 0);
   assert.equal((await db.getAllTests())[0].questions[0].question, 'hello?');
   assert.equal((await db.getAllTests())[0].totalQuestions, 1);
