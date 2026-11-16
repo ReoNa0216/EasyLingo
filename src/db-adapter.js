@@ -352,9 +352,13 @@ class DatabaseAdapter {
   }
 
   async deleteModule(id) {
-    await this.batch(['cards', 'entries', 'materials', 'tests', 'records'].map(table => ({
-      query: `DELETE FROM ${table} WHERE moduleId = ?`, values: [id]
-    })).concat([{ query: 'DELETE FROM modules WHERE id = ?', values: [id] }]));
+    await this.batch([
+      { query: 'DELETE FROM cards WHERE moduleId = ? OR entryId IN (SELECT id FROM entries WHERE moduleId = ?)', values: [id, id] },
+      ...['entries', 'materials', 'tests', 'records'].map(table => ({
+        query: `DELETE FROM ${table} WHERE moduleId = ?`, values: [id]
+      })),
+      { query: 'DELETE FROM modules WHERE id = ?', values: [id] }
+    ]);
   }
 
   async updateModule(id, changes) {
@@ -401,7 +405,7 @@ class DatabaseAdapter {
 
   async deleteMaterial(id) {
     await this.batch([
-      { query: 'DELETE FROM cards WHERE materialId = ?', values: [id] },
+      { query: 'DELETE FROM cards WHERE materialId = ? OR entryId IN (SELECT id FROM entries WHERE materialId = ?)', values: [id, id] },
       { query: 'DELETE FROM entries WHERE materialId = ?', values: [id] },
       { query: 'DELETE FROM materials WHERE id = ?', values: [id] }
     ]);
@@ -471,11 +475,19 @@ class DatabaseAdapter {
   }
 
   async deleteEntry(id) {
-    await this.execute("DELETE FROM entries WHERE id = ?", [id]);
+    await this.batch([
+      { query: 'DELETE FROM cards WHERE entryId = ?', values: [id] },
+      { query: 'UPDATE materials SET entryCount = (SELECT COUNT(*) FROM entries WHERE materialId = materials.id AND id != ?) WHERE id = (SELECT materialId FROM entries WHERE id = ?)', values: [id, id] },
+      { query: 'DELETE FROM entries WHERE id = ?', values: [id] }
+    ]);
   }
 
   async deleteEntriesByMaterial(materialId) {
-    await this.execute("DELETE FROM entries WHERE materialId = ?", [materialId]);
+    await this.batch([
+      { query: 'DELETE FROM cards WHERE entryId IN (SELECT id FROM entries WHERE materialId = ?)', values: [materialId] },
+      { query: 'DELETE FROM entries WHERE materialId = ?', values: [materialId] },
+      { query: 'UPDATE materials SET entryCount = 0 WHERE id = ?', values: [materialId] }
+    ]);
   }
 
   async getDueEntries(moduleId, date) {

@@ -323,7 +323,7 @@ test('legacy part-of-speech labels display in Chinese and Japanese labels can be
   await page.locator('#tab-words').click();
   await page.locator('#entry-7 button[title="编辑"]').click();
   await expect(page.locator('#edit-wordType')).toHaveCount(1);
-  await expect(page.locator('#edit-wordType')).toHaveValue('Substantiv');
+  await expect(page.locator('#edit-wordType')).toHaveValue('名词');
   await expect(page.locator('#edit-gender')).toHaveValue('n.');
   sql.close();
 });

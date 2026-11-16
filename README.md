@@ -6,17 +6,17 @@
 
 **开发单位：清华大学语言教学中心**
 
-**版本：2.1.1**
+**版本：2.1.2**
 
 应用侧栏的「帮助与关于」和「设置」均显示开发者及开发单位。
 
 ## 安装包
 
-正式提交版下载：[EasyLingo 2.1.1](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.1)。本版在紫色界面、字体、新图标及配置指南的基础上，修复日语词性标注与编辑。查看[双平台构建与安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43876855049)。各新闻源的实际访问结果及验证范围见[审计记录](docs/submission-audit.md)。
+正式提交版下载：[EasyLingo 2.1.2](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.2)。本版完成跨语言和核心流程回归，修复词性、批量补全、出题判分、备份及跨模块操作问题。查看[构建与安装验收](https://github.com/ReoNa0216/EasyLingo/actions/workflows/release.yml)。各新闻源的实际访问结果及验证范围见[审计记录](docs/submission-audit.md)。
 
-- Windows 10/11 x64：`EasyLingo_2.1.1_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
-- macOS Apple Silicon：`EasyLingo_2.1.1_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
-- Windows 免安装试用：解压 `EasyLingo_2.1.1_Windows-preview.zip`，双击 `EasyLingo-2.1.1.exe`。试用数据使用独立目录。
+- Windows 10/11 x64：`EasyLingo_2.1.2_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
+- macOS Apple Silicon：`EasyLingo_2.1.2_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
+- Windows 免安装试用：解压 `EasyLingo_2.1.2_Windows-preview.zip`，双击 `EasyLingo-2.1.2.exe`。试用数据使用独立目录。
 - 安装包尚未使用商业代码签名证书或 Apple 公证，系统可能要求确认来源。macOS 已验证包内应用启动，带下载隔离标记时的首次运行提示取决于系统版本。
 
 ## 界面预览
@@ -33,7 +33,7 @@
 2. 按 [API 配置指南](docs/api-configuration.md) 填写地址、密钥、模型和输出长度。智谱 GLM-4-Plus 的 Max Tokens 使用 `4000`。API 地址填写基础路径，不包含 `/chat/completions`。
 3. 导入 TXT、Markdown、文本型 PDF、DOCX，或手动添加词条。选择文件后会自动开始 AI 提取；扫描 PDF 需要先 OCR。
 4. 按到期词条复习；测试支持选择、填空、翻译。翻译题对照参考答案自行评估。
-5. 在设置中导出 JSON 备份。恢复备份会替换当前数据，恢复前请备份；2.1.1 接受 v2.0 格式的完整 JSON 备份。
+5. 在设置中导出 JSON 备份。恢复备份会替换当前数据，恢复前请备份；2.1.2 接受 v2.0 格式的完整 JSON 备份。
 
 界面、图表、日历、文件解析器随安装包提供。已有词条的阅读和复习可离线使用；AI 和新闻抓取需要联网。软件会读取 Windows/macOS 系统代理设置；更改代理后请重启软件。新闻网站可能限制当前网络的访问或改变页面结构，界面会显示具体失败原因。
 
@@ -72,6 +72,18 @@ npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 免安装试用构建的可执行文件位于 `src-tauri/target/release/easylingo.exe`，可复制到任意目录双击运行，运行环境要求与正式版相同。切换回正式版请重新运行正式构建命令。`node_modules/`、`src/vendor/`、`src-tauri/gen/` 和 `src-tauri/target/` 均可重新生成；清理后先运行 `npm ci`。
 
 配置指南的文字源为 `docs/api-configuration.md`。在装有微软雅黑的 Windows 上安装 Python `reportlab` 后，运行 `python scripts/build-guide.py` 可重新生成根目录 PDF；更新界面时同步替换 `docs/images/settings.png`。
+
+## 2.1.2 跨语言与核心流程修复
+
+- 德语、英语、日语和自定义语言按各自规则提取、补全及出题；保留自定义要求、细分类和语法性别。
+- 批量补全按原词匹配结果，支持模型乱序和缺项；失败词保留供重试，错误消息不会作为释义入库。
+- 保留完整材料；空响应、无效 JSON 和输出截断显示提取失败。新闻部分成功后重试复用材料，保留已有编辑和复习进度。
+- 选择题校验四个不同选项；填空保留完整短语、冠词和大小写；题目关联实际词条，混合测试不串语言，也不改变所选题型配额。
+- 删除词条同时清理关联卡片并更新材料计数，完整备份仍可恢复；查重保留不同大小写、释义和词性，重复内容保留复习等级较高的一条。
+- 修复跨模块批量误删、延迟查询覆盖、导入完成清空新输入、新闻预览丢失及离开复习后继续计时。
+- 修复月末统计遗漏月份；长文、重试、旧数据与失败回滚纳入自动回归。
+
+三名独立子代理分别审计数据、AI 与出题、界面与发布配置。合并验证通过 15 项数据库、48 组浏览器场景；原生和两平台安装验证记录见审计文档。AI 请求采用可控响应检查协议、提示词和异常处理，真实模型的语言内容质量另行评价。
 
 ## 2.1.1 日语词性修复
 

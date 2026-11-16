@@ -63,80 +63,34 @@ const app = {
     english: { id: 'english', name: '英语', language: 'English', flag: 'gb', code: 'EN' }
   },
   
-  // 多语言冠词配置（用于答案标准化）
-  languageArticles: {
-    // 德语冠词
-    german: ['der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einen', 'einem', 'eines', 'einer'],
-    // 法语冠词
-    french: ['le', 'la', 'les', 'l\'', 'un', 'une', 'des', 'du', 'de la', 'de l\'', 'aux'],
-    // 英语冠词
-    english: ['the', 'a', 'an'],
-    // 西班牙语冠词
-    spanish: ['el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'al', 'del'],
-    // 意大利语冠词
-    italian: ['il', 'lo', 'la', 'l\'', 'i', 'gli', 'le', 'un', 'uno', 'una', 'un\'', 'dei', 'degli', 'delle'],
-    // 葡萄牙语冠词
-    portuguese: ['o', 'a', 'os', 'as', 'um', 'uma', 'uns', 'umas', 'do', 'da', 'dos', 'das', 'no', 'na', 'nos', 'nas'],
-    // 荷兰语冠词
-    dutch: ['de', 'het', 'een', 'der', 'des', 'den'],
-    // 俄语：无冠词
-    russian: [],
-    // 日语：无冠词
-    japanese: [],
-    // 韩语：无冠词
-    korean: [],
-    // 中文：无冠词
-    chinese: []
-  },
-  
-  // SRS Intervals (in days) - SM-2 Algorithm
+  // 分级复习间隔（天）
   srsIntervals: [1, 3, 7, 14, 30, 90, 180],
   
-  // 标准化答案（去掉冠词、统一大小写）
-  normalizeAnswer(answer, language) {
-    if (!answer || typeof answer !== 'string') return '';
-    
-    // 获取当前模块的语言
-    const mod = this.modules[this.currentModule];
-    let lang = language || mod?.language || '';
-    
-    // 标准化语言代码（小写，处理可能的变体）
-    lang = lang.toLowerCase().trim();
-    
-    // 处理语言名称到代码的映射
+  languageKey(language) {
+    const lang = String(language || '').toLowerCase().trim();
     const langMap = {
-      'german': 'german', 'deutsch': 'german', 'de': 'german',
-      'french': 'french', 'français': 'french', 'fr': 'french',
-      'english': 'english', 'englisch': 'english', 'en': 'english',
+      '德语': 'german', 'german': 'german', 'deutsch': 'german', 'de': 'german',
+      '法语': 'french', 'french': 'french', 'français': 'french', 'fr': 'french',
+      '英语': 'english', 'english': 'english', 'englisch': 'english', 'en': 'english',
       'spanish': 'spanish', 'español': 'spanish', 'es': 'spanish',
       'italian': 'italian', 'italiano': 'italian', 'it': 'italian',
       'portuguese': 'portuguese', 'português': 'portuguese', 'pt': 'portuguese',
       'dutch': 'dutch', 'nederlands': 'dutch', 'nl': 'dutch',
       'russian': 'russian', 'русский': 'russian', 'ru': 'russian',
-      'japanese': 'japanese', '日本語': 'japanese', 'ja': 'japanese', 'jp': 'japanese',
-      'korean': 'korean', '한국어': 'korean', 'ko': 'korean', 'kr': 'korean',
+      '日语': 'japanese', 'japanese': 'japanese', '日本語': 'japanese', 'ja': 'japanese', 'jp': 'japanese',
+      '韩语': 'korean', 'korean': 'korean', '한국어': 'korean', 'ko': 'korean', 'kr': 'korean',
       'chinese': 'chinese', '中文': 'chinese', 'zh': 'chinese', 'cn': 'chinese'
     };
-    
-    lang = langMap[lang] || lang;
-    
-    // 转换为小写并trim
-    let normalized = answer.toLowerCase().trim();
-    
-    // 去掉该语言的冠词
-    const articles = this.languageArticles[lang] || [];
-    for (const article of articles) {
-      // 去掉开头的冠词+空格
-      if (normalized.startsWith(article + ' ')) {
-        normalized = normalized.substring(article.length).trim();
-        break; // 只去掉第一个冠词
-      }
-    }
-    
-    return normalized;
+    return langMap[lang] || lang;
+  },
+
+  // 统一空白和 Unicode 字符形式，保留有语法意义的冠词和大小写。
+  normalizeAnswer(answer, language) {
+    if (!answer || typeof answer !== 'string') return '';
+    return answer.normalize('NFC').trim().replace(/\s+/g, ' ');
   },
   
-  // 比较两个答案是否等价（考虑冠词差异）
+  // 填空答案按完整内容比较。
   isAnswerEquivalent(userAnswer, correctAnswer, language) {
     if (!userAnswer || !correctAnswer) return false;
     
@@ -493,6 +447,13 @@ const app = {
   },
   
   async switchModule(moduleId) {
+    if (!await this.canLeaveStudy()) return;
+    if (this.currentModule !== moduleId) {
+      for (const type of ['word', 'phrase', 'sentence']) {
+        if (this.batchMode[type]) this.toggleBatchMode(type);
+        else { this.selectedEntries[type].clear(); this.updateSelectionCount(type); }
+      }
+    }
     this.currentView = 'module';
     this.currentModule = moduleId;
     this.hideAllViews();
@@ -538,13 +499,13 @@ coping`,
 心理的`
         };
         const placeholderText = examples[moduleId] || examples.english;
-        bulkTextarea.placeholder = `粘贴单词列表，每行一个或空格分隔，AI将自动识别词性并补全信息
+        bulkTextarea.placeholder = `粘贴词条列表，每行一个，AI将自动识别词性并补全信息
 
 示例：
 ${placeholderText}`;
       } else {
         // 非默认模块简化显示
-        bulkTextarea.placeholder = `输入需要学习的内容，每行一个或空格分隔`;
+        bulkTextarea.placeholder = `输入需要学习的词条，每行一个`;
       }
     }
     
@@ -552,7 +513,7 @@ ${placeholderText}`;
     if (aiHint) {
       if (isDefaultModule) {
         const hints = {
-          german: 'AI将自动识别词性（如名词der/die/das、动词等）并生成中文翻译和例句',
+          german: 'AI将标注词性和名词性别，并生成中文翻译和例句',
           english: 'AI将自动识别词性（如名词、动词等）并生成中文翻译和例句',
           japanese: 'AI将标注日语词性与动词类别，为汉字标注读音，并生成中文翻译和例句'
         };
@@ -575,10 +536,10 @@ ${placeholderText}`;
     this.setActiveNavigation(`nav-${moduleId}`);
     
     await this.loadModuleMaterials();
-    this.currentView = 'module';
   },
   
   async loadDashboard() {
+    if (!await this.canLeaveStudy()) return;
     this.setActiveNavigation('nav-home');
     this.hideAllViews();
     document.getElementById('dashboard-view').classList.remove('hidden');
@@ -721,18 +682,22 @@ ${placeholderText}`;
     }
     
     const moduleId = this.currentModule;
-    for (const file of files) {
-      try {
-        const content = await this.parseFile(file);
-        await this.saveMaterial(file.name, content, moduleId);
-      } catch (error) {
-        console.error('Error parsing file:', error);
-        alert(`解析文件 ${file.name} 失败: ${error.message}`);
+    this.fileImportCount = (this.fileImportCount || 0) + 1;
+    try {
+      for (const file of files) {
+        try {
+          const content = await this.parseFile(file);
+          await this.saveMaterial(file.name, content, moduleId);
+        } catch (error) {
+          console.error('Error parsing file:', error);
+          alert(`解析文件 ${file.name} 失败: ${error.message}`);
+        }
       }
+      await this.loadModuleMaterials();
+      await this.updateSidebarStats();
+    } finally {
+      this.fileImportCount--;
     }
-    
-    await this.loadModuleMaterials();
-    await this.updateSidebarStats();
     // 不记录上传时间，只有学习和复习计入学习时间
   },
   
@@ -807,7 +772,7 @@ ${placeholderText}`;
       id: `${moduleId}_${Date.now()}`,
       moduleId,
       title: filename,
-      content: content.substring(0, 50000), // Store more content for AI processing
+      content,
       sourceFile: filename,
       status: 'pending', // pending, processing, completed
       createdAt: new Date()
@@ -856,6 +821,7 @@ ${placeholderText}`;
           
           try {
             const entries = await this.callAIForEntriesChunk(chunk, mod, settings, i + 1, chunks.length);
+            if (!entries.length) throw new Error('AI 未返回有效词条');
             console.log(`Chunk ${i + 1} returned ${entries.length} entries`);
             allEntries = allEntries.concat(entries);
           } catch (error) {
@@ -880,19 +846,31 @@ ${placeholderText}`;
         }
         console.log(`\n===== All ${chunks.length} chunks processed, total ${allEntries.length} entries =====`);
       } else {
-        allEntries = this.extractSimpleEntries(content);
+        allEntries = this.extractSimpleEntries(content, mod);
       }
       
-      // 去重（基于original字段）- 安全版
-      const seen = new Set();
+      if (this.languageKey(mod.language) === 'english') {
+        allEntries = allEntries.map(entry => {
+          if (entry && typeof entry.original === 'string' && typeof entry.translation === 'string' &&
+              /[\u4e00-\u9fa5]/.test(entry.original) && /^[a-zA-Z\s'-]+$/.test(entry.translation)) {
+            return { ...entry, original: entry.translation, translation: entry.original };
+          }
+          return entry;
+        });
+      }
+      const existingEntries = await dbAdapter.getEntriesByMaterial(material.id);
+      // 重试保留既有学习进度和手动编辑，大小写、词性或释义不同的条目分别保留。
+      const seen = new Set(existingEntries.map(e => this.entryContentKey(e)));
+      const existingOriginals = new Set(existingEntries.map(e => `${e.type}\n${e.original.trim()}`));
       allEntries = allEntries.filter(e => {
         // 跳过无效条目
         if (!e || !e.original || typeof e.original !== 'string') {
           console.warn('Skipping invalid entry:', e);
           return false;
         }
-        const key = e.original.toLowerCase().trim();
-        if (!key) return false;
+        if (!e.original.trim()) return false;
+        if (existingOriginals.has(`${e.type || 'sentence'}\n${e.original.trim()}`)) return false;
+        const key = this.entryContentKey(e);
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -902,24 +880,13 @@ ${placeholderText}`;
       let savedCount = 0;
       for (const entry of allEntries) {
         try {
-          // 自动修复英语 original/translation 颠倒的问题
-          let original = entry.original || '';
-          let translation = entry.translation || '';
-          if (material.moduleId === 'english' || this.modules[material.moduleId]?.language === 'English') {
-            const isOriginalChinese = /[\u4e00-\u9fa5]/.test(original);
-            const isTranslationEnglish = /^[a-zA-Z\s'-]+$/.test(translation);
-            if (isOriginalChinese && isTranslationEnglish) {
-              [original, translation] = [translation, original];
-            }
-          }
-          
           await dbAdapter.putEntry({
             id: `entry_${material.id}_${Math.random().toString(36).substr(2, 9)}`,
             materialId: material.id,
             moduleId: material.moduleId,
             type: entry.type || 'sentence', // word, phrase, sentence
-            original: original,
-            translation: translation,
+            original: entry.original,
+            translation: entry.translation || '',
             wordType: entry.wordType || '', // 词的类型（Substantiv/Verb/Adjektiv等）
             explanation: entry.explanation || '',
             example: entry.example || '',
@@ -938,8 +905,8 @@ ${placeholderText}`;
       
       await dbAdapter.updateMaterial(material.id, { 
         status: failedChunks || savedCount < allEntries.length ? 'error' : 'completed',
-        errorMsg: failedChunks ? `${failedChunks} 个文本块提取失败；已保留成功的 ${savedCount} 条` : null,
-        entryCount: savedCount 
+        errorMsg: failedChunks ? `${failedChunks} 个文本块提取失败；已保留 ${existingEntries.length + savedCount} 条` : savedCount < allEntries.length ? '部分词条保存失败，请重试' : null,
+        entryCount: existingEntries.length + savedCount
       });
       
       await this.loadModuleMaterials();
@@ -962,25 +929,10 @@ ${placeholderText}`;
   
   // 调用AI处理单个文本块（支持德语三种类型）
   async callAIForEntriesChunk(chunk, mod, settings, chunkIndex, totalChunks) {
-    const isGerman = mod.id === 'german' || mod.language === 'German';
-    const isEnglish = mod.id === 'english' || mod.language === 'English';
-    const isJapanese = mod.id === 'japanese' || mod.language === 'Japanese';
-    const isDefaultModule = isGerman || isEnglish || isJapanese;
-    
-    // 用户自定义提取要求（非默认模块）
-    const customPrompt = !isDefaultModule ? (mod.customPrompt ? `
-
-【用户自定义提取要求】
-${mod.customPrompt}
-
-请根据以上要求提取学习条目。` : `
-
-【默认提取要求】
-提取常用词汇和实用表达，优先选择日常生活、学习和工作场景中的高频词汇。包括：
-- 常用名词（人、事、物、地点等）
-- 实用动词和形容词
-- 固定搭配和短语
-- 实用例句和表达`) : '';
+    const isGerman = this.languageKey(mod.language) === 'german';
+    const isEnglish = this.languageKey(mod.language) === 'english';
+    const isJapanese = this.languageKey(mod.language) === 'japanese';
+    const isDefaultModule = ['german', 'english', 'japanese'].includes(mod.id) && !mod.isCustom;
     
     // 针对德语的特殊提示
     const germanPrompt = isGerman ? `【🚨 语言过滤 - 首要原则，必须严格遵守】
@@ -1005,7 +957,7 @@ ${mod.customPrompt}
 
 1. 【单词 word】：材料中实际存在的德语单词
    - 必须是材料原文中出现的词汇，不能是翻译
-   - 必须标注性别：m.阳性 / f.阴性 / n.中性 / pl.复数（若可确定）
+   - 仅名词标注性别：m.阳性 / f.阴性 / n.中性 / pl.复数（若可确定）
    - 目标：每1000字符至少提取15-25个单词
 
 2. 【短语 phrase】：材料中实际存在的德语固定搭配
@@ -1179,7 +1131,9 @@ ${mod.customPrompt}
       ? `语言过滤：只提取英语内容，忽略所有中文文本。如果材料是中英混合的，只提取英语词汇和句子，不要提取中文内容。`
       : isJapanese
       ? `语言过滤：只提取日语内容（包括汉字、平假名、片假名），忽略所有中文文本。`
-      : `语言过滤：只提取${this.escapeHtml(mod.language)}内容，忽略中文文本。`;
+      : this.languageKey(mod.language) === 'chinese'
+      ? '语言过滤：提取材料中实际出现的中文内容。'
+      : `语言过滤：只提取${this.escapeHtml(mod.language)}内容，忽略中文翻译。`;
     
     // 非默认模块直接使用用户定义的Prompt
     const hasCustomFormat = !isDefaultModule && mod.customPrompt;
@@ -1187,6 +1141,8 @@ ${mod.customPrompt}
     const customModulePrompt = hasCustomFormat ? `
 
 ${mod.customPrompt}
+
+用户自定义要求优先于默认标注规则。
 
 【基础约束】
 - 返回格式：合法JSON数组，不要Markdown代码块
@@ -1235,7 +1191,7 @@ ${mod.customPrompt}
   \"example\": \"ありがとうございます。非常感谢。\"
 }, {
   \"type\": \"phrase\",
-  \"original\": \"1兆円超(いっちょうえんこえ)\"
+  \"original\": \"1兆円超(いっちょうえんこえ)\",
   \"translation\": \"超过1万亿日元\",
   \"wordType\": \"\",
   \"gender\": \"\",
@@ -1286,13 +1242,13 @@ ${hasCustomFormat ? `请返回JSON数组，确保格式与用户自定义示例�
 - type: 条目类型 ("word" | "phrase" | "sentence")
 - original: 原文（${this.escapeHtml(mod.language)}文本，不含中文）${isJapanese ? '，【日语规范】word/短语整体注音"汉字(读音)"；sentence不注音' : ''}
 - translation: 中文翻译
-- wordType: 词的类型（仅word类型需要）
-- gender: 性别标记（德语：m./f./n./pl.；其他语言留空）
+${this.wordTypePrompt(mod)}
+${this.genderPrompt(mod)}
 - explanation: 用法解释（word和phrase需要，sentence可为空）
 - example: 例句（word和phrase需要，sentence可为空，可由AI生成）${isJapanese ? '，日语例句不注音' : ''}
 
 示例输出：
-[${genericExample}]
+${isGerman || isEnglish || isJapanese ? `[${genericExample}]` : JSON.stringify([{type:'word',original:`${mod.language}原词`,translation:'中文释义',wordType:'按目标语言标注的中文词性',gender:'',explanation:'用法解释',example:`${mod.language}例句 中文翻译`}])}
 
 请返回完整的JSON数组：`}`;
 
@@ -1328,6 +1284,9 @@ ${hasCustomFormat ? `请返回JSON数组，确保格式与用户自定义示例�
     
     const data = await response.json();
     console.log(`Chunk ${chunkIndex}: API response received:`, JSON.stringify(data, null, 2));
+    if (data.choices?.[0]?.finish_reason === 'length') {
+      throw new Error('AI 输出达到长度上限，当前文本块未完成；请检查模型输出长度设置后重试');
+    }
     
     // 检查响应格式 - 支持多种API格式
     let content_text = '';
@@ -1521,8 +1480,6 @@ ${hasCustomFormat ? `请返回JSON数组，确保格式与用户自定义示例�
     try {
       console.log(`Chunk ${chunkIndex}: Retrying with simplified prompt...`);
       
-      const isJapanese = mod.id === 'japanese' || mod.language === 'Japanese';
-      const isGerman = mod.id === 'german' || mod.language === 'German';
       const simplePrompt = `从以下${mod.name}教材中提取学习条目。
 
 教材内容：
@@ -1532,12 +1489,13 @@ ${chunk.substring(0, 8000)}
 - type: "word"/"phrase"/"sentence"
 - original: ${mod.name}原文
 - translation: 中文翻译
-- wordType: 中文词性（仅word需要）
-- gender: ${isGerman ? '德语名词的性别，m./f./n./pl.' : '留空'}
+${this.wordTypePrompt(mod)}
+${this.genderPrompt(mod)}
 - explanation: 用法解释
 - example: 例句
 
-${isJapanese ? this.japaneseWordTypePrompt : ''}
+${mod.customPrompt ? `用户自定义要求优先于默认标注规则：\n${mod.customPrompt}` : ''}
+只提取材料中实际存在的目标语言原文。
 
 请尽量多地提取，返回完整JSON数组：`;
 
@@ -1566,6 +1524,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       const data = await response.json();
       
       // 提取内容
+      if (data.choices?.[0]?.finish_reason === 'length') throw new Error('AI 重试输出被截断');
       let content_text = '';
       if (data.choices && data.choices[0] && data.choices[0].message) {
         content_text = data.choices[0].message.content || '';
@@ -1593,9 +1552,10 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
   },
   
   // 简单条目提取（无API时使用）- 增强版
-  extractSimpleEntries(content) {
+  extractSimpleEntries(content, mod = this.modules[this.currentModule]) {
+    const isGerman = this.languageKey(mod?.language) === 'german';
     // 首先尝试解析德语词汇表格式
-    const vocabularyEntries = this.parseGermanVocabularyList(content);
+    const vocabularyEntries = isGerman ? this.parseGermanVocabularyList(content) : [];
     if (vocabularyEntries.length > 0) {
       return vocabularyEntries;
     }
@@ -1639,7 +1599,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
     }
     
     // 策略3：提取重要词汇
-    const importantWords = this.extractImportantWords(content);
+    const importantWords = isGerman ? this.extractImportantWords(content) : [];
     entries.push(...importantWords.slice(0, 30));
     
     return entries;
@@ -1774,6 +1734,22 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
     return entries;
   },
   
+  wordTypePrompt(mod) {
+    const language = this.languageKey(mod?.language);
+    if (language === 'japanese') return this.japaneseWordTypePrompt;
+    const common = '- wordType: 使用目标语言适用的中文词性，如名词、动词、形容词、副词、代词、介词、连词等；具体分类按语境判断，保留有依据的细分类。';
+    if (language === 'german') return common + '\n- 德语情态动词标为“情态动词”，助动词标为“助动词”；语法性别单独填写 gender，不写入 wordType。';
+    if (language === 'english') return common + '\n- 英语情态动词、助动词、限定词分别标注，勿使用 Noun、Modal verb 等英文词性标签。';
+    return common;
+  },
+
+  genderPrompt(mod) {
+    const language = this.languageKey(mod?.language);
+    if (language === 'german') return '- gender: 仅德语名词填写 m./f./n./pl.，其他词性留空。';
+    if (['english', 'japanese', 'korean', 'chinese'].includes(language)) return '- gender: 留空。';
+    return '- gender: 按目标语言和用户要求填写语法性别；没有语法性别或不能确定时留空。';
+  },
+
   japaneseWordTypePrompt: `【日语词性 wordType】
 - 使用中文日语学习术语，不使用 Noun、Verb、Adjective 等英文标签。
 - 普通名词标为“名词”；可接する的名词标为“名词（サ变）”，如学習；不要把所有名词都标为サ变。
@@ -1804,6 +1780,12 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       'Interjektion': '感叹词',
       'Artikel': '冠词',
       'Numerale': '数词',
+      'Modalverb': '情态动词',
+      'Hilfsverb': '助动词',
+      'Modal verb': '情态动词',
+      'Auxiliary verb': '助动词',
+      'Determiner': '限定词',
+      'Numeral': '数词',
       'Noun': '名词',
       'Adjective': '形容词',
       'Pronoun': '代词',
@@ -1822,6 +1804,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       '接続詞': '接续词',
       '感動詞': '感叹词'
     };
+    if (typeof type !== 'string') return '';
     const label = type.trim();
     const key = Object.keys(translations).find(key => key.toLowerCase() === label.toLowerCase());
     return key ? translations[key] : type;
@@ -2001,6 +1984,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       if (status) status.textContent = '获取失败: ' + fetchErrorMsg;
     } finally {
       if (btn) btn.disabled = false;
+      this.restoreNewsPreviews();
     }
   },
   
@@ -2141,6 +2125,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       if (status) status.textContent = '获取失败: ' + fetchErrorMsg;
     } finally {
       if (btn) btn.disabled = false;
+      this.restoreNewsPreviews();
     }
   },
   
@@ -2291,6 +2276,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       if (status) status.textContent = '获取失败: ' + fetchErrorMsg;
     } finally {
       if (btn) btn.disabled = false;
+      this.restoreNewsPreviews();
     }
   },
   
@@ -2559,6 +2545,22 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       // 其他语言暂无新闻源
       container.innerHTML = '';
     }
+    this.restoreNewsPreviews();
+  },
+
+  restoreNewsPreviews() {
+    for (const source of ['zdf', 'bbc', 'guardian', 'npr', 'people', 'chinadaily']) {
+      const article = this[`${source}CurrentArticle`];
+      const preview = document.getElementById(`${source}-preview`);
+      const content = document.getElementById(`${source}-content`);
+      if (!article || !preview || !content) continue;
+      content.innerHTML = `<div class="font-bold mb-2">${this.escapeHtml(article.title)}</div>
+        <div class="flex flex-wrap gap-3 text-xs text-gray-500 mb-2"><span>${this.escapeHtml(article.source || source.toUpperCase())}</span><span>${this.escapeHtml(article.pubDate || '')}</span><span>${article.content.length}字</span></div>
+        <div class="text-xs text-gray-600 line-clamp-4">${this.escapeHtml(article.content.substring(0, 300))}${article.content.length > 300 ? '...' : ''}</div>`;
+      preview.classList.remove('hidden');
+      const button = document.getElementById(`${source}-process-btn`);
+      if (button) button.disabled = !!this[`processingNews_${source}`];
+    }
   },
   
   // 从 ZDF Heute 获取新闻
@@ -2682,6 +2684,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
     } finally {
       btn.disabled = false;
       setTimeout(() => progress.classList.add('hidden'), 2000);
+      this.restoreNewsPreviews();
     }
   },
   
@@ -2819,6 +2822,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
     } finally {
       if (btn) btn.disabled = false;
       setTimeout(() => progress?.classList.add('hidden'), 2000);
+      this.restoreNewsPreviews();
     }
   },
   
@@ -2956,6 +2960,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
     } finally {
       if (btn) btn.disabled = false;
       setTimeout(() => progress?.classList.add('hidden'), 2000);
+      this.restoreNewsPreviews();
     }
   },
 
@@ -2981,7 +2986,8 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
     if (progress) progress.classList.remove('hidden');
     if (status) status.textContent = '正在使用AI提取学习条目...';
     try {
-      const material = {
+      const existing = article.materialId ? await dbAdapter.getMaterial(article.materialId) : null;
+      const material = existing || {
         id: `${source}_${Date.now()}`,
         moduleId,
         title: `${label}: ${article.title.substring(0, 50)}`,
@@ -2991,7 +2997,8 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
         status: 'processing',
         createdAt: new Date()
       };
-      await dbAdapter.putMaterial(material);
+      if (!existing) await dbAdapter.putMaterial(material);
+      article.materialId = material.id;
       await this.processMaterialWithAI(material);
       const saved = await dbAdapter.getMaterial(material.id);
       if (saved?.status !== 'completed') {
@@ -3013,6 +3020,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
     } finally {
       this[processingKey] = false;
       if (button) button.disabled = false;
+      this.restoreNewsPreviews();
     }
   },
 
@@ -3045,7 +3053,7 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       const words = this.parseSimpleWordList(text);
       
       if (words.length === 0) {
-        alert('未能解析出有效单词，请确保每行一个单词或用空格分隔');
+      alert('未能解析出有效词条，请每行填写一个词条');
         return;
       }
       
@@ -3076,11 +3084,13 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       // 使用AI补全所有信息
       // 每批处理5个，确保质量
       const batchSize = 5;
+      const enrichmentErrors = new Set();
       for (let i = 0; i < entries.length; i += batchSize) {
         const batch = entries.slice(i, i + batchSize);
         statusSpan.textContent = `正在使用AI补全词条信息... (${Math.min(i + batchSize, entries.length)}/${entries.length})`;
         
-        await this.enrichEntriesCompleteWithAI(batch, settings, moduleId);
+        const outcome = await this.enrichEntriesCompleteWithAI(batch, settings, moduleId);
+        if (outcome.error) enrichmentErrors.add(outcome.error);
         
         // 添加延迟避免频率限制
         if (i + batchSize < entries.length) {
@@ -3091,11 +3101,11 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       progressDiv.classList.add('hidden');
       
       // 添加模块ID和字符串ID（与学习材料提取保持一致）
-      const isJapaneseModule = moduleId === 'japanese';
-      const isEnglishModule = moduleId === 'english';
+      const isJapaneseModule = this.languageKey(this.modules[moduleId]?.language) === 'japanese';
+      const isEnglishModule = this.languageKey(this.modules[moduleId]?.language) === 'english';
       entries.forEach(entry => {
         entry.moduleId = moduleId;
-        entry.id = `entry_${this.currentModule}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        entry.id = `entry_${moduleId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         // 自动修复英语 original/translation 颠倒的问题
         if (isEnglishModule) {
@@ -3121,27 +3131,29 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       // 保存到数据库
       console.log('Saving entries to DB:', entries.length);
       let savedCount = 0;
+      const unsaved = [];
       for (let i = 0; i < entries.length; i++) {
+        if (!entries[i].translation.trim()) { unsaved.push(words[i]); continue; }
         try {
           await dbAdapter.putEntry(entries[i]);
           savedCount++;
         } catch (err) {
           console.error('Failed to add entry:', entries[i], err);
+          unsaved.push(words[i]);
         }
       }
       
       // 刷新仪表板
-      await this.switchModule(moduleId);
-      await this.loadEntries();
+      if (this.currentModule === moduleId) await this.loadEntries();
       await this.updateSidebarStats();
       
       // 清空输入框
-      textArea.value = '';
-      
-      alert(`成功导入 ${savedCount}/${entries.length} 个词汇！AI已自动补全词性、翻译、用法和例句。`);
+      if (this.currentModule === moduleId && textArea.value.trim() === text) textArea.value = unsaved.join('\n');
+
+      alert(`已补全并导入 ${savedCount}/${entries.length} 个词条。${enrichmentErrors.size ? '\n补全失败：' + [...enrichmentErrors].join('；') : ''}${unsaved.length ? `\n未完成 ${unsaved.length} 个，可重新导入：\n${unsaved.join('\n')}` : ''}`);
       
       // 切换到单词标签
-      this.switchModuleTab('words');
+      if (this.currentModule === moduleId && !unsaved.length) this.switchModuleTab('words');
       
     } catch (error) {
       console.error('Bulk import failed:', error);
@@ -3168,8 +3180,8 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
       if (!trimmed || trimmed.length < 1 || /^\d+$/.test(trimmed)) continue;
       
       // 去重
-      if (seen.has(trimmed.toLowerCase())) continue;
-      seen.add(trimmed.toLowerCase());
+      if (seen.has(trimmed)) continue;
+      seen.add(trimmed);
       
       words.push(trimmed);
     }
@@ -3179,20 +3191,12 @@ ${isJapanese ? this.japaneseWordTypePrompt : ''}
   
   // AI完整补全：词性、翻译、解释、例句
   async enrichEntriesCompleteWithAI(entries, settings, moduleId = this.currentModule) {
-    const isGerman = moduleId === 'german';
-    const isJapanese = moduleId === 'japanese';
-    const isEnglish = moduleId === 'english';
-    const isDefaultModule = isGerman || isJapanese || isEnglish;
     const mod = this.modules[moduleId];
-    
+    const isGerman = this.languageKey(mod.language) === 'german';
+    const isJapanese = this.languageKey(mod.language) === 'japanese';
+    const isDefaultModule = ['german', 'english', 'japanese'].includes(mod.id) && !mod.isCustom;
+
     const wordsList = entries.map(e => e.original).join('\n');
-    
-    // 用户口语化需求（非默认模块）
-    const userRequirement = !isDefaultModule && mod.customPrompt ? mod.customPrompt : '';
-    
-    const genderDesc = isGerman 
-      ? '- gender: 德语名词的性别标记，必须是 "m."（阳性）、"f."（阴性）、"n."（中性）或 "pl."（复数），非名词则留空，严禁使用 "der"、"die"、"das"、"feminine"、"neuter"、"中"、"无" 等描述'
-      : '- gender: 非德语语言此字段留空（英语等语言无需性别标记）';
     
     // 用户自定义补全要求（非默认模块）- 支持Markdown格式
     const customPrompt = !isDefaultModule ? (mod.customPrompt ? `
@@ -3214,6 +3218,7 @@ ${mod.customPrompt}
       ? `你是一位专业的日语教学专家。请为以下日语单词识别类型并补全完整信息。${customPrompt}
 
 ${this.japaneseWordTypePrompt}
+${mod.customPrompt ? '用户自定义要求优先于默认标注规则。' : ''}
 
 【重要规则 - 格式规范】
 
@@ -3249,22 +3254,21 @@ ${this.japaneseWordTypePrompt}
 ${wordsList}
 
 返回格式：[{"original": "...", "translation": "...", "wordType": "...", "gender": "", "explanation": "...", "example": "..."}]`
-      : `
-${userRequirement || `你是一位专业的${this.escapeHtml(mod.name)}教学专家。请为以下${this.escapeHtml(mod.language)}单词识别并补全完整信息。`}
+      : `你是一位专业的${this.escapeHtml(mod.name)}教学专家。请为以下${this.escapeHtml(mod.language)}单词补全信息。
 
-【重要格式约束】
-- 返回格式：合法JSON数组
-- wordType字段：必须是中文词性，如"名词"、"动词"、"形容词"、"副词"、"介词"、"连词"、"冠词"、"情态动词"等，严禁使用"word"、"feminine"、"neuter"或德文词性
-- 🚨 情态动词强制要求：können/müssen/dürfen/sollen/wollen/mögen 及其变位形式必须标注为"情态动词"，❌禁止标注为"动词"
-- gender字段：德语名词必须是"m."、"f."、"n."或"pl."，非名词必须留空，严禁使用"der"、"die"、"das"、"feminine"、"neuter"、"中"、"无"等描述
-- explanation支持Markdown格式
-- 例句格式（关键）：德语句子 + 空格 + 中文翻译，不要括号。正确示例："Ich lese ein Buch. 我在读书。" 错误示例："Ich lese ein Buch.（我在读书）"
-- 对于既是副词又是形容词的词，选择最主要的一个词性填写即可
+${this.wordTypePrompt(mod)}
+${this.genderPrompt(mod)}
+- original: 保留目标语言原词。
+- translation: 中文释义。
+- explanation: 用法解释，支持 Markdown。
+- example: ${this.escapeHtml(mod.language)}例句 + 空格 + 中文翻译。
+${customPrompt}
+${mod.customPrompt ? '用户自定义要求优先于上述默认标注规则。' : ''}
 
-请为以下单词补全信息：
+单词：
 ${wordsList}
 
-返回格式：[{"original": "...", "translation": "...", "wordType": "中文词性(如:名词/动词/形容词/情态动词)", "gender": "m./f./n./pl.或留空", "explanation": "...", "example": "${this.escapeHtml(mod.name)}例句 中文翻译（无括号）"}]`
+返回合法JSON数组，字段为 original、translation、wordType、gender、explanation、example。`
 
     let retries = 0;
     const maxRetries = 2;
@@ -3355,30 +3359,36 @@ ${wordsList}
           }
         }
         
-        if (enrichedData && Array.isArray(enrichedData)) {
-          // 将AI补全的信息合并到条目
-          entries.forEach((entry, index) => {
-            if (enrichedData[index]) {
-              const enriched = enrichedData[index];
+        if (Array.isArray(enrichedData) && enrichedData.length) {
+          // 按原词匹配，模型返回乱序或缺项时不将别的词覆盖到当前词条。
+          const originalKey = value => {
+            if (typeof value !== 'string') return '';
+            const doc = new DOMParser().parseFromString(this.safeRichText(value), 'text/html');
+            doc.querySelectorAll('rt,rp').forEach(node => node.remove());
+            const text = doc.body.textContent.normalize('NFC').trim();
+            return isJapanese ? text.replace(/[（(][^()（）]*[)）]$/u, '').trim() : text;
+          };
+          let completed = 0;
+          entries.forEach(entry => {
+            const enriched = enrichedData.find(item => item && originalKey(item.original) === originalKey(entry.original));
+            if (enriched && typeof enriched.translation === 'string' && enriched.translation.trim()) {
               // 更新original保留AI添加的注音（如日语假名）
               entry.original = enriched.original || entry.original;
               entry.translation = enriched.translation || '';
-              entry.wordType = enriched.wordType || '';
-              entry.gender = enriched.gender || '';
-              entry.explanation = enriched.explanation || '';
+              for (const field of ['wordType', 'gender', 'explanation']) {
+                if (typeof enriched[field] === 'string') entry[field] = enriched[field];
+              }
               // 处理example可能是对象的情况（如{original, translation}）
               if (typeof enriched.example === 'object' && enriched.example !== null) {
                 entry.example = enriched.example.original ? `${enriched.example.original} ${enriched.example.translation || ''}` : JSON.stringify(enriched.example);
               } else {
-                entry.example = enriched.example || '';
+                if (typeof enriched.example === 'string') entry.example = enriched.example;
               }
-            } else {
-              console.warn(`No enrichment data for entry ${index}:`, entry.original);
+              completed++;
             }
           });
-          
-          // 成功则跳出重试循环
-          break;
+          if (completed) return { completed };
+          throw new Error('未返回与输入词条匹配的有效释义');
         } else {
           // 打印完整响应以便调试
           console.error('Failed to parse AI response. Full content:', content);
@@ -3390,15 +3400,7 @@ ${wordsList}
         console.error(`AI enrichment attempt ${retries} failed:`, error);
         
         if (retries > maxRetries) {
-          // 所有重试都失败
-          entries.forEach((entry, index) => {
-            if (!entry.translation) {
-              entry.translation = `（AI补全失败: ${error.message}）`;
-              entry.explanation = '请手动补充该词条信息';
-              entry.wordType = entry.wordType || '未知';
-            }
-          });
-          break;
+          return { completed: 0, error: error.message || String(error) };
         }
         
         // 等待后重试
@@ -3478,53 +3480,13 @@ ${wordsList}
   },
   
   // 宽松模式解析（备用）
-  parseVocabularyLoose(content) {
-    const entries = [];
-    const lines = content.split(/\r?\n/);
-    
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.length < 2) continue;
-      
-      // 宽松模式：用横线分隔的任何内容
-      const parts = trimmed.split(/[-–—]/).map(p => p.trim());
-      if (parts.length >= 2) {
-        const wordPart = parts[0];
-        const typePart = parts[1];
-        
-        // 提取可能的词性
-        let word = wordPart;
-        let gender = '';
-        const genderMatch = wordPart.match(/^(.+?),\s*(der|die|das|pl\.?)$/i);
-        if (genderMatch) {
-          word = genderMatch[1].trim();
-          const g = genderMatch[2].toLowerCase();
-          gender = g === 'der' ? 'm.' : g === 'die' ? 'f.' : g === 'das' ? 'n.' : 'pl.';
-        }
-        
-        entries.push({
-          type: 'word',
-          original: word,
-          translation: '',
-          explanation: `词类：${this.translateWordType(typePart)}`,
-          example: '',
-          gender: gender,
-          wordType: typePart,
-          srsLevel: 0,
-          nextReview: new Date().toISOString(),
-          interval: 0,
-          easeFactor: 2.5
-        });
-      }
-    }
-    
-    return entries;
-  },
-  
   async loadModuleMaterials() {
     if (!this.currentModule) return;
-    
-    const materials = await dbAdapter.getMaterialsByModule(this.currentModule);
+    const moduleId = this.currentModule;
+    const requestId = this.materialsRequestId = (this.materialsRequestId || 0) + 1;
+    const materials = await dbAdapter.getMaterialsByModule(moduleId);
+    const entriesCount = await dbAdapter.countEntriesByModule(moduleId);
+    if (this.currentModule !== moduleId || this.materialsRequestId !== requestId) return;
     const container = document.getElementById('materials-list');
     document.getElementById('panel-upload').classList.toggle('has-materials', materials.length > 0);
     
@@ -3534,9 +3496,6 @@ ${wordsList}
       await this.loadEntries();
       return;
     }
-    
-    // 获取条目统计
-    const entriesCount = await dbAdapter.countEntriesByModule(this.currentModule);
     
     container.innerHTML = materials.map(m => {
       let statusBadge = '';
@@ -3627,13 +3586,15 @@ ${wordsList}
   // 加载条目列表（按类型分类，按original字母顺序排序，分页加载）
   async loadEntries() {
     if (!this.currentModule) return;
-    
+    const moduleId = this.currentModule;
+    const requestId = this.entriesRequestId = (this.entriesRequestId || 0) + 1;
+    const moduleEntries = await dbAdapter.getEntriesByModule(moduleId);
+    if (this.currentModule !== moduleId || this.entriesRequestId !== requestId) return;
     const types = ['word', 'phrase', 'sentence'];
     
     for (const type of types) {
       // 获取对应类型的条目并排序
-      const allEntries = (await dbAdapter.getEntriesByModule(this.currentModule))
-        .filter(e => e.type === type);
+      const allEntries = moduleEntries.filter(e => e.type === type);
       
       // 按 original 字母顺序排序（不区分大小写）
       allEntries.sort((a, b) => {
@@ -3704,10 +3665,10 @@ ${wordsList}
       return '';
     }
     
-    const isGerman = this.currentModule === 'german';
-    const isEnglish = this.currentModule === 'english';
-    const isJapanese = this.currentModule === 'japanese';
-    const isDefaultModule = isGerman || isEnglish || isJapanese;
+    const isGerman = this.languageKey(this.modules[this.currentModule]?.language) === 'german';
+    const isEnglish = this.languageKey(this.modules[this.currentModule]?.language) === 'english';
+    const isJapanese = this.languageKey(this.modules[this.currentModule]?.language) === 'japanese';
+    const isDefaultModule = ['german', 'english', 'japanese'].includes(this.currentModule);
     const isCustomModule = !isDefaultModule && this.modules[this.currentModule]?.isCustom;
     const isBatchMode = this.batchMode[type];
     const isSelected = this.selectedEntries[type].has(entry.id);
@@ -3715,7 +3676,7 @@ ${wordsList}
     let typeBadge = '';
     if (type === 'word') {
       // 只有德语显示性别，其他语言只显示词类
-      const gender = (isGerman && entry.gender) ? `<span class="text-accent-600 font-bold">${this.safeRichText(entry.gender)}</span> ` : '';
+      const gender = ((isGerman || isCustomModule) && entry.gender) ? `<span class="text-accent-600 font-bold">${this.safeRichText(entry.gender)}</span> ` : '';
       // 显示词的类型（如有）
       const wordTypeLabel = entry.wordType ? `<span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs ml-1">${this.escapeHtml(this.translateWordType(entry.wordType))}</span>` : '';
       typeBadge = `<span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">单词</span> ${gender}${wordTypeLabel}`;
@@ -3780,10 +3741,10 @@ ${wordsList}
     const entry = await dbAdapter.getEntry(entryId);
     if (!entry) return;
     
-    const isGerman = this.currentModule === 'german';
-    const isEnglish = this.currentModule === 'english';
-    const isJapanese = this.currentModule === 'japanese';
-    const isDefaultModule = isGerman || isEnglish || isJapanese;
+    const isGerman = this.languageKey(this.modules[this.currentModule]?.language) === 'german';
+    const isEnglish = this.languageKey(this.modules[this.currentModule]?.language) === 'english';
+    const isJapanese = this.languageKey(this.modules[this.currentModule]?.language) === 'japanese';
+    const isDefaultModule = ['german', 'english', 'japanese'].includes(this.currentModule);
     const isCustomModule = !isDefaultModule && this.modules[this.currentModule]?.isCustom;
     
     const genderField = isGerman && entry.type === 'word' ? `
@@ -3795,13 +3756,19 @@ ${wordsList}
           <option value="f." ${entry.gender === 'f.' ? 'selected' : ''}>f. 阴性</option>
           <option value="n." ${entry.gender === 'n.' ? 'selected' : ''}>n. 中性</option>
           <option value="pl." ${entry.gender === 'pl.' ? 'selected' : ''}>pl. 复数</option>
+          ${entry.gender && !['m.', 'f.', 'n.', 'pl.'].includes(entry.gender) ? `<option selected value="${this.escapeHtml(entry.gender)}">原标记：${this.escapeHtml(entry.gender)}</option>` : ''}
         </select>
+      </div>
+    ` : isCustomModule && entry.type === 'word' ? `
+      <div>
+        <label class="block text-sm font-medium text-primary-700 mb-1">语法性别（可留空）</label>
+        <input id="edit-gender" type="text" value="${this.escapeHtml(entry.gender || '')}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
       </div>
     ` : '';
     const wordTypeField = entry.type === 'word' ? `
       <div>
         <label class="block text-sm font-medium text-primary-700 mb-1">词性</label>
-        <input type="text" id="edit-wordType" value="${this.escapeHtml(isJapanese ? this.translateWordType(entry.wordType || '') : (entry.wordType || ''))}" placeholder="${isJapanese ? '如：名词（サ变）、五段动词（他动词）' : '如：名词、动词、形容词'}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+        <input type="text" id="edit-wordType" value="${this.escapeHtml(this.translateWordType(entry.wordType || ''))}" placeholder="${isJapanese ? '如：名词（サ变）、五段动词（他动词）' : '如：名词、动词、形容词'}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
       </div>
     ` : '';
     
@@ -3982,7 +3949,8 @@ ${wordsList}
   
   // 批量删除条目
   async batchDeleteEntries(type) {
-    const selected = this.selectedEntries[type];
+    const moduleId = this.currentModule;
+    const selected = new Set(this.selectedEntries[type]);
     
     if (selected.size === 0) {
       await this.alertDialog('请先选择要删除的条目');
@@ -4011,7 +3979,7 @@ ${wordsList}
             entry = await dbAdapter.getEntry(parseInt(entryId));
           }
           
-          if (!entry) {
+          if (!entry || entry.moduleId !== moduleId || entry.type !== type) {
             console.warn(`[Batch Delete] Entry not found:`, entryId);
             failedIds.push(entryId);
             continue;
@@ -4027,8 +3995,10 @@ ${wordsList}
       }
       
       // 清空选择
-      selected.clear();
-      this.updateSelectionCount(type);
+      if (this.currentModule === moduleId) {
+        this.selectedEntries[type].clear();
+        this.updateSelectionCount(type);
+      }
       
       // 刷新列表
       await this.loadEntries();
@@ -4044,7 +4014,12 @@ ${wordsList}
     }
   },
   
-  // 查重并删除重复条目（按字母顺序排序）
+  entryContentKey(entry) {
+    return JSON.stringify(['type', 'original', 'translation', 'wordType', 'gender', 'explanation', 'example']
+      .map(field => String(entry[field] || (field === 'type' ? 'sentence' : '')).normalize('NFC').trim()));
+  },
+
+  // 只合并学习内容相同的条目，保留多义词、兼类和大小写区别。
   async deduplicateEntries(type) {
     const entries = (await dbAdapter.getEntriesByModule(this.currentModule)).filter(e => e.type === type);
     
@@ -4054,15 +4029,16 @@ ${wordsList}
     }
     
     // 按original字母顺序排序
-    entries.sort((a, b) => a.original.localeCompare(b.original, undefined, { sensitivity: 'base' }));
+    entries.sort((a, b) => a.original.localeCompare(b.original, undefined, { sensitivity: 'base' }) ||
+      (b.srsLevel || 0) - (a.srsLevel || 0) || (b.interval || 0) - (a.interval || 0));
     
-    // 查重（基于original字段，不区分大小写）
+    // 查重时比较完整学习内容。
     const seen = new Set();
     const duplicates = [];
     const unique = [];
     
     for (const entry of entries) {
-      const key = entry.original.toLowerCase().trim();
+      const key = this.entryContentKey(entry);
       if (seen.has(key)) {
         duplicates.push(entry);
       } else {
@@ -4079,7 +4055,7 @@ ${wordsList}
     }
     
     const confirmed = await this.confirmDialog(
-      `发现 ${duplicates.length} 个重复${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}，是否删除？\n\n保留的条目将按字母顺序排序。`
+      `发现 ${duplicates.length} 个内容相同的重复${type === 'word' ? '单词' : type === 'phrase' ? '短语' : '语句'}，是否删除？\n\n保留复习等级较高的条目。`
     );
     if (confirmed) {
       // 删除重复条目
@@ -4097,9 +4073,9 @@ ${wordsList}
   // 手动添加条目
   addManualEntry(type) {
     const mod = this.modules[this.currentModule];
-    const isGerman = this.currentModule === 'german';
-    const isEnglish = this.currentModule === 'english';
-    const isJapanese = this.currentModule === 'japanese';
+    const isGerman = this.languageKey(this.modules[this.currentModule]?.language) === 'german';
+    const isEnglish = this.languageKey(this.modules[this.currentModule]?.language) === 'english';
+    const isJapanese = this.languageKey(this.modules[this.currentModule]?.language) === 'japanese';
     
     // 所有语言在添加单词时都显示词类型输入框
     const wordTypeField = type === 'word' ? `
@@ -4112,7 +4088,7 @@ ${wordsList}
     // 德语名词显示性别选择
     const genderField = isGerman && type === 'word' ? `
       <div>
-        <label class="block text-sm font-medium text-primary-700 mb-1">词性（德语名词）</label>
+        <label class="block text-sm font-medium text-primary-700 mb-1">名词性别</label>
         <select id="new-gender" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
           <option value="">无</option>
           <option value="m.">m. 阳性</option>
@@ -4120,6 +4096,11 @@ ${wordsList}
           <option value="n.">n. 中性</option>
           <option value="pl.">pl. 复数</option>
         </select>
+      </div>
+    ` : mod?.isCustom && type === 'word' ? `
+      <div>
+        <label class="block text-sm font-medium text-primary-700 mb-1">语法性别（可留空）</label>
+        <input id="new-gender" type="text" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
       </div>
     ` : '';
     
@@ -4307,6 +4288,9 @@ ${wordsList}
   
   // 开始快速测试
   async startQuickTest() {
+    if (this.generatingTest) return;
+    this.generatingTest = true;
+    try {
     const checkboxes = document.querySelectorAll('.quick-test-checkbox:checked');
     const selectedModules = Array.from(checkboxes).map(cb => cb.value);
     
@@ -4349,7 +4333,7 @@ ${wordsList}
     }
     
     // 按模块均匀抽取条目，确保每种语言都有足够条目参与题目生成
-    const perModuleQuota = Math.ceil(totalCount * 3 / selectedModules.length);
+    const perModuleQuota = Math.max(typeCounts.choice > 0 ? 4 : 1, Math.ceil(totalCount * 3 / selectedModules.length));
     const entriesToUse = [];
     selectedModules.forEach(moduleId => {
       const moduleEntries = entries.filter(e => e.moduleId === moduleId);
@@ -4364,15 +4348,23 @@ ${wordsList}
     
     // 生成测试题目
     const questions = await this.generateQuestionsFromEntriesByType(entriesToUse, typeCounts);
+    if (!questions.length) {
+      await this.alertDialog('没有生成可用题目。请增加词条或调整题型后重试。');
+      return;
+    }
+    if (questions.length < totalCount) await this.alertDialog(`已生成 ${questions.length} 道可用题目。可增加词条或调整题型后重试。`);
     
     this.testData = {
-      moduleId: null, // 混合测试，不限制模块
+      moduleId: selectedModules.length === 1 ? selectedModules[0] : null,
       questions: questions,
       answers: {},
       score: 0
     };
     
     this.showTest();
+    } finally {
+      this.generatingTest = false;
+    }
   },
   
   // 全选所有模块
@@ -4545,6 +4537,7 @@ ${wordsList}
     // 背面显示翻译和解释
     let answerHtml = `
       <div class="space-y-4 text-left">
+        ${entry.type === 'word' && entry.wordType ? `<div class="text-sm text-primary-600">词性：${this.escapeHtml(this.translateWordType(entry.wordType))}</div>` : ''}
         <div class="p-4 bg-green-50 rounded-lg">
           <div class="text-sm text-green-600 mb-1">翻译</div>
           <div class="text-xl text-green-900">${this.safeRichText(entry.translation)}</div>
@@ -4704,6 +4697,19 @@ ${wordsList}
   },
   
   // Test Generation with AI
+  async canLeaveStudy() {
+    if (!this.studyTimer || !['review', 'test'].includes(this.currentView)) return true;
+    const message = this.currentView === 'review'
+      ? '离开当前复习？已评分词条的复习进度已保存。'
+      : '离开当前测试？未提交的答案不会保存。';
+    if (!await this.confirmDialog(message)) return false;
+    this.stopStudyTimer();
+    this.currentCardStartTime = null;
+    this.currentCardModuleId = null;
+    this.moduleStudyTimes = {};
+    return true;
+  },
+
   showTestModal() {
     document.getElementById('test-modal').classList.remove('hidden');
     this.updateTestTotalCount();
@@ -4737,6 +4743,10 @@ ${wordsList}
   },
   
   async generateTest() {
+    if (this.generatingTest) return;
+    this.generatingTest = true;
+    const moduleId = this.currentModule;
+    try {
     // 获取每种题型的数量
     const typeCounts = {};
     let totalCount = 0;
@@ -4763,8 +4773,8 @@ ${wordsList}
     
     // 获取学习条目
     let entries = [];
-    if (this.currentModule) {
-      entries = await dbAdapter.getEntriesByModule(this.currentModule);
+    if (moduleId) {
+      entries = await dbAdapter.getEntriesByModule(moduleId);
     } else {
       entries = await dbAdapter.getAllEntries();
     }
@@ -4776,25 +4786,35 @@ ${wordsList}
     
     // 从所有条目中随机抽取足够的条目用于生成题目（避免一次用完所有条目）
     const totalQuestionsNeeded = Object.values(typeCounts).reduce((a, b) => a + b, 0);
-    const entriesToUse = entries.length > totalQuestionsNeeded * 3 
-      ? entries.sort(() => 0.5 - Math.random()).slice(0, totalQuestionsNeeded * 3)
+    const selectionLimit = Math.max(typeCounts.choice > 0 ? 4 : 1, totalQuestionsNeeded * 3);
+    const entriesToUse = entries.length > selectionLimit
+      ? entries.sort(() => 0.5 - Math.random()).slice(0, selectionLimit)
       : entries;
     console.log(`Selected ${entriesToUse.length} entries from ${entries.length} total for generating ${totalQuestionsNeeded} questions`);
     
     // Generate test using AI or fallback to template
     const questions = await this.generateQuestionsFromEntriesByType(entriesToUse, typeCounts);
+    if (!questions.length) {
+      await this.alertDialog('没有生成可用题目。请增加词条或调整题型后重试。');
+      return;
+    }
+    if (questions.length < totalQuestionsNeeded) await this.alertDialog(`已生成 ${questions.length} 道可用题目。可增加词条或调整题型后重试。`);
     
     this.testData = {
-      moduleId: this.currentModule,
+      moduleId,
       questions: questions,
       answers: {},
       score: 0
     };
     
     this.showTest();
+    } finally {
+      this.generatingTest = false;
+    }
   },
   
   async generateQuestionsFromEntriesByType(entries, typeCounts) {
+    entries = entries.filter(e => this.hasUsableTranslation(e.translation));
     const settings = await this.getSettings();
     const allQuestions = [];
     
@@ -4833,12 +4853,12 @@ ${wordsList}
         const targetCount = distribution[moduleId];
         const moduleEntries = entriesByModule[moduleId].filter(e => !usedEntryIds.has(e.id));
         const shuffled = moduleEntries.sort(() => 0.5 - Math.random());
-        const selected = shuffled.slice(0, Math.min(targetCount * 2, shuffled.length));
+        const selected = shuffled.slice(0, Math.min(Math.max(targetCount * 2, 4), shuffled.length));
         const questions = await this.generateQuestionsOfTypeForModule(
           selected, Math.min(targetCount, selected.length), 'choice', settings, this.modules[moduleId]
         );
         // 标记已使用的条目
-        selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
+        questions.forEach(q => usedEntryIds.add(q.entryId));
         allQuestions.push(...questions);
       }
     }
@@ -4854,7 +4874,7 @@ ${wordsList}
         const questions = await this.generateQuestionsOfTypeForModule(
           selected, Math.min(targetCount, selected.length), 'fill', settings, this.modules[moduleId]
         );
-        selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
+        questions.forEach(q => usedEntryIds.add(q.entryId));
         allQuestions.push(...questions);
       }
     }
@@ -4870,7 +4890,7 @@ ${wordsList}
         const questions = await this.generateQuestionsOfTypeForModule(
           selected, Math.min(targetCount, selected.length), 'translation', settings, this.modules[moduleId]
         );
-        selected.slice(0, questions.length).forEach(e => usedEntryIds.add(e.id));
+        questions.forEach(q => usedEntryIds.add(q.entryId));
         allQuestions.push(...questions);
       }
     }
@@ -4891,20 +4911,16 @@ ${wordsList}
       if (remainingEntries.length > 0) {
         // 随机打乱剩余条目
         const shuffled = remainingEntries.sort(() => 0.5 - Math.random());
-        const selected = shuffled.slice(0, Math.min(shortage * 2, shuffled.length));
+        const selected = shuffled;
         
-        // 优先补充填空题（最容易本地生成）
-        const fallbackType = typeCounts.fill > 0 ? 'fill' : 
-                            typeCounts.choice > 0 ? 'choice' : 'translation';
-        
-        const fallbackQuestions = this.generateFallbackQuestionsByType(
-          selected, Math.min(shortage, selected.length), fallbackType
-        );
-        
-        // 标记已使用的条目
-        selected.slice(0, fallbackQuestions.length).forEach(e => usedEntryIds.add(e.id));
-        allQuestions.push(...fallbackQuestions);
-        console.log(`补充了 ${fallbackQuestions.length} 道题目`);
+        for (const type of ['choice', 'fill', 'translation']) {
+          const needed = (typeCounts[type] || 0) - allQuestions.filter(q => q.type === type).length;
+          if (needed <= 0) continue;
+          const available = selected.filter(e => !usedEntryIds.has(e.id));
+          const fallbackQuestions = this.generateFallbackQuestionsByType(available, needed, type);
+          fallbackQuestions.forEach(q => usedEntryIds.add(q.entryId));
+          allQuestions.push(...fallbackQuestions);
+        }
       }
     }
     
@@ -4912,27 +4928,12 @@ ${wordsList}
     return allQuestions.sort(() => 0.5 - Math.random());
   },
   
-  async generateQuestionsOfType(entries, count, type, settings, startIndex) {
-    const selectedEntries = entries.slice(startIndex, startIndex + Math.min(count * 2, entries.length));
-    
-    if (!settings.apiKey) {
-      throw new Error('未配置API Key，请先在设置中配置OpenAI/GLM API');
-    }
-    
-    try {
-      return await this.callAIForTestByType(selectedEntries, count, type, settings);
-    } catch (error) {
-      console.warn(`AI generation failed for ${type}:`, error);
-      throw error;
-    }
-  },
-  
-  // 为指定模块生成题目（混合测试用）
   async generateQuestionsOfTypeForModule(entries, count, type, settings, moduleName) {
-    const selectedEntries = entries.slice(0, Math.min(count * 2, entries.length));
+    if (count <= 0 || entries.length === 0) return [];
+    const selectedEntries = entries.slice(0, Math.min(Math.max(count * 2, type === 'choice' ? 4 : 1), entries.length));
     
     if (!settings.apiKey) {
-      throw new Error('未配置API Key，请先在设置中配置OpenAI/GLM API');
+      return this.generateFallbackQuestionsByType(selectedEntries, count, type, moduleName);
     }
     
     try {
@@ -4941,7 +4942,7 @@ ${wordsList}
       // 如果AI生成的题目数量不足，使用本地备用方案补充
       if (questions.length < count && selectedEntries.length > questions.length) {
         const remainingCount = count - questions.length;
-        const usedEntryIds = new Set(questions.map((q, idx) => selectedEntries[idx]?.id).filter(Boolean));
+        const usedEntryIds = new Set(questions.map(q => q.entryId));
         const remainingEntries = selectedEntries.filter(e => !usedEntryIds.has(e.id));
         
         if (remainingEntries.length > 0) {
@@ -4962,145 +4963,18 @@ ${wordsList}
   },
   
   // 基于条目生成简单测试题（无API时 - 优先使用例句）
-  generateFallbackQuestionsFromEntries(entries, count, types) {
-    const mod = this.modules[this.currentModule];
-    const questions = [];
-    const shuffled = entries.sort(() => 0.5 - Math.random());
-    
-    // 用于生成干扰选项的其他条目
-    const getDistractors = (correctEntry, count = 3) => {
-      const others = shuffled.filter(e => e.id !== correctEntry.id && e.translation !== correctEntry.translation);
-      const selected = others.slice(0, count);
-      return selected.map(e => e.translation);
-    };
-    
-    for (let i = 0; i < Math.min(count, shuffled.length); i++) {
-      const entry = shuffled[i];
-      const type = types[i % types.length];
-      const sourceText = entry.example || entry.original;
-      
-      if (type === 'choice') {
-        // 根据条目类型生成不同的选择题
-        let questionText, options, answer;
-        
-        // 判断条目类型（根据wordType和内容）
-        const isNoun = entry.wordType && entry.wordType.toLowerCase().includes('substantiv');
-        const isVerb = entry.wordType && (entry.wordType.toLowerCase().includes('verb') || entry.original.match(/^(haben|sein|werden|[a-z]+en)$/));
-        const isAdj = entry.wordType && entry.wordType.toLowerCase().includes('adjektiv');
-        
-        if (isNoun && entry.gender) {
-          // 名词题：性别或格的变化
-          const genders = { 'm.': 'der', 'f.': 'die', 'n.': 'das', 'pl.': 'die' };
-          const correctArticle = genders[entry.gender] || 'die';
-          const wrongOptions = Object.values(genders).filter(g => g !== correctArticle);
-          
-          questionText = entry.example 
-            ? `例句: "${this.safeRichText(entry.example)}"\n\n选择正确的定冠词：_____ ${this.safeRichText(entry.original)}`
-            : `选择正确的定冠词：_____ ${this.safeRichText(entry.original)}`;
-          options = [
-            { label: 'A', text: correctArticle, correct: true },
-            { label: 'B', text: wrongOptions[0], correct: false },
-            { label: 'C', text: wrongOptions[1] || wrongOptions[0], correct: false },
-            { label: 'D', text: wrongOptions[2] || wrongOptions[0], correct: false }
-          ];
-        } else if (isVerb && entry.example) {
-          // 动词题：分词或时态变化
-          const baseForm = entry.original.split(' ')[0];
-          const wrongForms = [
-            baseForm.replace(/en$/, 't'),
-            baseForm.replace(/en$/, 'st'),
-            baseForm + 'e'
-          ];
-          questionText = `在例句中填入正确的动词形式：\n"${entry.example.replace(baseForm, '_____')}"`;
-          options = [
-            { label: 'A', text: baseForm, correct: true },
-            { label: 'B', text: wrongForms[0], correct: false },
-            { label: 'C', text: wrongForms[1], correct: false },
-            { label: 'D', text: wrongForms[2], correct: false }
-          ];
-        } else {
-          // 默认：词汇意思选择
-          questionText = entry.example 
-            ? `例句: "${this.safeRichText(entry.example)}"\n\n"${this.safeRichText(entry.original)}" 的意思是什么？`
-            : `"${this.safeRichText(entry.original)}" 的中文意思是什么？`;
-          options = [
-            { label: 'A', text: entry.translation, correct: true },
-            { label: 'B', text: '[近似含义 1]', correct: false },
-            { label: 'C', text: '[相关概念]', correct: false },
-            { label: 'D', text: '[反义词]', correct: false }
-          ];
-        }
-        
-        // 打乱选项顺序
-        options.sort(() => 0.5 - Math.random());
-        options.forEach((opt, idx) => { opt.label = String.fromCharCode(65 + idx); });
-        const correctOption = options.find(o => o.correct);
-        
-        questions.push({
-          type: 'choice',
-          question: questionText,
-          options: options.map(o => `${o.label}. ${o.text}`),
-          answer: correctOption.label,
-          explanation: `${this.safeRichText(entry.original)} 的意思是 ${this.safeRichText(entry.translation)}${entry.gender ? `，性别：${this.safeRichText(entry.gender)}` : ''}${entry.example ? '\n例句: ' + entry.example : ''}`
-        });
-      } else if (type === 'fill') {
-        // 根据条目类型确定答案：phrase类型用完整短语，word类型用第一个词
-        const isPhrase = entry.type === 'phrase';
-        const keyword = isPhrase ? entry.original : entry.original.split(/\s+/)[0];
-        let maskedQuestion = sourceText;
-        if (entry.example && entry.example.includes(keyword)) {
-          maskedQuestion = entry.example.replace(keyword, '_____');
-        } else if (isPhrase) {
-          // phrase类型：尝试匹配第一个词（可能有时态变化）
-          const firstWord = entry.original.split(/\s+/)[0];
-          if (entry.example && entry.example.includes(firstWord)) {
-            maskedQuestion = entry.example.replace(firstWord, '_____');
-          } else {
-            maskedQuestion = `请用适当的表达填空：_____（${this.safeRichText(entry.translation)}）`;
-          }
-        } else {
-          const words = entry.original.split(/\s+/);
-          const targetWord = words.find(w => w.length > 2) || words[0] || '';
-          maskedQuestion = entry.original.replace(targetWord, '_____');
-        }
-        // 在句末添加所填词的中文提示
-        questions.push({
-          type: 'fill',
-          question: `填空：${maskedQuestion}（${this.safeRichText(entry.translation)}）`,
-          answer: keyword,
-          explanation: `正确答案是 "${keyword}"，意思是 ${this.safeRichText(entry.translation)}${entry.example ? '\n例句: ' + entry.example : ''}`
-        });
-      } else {
-        // 翻译题：直接给句子中文（翻译成外语）
-        questions.push({
-          type: 'translation',
-          question: `翻译：将下列句子翻译成${mod.name || '外'}语：\n"${this.safeRichText(entry.translation)}"`,
-          answer: entry.original,
-          explanation: `参考答案: ${this.safeRichText(entry.original)}${entry.example ? '\n例句: ' + entry.example : ''}`
-        });
-      }
-    }
-    
-    return questions;
-  },
-  
-  // 按类型生成测试题（使用AI）
   async callAIForTestByType(entries, count, type, settings, moduleRef = null) {
-    // 支持传入模块对象或字符串（兼容旧代码）
-    const mod = (typeof moduleRef === 'object' && moduleRef !== null) 
-      ? moduleRef 
-      : this.modules[this.currentModule];
-    const languageName = mod?.name || moduleRef || '外';
+    const mod = typeof moduleRef === 'object' && moduleRef !== null
+      ? moduleRef
+      : this.modules[moduleRef] || this.modules[entries[0]?.moduleId] || this.modules[this.currentModule];
+    const languageName = mod?.name || moduleRef || '目标语言';
     const customPrompt = mod?.customPrompt || '';
-    const moduleId = mod?.id || this.currentModule || '';
-    
-    const isGerman = moduleId === 'german' || mod?.language === 'German' || languageName === '德语';
-    const isJapanese = moduleId === 'japanese' || mod?.language === 'Japanese' || languageName === '日语';
-    const isKorean = moduleId === 'korean' || mod?.language === 'Korean' || languageName === '韩语' || languageName?.includes('韩语') || languageName?.includes('한국');
-    const isEnglish = moduleId === 'english' || mod?.language === 'English' || languageName === '英语';
-    const isDefaultModule = isGerman || isJapanese || isEnglish || isKorean;
-    const langDisplay = languageName.endsWith('语') ? languageName : languageName + '语';
-    
+    const language = this.languageKey(mod?.language);
+    const isGerman = language === 'german';
+    const isJapanese = language === 'japanese';
+    const isKorean = language === 'korean';
+    const langDisplay = languageName;
+
     const typeNames = {
       choice: '选择题（四选一）',
       fill: '填空题',
@@ -5179,7 +5053,7 @@ ${wordsList}
 - 如果题目涉及助词选择（은/는/이/가/을/를/에/에서/부터/까지等），上下文必须足够明确，能够排除其他助词
 - 如果没有足够的语境线索限定唯一答案，禁止出动词词尾或助词选择题，改为出词汇辨析题`;
     }
-    if (!isDefaultModule && customPrompt) {
+    if (customPrompt) {
       choicePrompt += `
 【用户自定义测试要求 - 必须遵守】
 ${customPrompt}`;
@@ -5207,13 +5081,13 @@ ${customPrompt}`;
 - 对于日语/韩语/中文等无空格语言，需要特别注意标注哪个词需要填写
 - 示例："在下列日语句子中填入空缺的词语：警備員が入り口を_____ています。 (把守)"
 - 正确答案是该外语词/短语本身（phrase类型必须是完整短语）
-- explanation字段必须使用中文书写，严禁使用外语写解析${!isDefaultModule && customPrompt ? '\n\n【用户自定义测试要求 - 必须遵守】\n' + customPrompt : ''}`;
+- explanation字段必须使用中文书写，严禁使用外语写解析${customPrompt ? '\n\n【用户自定义测试要求 - 必须遵守】\n' + customPrompt : ''}`;
 
     const translationPrompt = `生成${count}道翻译题。要求：
 - 给出中文句子，让学生翻译成${langDisplay}
 - 题目格式："将下列句子翻译成${langDisplay}：'中文句子'"
 - 正确答案是条目的原文或例句
-- explanation字段必须使用中文书写，严禁使用外语写解析${!isDefaultModule && customPrompt ? '\n\n【用户自定义测试要求 - 必须遵守】\n' + customPrompt : ''}`;
+- explanation字段必须使用中文书写，严禁使用外语写解析${customPrompt ? '\n\n【用户自定义测试要求 - 必须遵守】\n' + customPrompt : ''}`;
 
     const typePrompts = {
       choice: choicePrompt,
@@ -5221,37 +5095,24 @@ ${customPrompt}`;
       translation: translationPrompt
     };
     
-    // 移除中文翻译的辅助函数
-    const removeChineseTranslation = (text) => {
-      if (!text) return text;
-      // 移除各种常见的中文翻译格式：
-      // 1. （中文） - 全角括号包围
-      // 2. (中文) - 半角括号包围
-      // 3. . 中文  或 。中文 - 句点后跟中文
-      // 4. 空格+中文 - 空格后全是中文的部分
-      return text
-        .replace(/\uff08[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+?\uff09/g, '')  // （中文）
-        .replace(/\([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+?\)/g, '')      // (中文)
-        .replace(/[\.．]\s*[\u4e00-\u9fa5][\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]*$/g, '')  // . 中文结尾
-        .replace(/\s+[\u4e00-\u9fa5][\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]*$/g, '')  // 空格+中文结尾
-        .trim();
-    };
-    
-    const prompt = `基于以下${languageName}语学习条目，生成${typeNames[type]}。
+    const prompt = `基于以下${languageName}学习条目，生成${typeNames[type]}。
 
 重要：条目中的"例句"可以用于生成题目，特别是填空题和翻译题。
 注意：例句中可能包含中文翻译（如：Hello（你好）），生成题目时请去除中文部分。
 
 学习条目：
 ${entries.map((e, i) => {
-  let text = `${i+1}. [${e.type}] ${e.original} - ${e.translation}`;
+  let text = `${i+1}. [${e.type}] ${e.original} - ${e.translation}\n   entryId: ${JSON.stringify(e.id)}`;
+  if (e.wordType) text += `\n   词性: ${this.translateWordType(e.wordType)}`;
+  if (e.gender) text += `\n   语法性别: ${e.gender}`;
   if (e.explanation) text += `\n   解释: ${e.explanation}`;
-  if (e.example) text += `\n   例句: ${removeChineseTranslation(e.example)}`;
+  if (e.example) text += `\n   例句: ${e.example}`;
   return text;
 }).join('\n\n')}
 
 【关键要求 - 条目使用规则（必须严格遵守）】
 - 每道题目必须使用不同的条目（entries），严禁重复使用同一个条目生成多道题
+- 每道题返回对应的 entryId，逐字复制所选条目的 ID。
 - ${count}道题目对应${count}个不同的条目，一一对应
 - 如果提供了${entries.length}个条目但只需要生成${count}道题，选择其中${count}个不同的条目即可
 - ❌ 严禁：用第1个条目生成2道题，而其他条目未使用
@@ -5262,6 +5123,7 @@ ${typePrompts[type]}
 
 返回JSON格式：
 [{
+  "entryId": "对应条目的ID",
   "type": "${type}",
   "question": "题目内容",
   ${type === 'choice' ? '"options": ["A. 选项1", "B. 选项2", "C. 选项3", "D. 选项4"],' : ''}
@@ -5306,113 +5168,7 @@ ${typePrompts[type]}
     try {
       let questions = JSON.parse(jsonStr);
       
-      // 验证并修复选择题选项唯一性
-      if (type === 'choice') {
-        questions = questions.map(q => {
-          if (q.options && Array.isArray(q.options)) {
-            // 提取选项文本（去除 A. B. C. D. 前缀）
-            const optionTexts = q.options.map(opt => {
-              const match = opt.match(/^[A-D]\.\s*(.+)$/i);
-              return match ? match[1].trim() : opt.trim();
-            });
-            
-            // 检查重复
-            const uniqueTexts = [...new Set(optionTexts)];
-            if (uniqueTexts.length < optionTexts.length) {
-              console.warn('检测到重复选项，进行修复:', q.question);
-              
-              // 找到正确答案的位置和内容
-              const correctLabel = q.answer?.toUpperCase();
-              const correctIndex = ['A', 'B', 'C', 'D'].indexOf(correctLabel);
-              const correctText = correctIndex >= 0 ? optionTexts[correctIndex] : optionTexts[0];
-              
-              // 生成新的唯一干扰项
-              const distractors = new Set();
-              distractors.add(correctText);
-              
-              // 使用条目中其他词作为干扰项基础
-              const otherEntries = entries.filter(e => 
-                e.original !== correctText && 
-                !correctText.includes(e.original) && 
-                !e.original.includes(correctText)
-              );
-              
-              // 尝试从其他条目找干扰项
-              for (const entry of otherEntries.slice(0, 10)) {
-                if (distractors.size >= 4) break;
-                // 使用词形变化或相关形式
-                const variants = [
-                  entry.original,
-                  entry.original.replace(/en$/, 't'),
-                  entry.original.replace(/en$/, 'st'),
-                  entry.original + 'e',
-                  entry.original.replace(/t$/, 'en'),
-                ];
-                for (const v of variants) {
-                  if (v !== correctText && v.length > 2) {
-                    distractors.add(v);
-                    if (distractors.size >= 4) break;
-                  }
-                }
-              }
-              
-              // 如果还不足，添加通用干扰项模式
-              const genericDistractors = [
-                correctText.replace(/en$/, 't'),
-                correctText.replace(/en$/, 'st'),
-                correctText + 'e',
-                correctText.replace(/t$/, 'en'),
-                correctText.replace(/ung$/, 'en'),
-                correctText + 'ung',
-              ];
-              for (const d of genericDistractors) {
-                if (d !== correctText && d.length > 2) {
-                  distractors.add(d);
-                  if (distractors.size >= 4) break;
-                }
-              }
-              
-              // 最终备用方案
-              const finalDistractors = Array.from(distractors);
-              while (finalDistractors.length < 4) {
-                finalDistractors.push(`选项${finalDistractors.length + 1}`);
-              }
-              
-              // 打乱顺序并重新分配标签
-              const shuffled = finalDistractors.sort(() => 0.5 - Math.random());
-              const newOptions = shuffled.slice(0, 4).map((text, idx) => {
-                const label = String.fromCharCode(65 + idx);
-                return `${label}. ${text}`;
-              });
-              
-              // 找到正确答案的新位置
-              const newCorrectIndex = shuffled.findIndex(t => t === correctText);
-              const newAnswer = String.fromCharCode(65 + (newCorrectIndex >= 0 ? newCorrectIndex : 0));
-              
-              q.options = newOptions;
-              q.answer = newAnswer;
-            }
-          }
-          return q;
-        });
-      }
-      
-      // 验证填空题必须包含空缺占位符
-      if (type === 'fill') {
-        const validFillQuestions = questions.filter(q => {
-          if (!q.question || (!q.question.includes('_____') && !q.question.includes('____') && !q.question.includes('空缺'))) {
-            console.warn('检测到无效填空题（无空缺占位符），已过滤:', q.question);
-            return false;
-          }
-          return true;
-        });
-        if (validFillQuestions.length < questions.length) {
-          console.warn(`过滤了 ${questions.length - validFillQuestions.length} 道无效填空题`);
-        }
-        questions = validFillQuestions;
-      }
-      
-      return questions.map(q => ({ ...q, type }));
+      return this.validateTestQuestions(questions, type, entries).slice(0, count);
     } catch (parseError) {
       console.warn('JSON parse failed, trying to fix...', parseError.message);
       
@@ -5474,7 +5230,7 @@ ${typePrompts[type]}
         
         fixedStr = result.join('');
         const questions = JSON.parse(fixedStr);
-        return questions.map(q => ({ ...q, type }));
+        return this.validateTestQuestions(questions, type, entries).slice(0, count);
       } catch (fixError) {
         console.error('JSON content:', jsonStr.substring(0, 600));
         throw new Error(`JSON parse error: ${parseError.message}. Please check API response format.`);
@@ -5482,248 +5238,93 @@ ${typePrompts[type]}
     }
   },
   
-  // 按类型生成测试题（无API时的回退方案）- 优先使用例句
+  validateTestQuestions(questions, type, entries = null) {
+    if (!Array.isArray(questions)) return [];
+    const allowedIds = entries && new Map(entries.map(e => [String(e.id), e.id]));
+    const usedIds = new Set();
+    if (allowedIds) questions = questions.filter(q => {
+      if (!q || !allowedIds.has(String(q.entryId)) || usedIds.has(String(q.entryId))) return false;
+      usedIds.add(String(q.entryId));
+      q.entryId = allowedIds.get(String(q.entryId));
+      return true;
+    });
+    return questions.filter(q => {
+      if (!q || typeof q.question !== 'string' || !q.question.trim() || typeof q.answer !== 'string' || !q.answer.trim()) return false;
+      if (type === 'choice') {
+        if (!Array.isArray(q.options) || q.options.length !== 4 || q.options.some(o => typeof o !== 'string')) return false;
+        const options = q.options.map(o => o.trim().match(/^([A-D])[.、)）]\s*(.+)$/i));
+        if (options.some(o => !o)) return false;
+        const labels = options.map(o => o[1].toUpperCase());
+        const texts = options.map(o => o[2].trim().toLowerCase());
+        return new Set(labels).size === 4 && texts.every(Boolean) && new Set(texts).size === 4 && /^[A-D]$/i.test(q.answer.trim());
+      }
+      if (type === 'fill') return (q.question.match(/_{4,}/g) || []).length === 1;
+      return type === 'translation';
+    }).map(q => type === 'choice' ? {
+      ...q, type, answer: q.answer.trim().toUpperCase(),
+      options: q.options.map(o => o.trim().replace(/^([A-D])[.、)）]\s*/i, (_, label) => label.toUpperCase() + '. '))
+    } : { ...q, type });
+  },
+
   generateFallbackQuestionsByType(entries, count, type, moduleRef = null) {
+    entries = entries.filter(e => this.hasUsableTranslation(e.translation));
     const questions = [];
-    const shuffled = entries.sort(() => 0.5 - Math.random());
-    // 使用传入的模块对象/名称，或当前模块名称
-    const mod = (typeof moduleRef === 'object' && moduleRef !== null)
-      ? moduleRef
-      : (moduleRef ? { name: moduleRef } : this.modules[this.currentModule]);
-    
-    // 用于生成干扰选项的其他条目
-    const getDistractors = (correctEntry, count = 3) => {
-      const others = shuffled.filter(e => e.id !== correctEntry.id && e.translation !== correctEntry.translation);
-      const selected = others.slice(0, count);
-      const translations = selected.map(e => e.translation);
-      
-      // 如果翻译不足，使用 original 作为反向干扰
-      if (translations.length < count) {
-        const originals = others
-          .filter(e => !translations.includes(e.translation))
-          .slice(0, count - translations.length)
-          .map(e => e.original);
-        translations.push(...originals);
-      }
-      
-      // 如果还不足，创建合理的假词
-      const fakeDistractors = [
-        '相似词汇', '近义表达', '相关概念'
-      ];
-      while (translations.length < count) {
-        translations.push(fakeDistractors[translations.length % fakeDistractors.length]);
-      }
-      
-      return translations.slice(0, count);
+    const shuffled = [...entries].sort(() => 0.5 - Math.random());
+    const suppliedModule = typeof moduleRef === 'object' && moduleRef !== null ? moduleRef : this.modules[moduleRef];
+    const plainText = value => {
+      const doc = new DOMParser().parseFromString(this.safeRichText(value), 'text/html');
+      doc.querySelectorAll('rt, rp').forEach(node => node.remove());
+      return doc.body.textContent.trim();
     };
-    
-    // 移除中文翻译的辅助函数
-    const removeChineseTranslation = (text) => {
-      if (!text) return text;
-      // 移除括号及其中的中文内容（包括中文标点）
-      return text.replace(/（[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+?）/g, '').trim();
-    };
-    
-    for (let i = 0; i < Math.min(count, shuffled.length); i++) {
-      const entry = shuffled[i];
-      // 对于混合测试的fallback，条目可能带有自己的模块信息
-      const entryMod = entry.moduleRef || mod;
-      // 移除例句中的中文翻译
-      const cleanExample = removeChineseTranslation(entry.example);
-      const sourceText = cleanExample || entry.original;
-      
+    for (const entry of shuffled) {
+      if (questions.length >= count) break;
+      const mod = this.modules[entry.moduleId] || entry.moduleRef || suppliedModule || this.modules[this.currentModule];
+      const language = this.languageKey(mod?.language);
+      let original = plainText(entry.original);
+      if (language === 'japanese') original = original.replace(/[（(][\u3040-\u30ffー]+[)）]/g, '');
+      const translation = plainText(entry.translation);
+      if (!original || !translation || translation.startsWith('[请使用AI')) continue;
+      const metadata = { entryId: entry.id, moduleId: entry.moduleId || mod?.id, language: mod?.language, type };
       if (type === 'choice') {
-        // 获取3个干扰选项
-        const distractors = getDistractors(entry, 3);
-        // 打乱选项顺序
-        const options = [
-          { label: 'A', text: entry.translation, correct: true },
-          { label: 'B', text: distractors[0], correct: false },
-          { label: 'C', text: distractors[1], correct: false },
-          { label: 'D', text: distractors[2], correct: false }
-        ].sort(() => 0.5 - Math.random());
-        options.forEach((opt, idx) => { opt.label = String.fromCharCode(65 + idx); });
-        const correctOption = options.find(o => o.correct);
-        
-        // 清理选项中可能的中文括号注释
-        const cleanOptionText = (text) => {
-          if (!text) return text;
-          return text.replace(/\s*[\(（][\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+[\)）]\s*$/g, '').trim();
-        };
-        
-        const questionText = cleanExample 
-          ? `例句: "${cleanExample}"\n\n请选择正确的${entryMod?.name || ''}翻译："${this.safeRichText(entry.original)}" 的意思是什么？`
-          : `请选择正确的${entryMod?.name || ''}翻译："${this.safeRichText(entry.original)}" 的中文意思是什么？`;
-        questions.push({
-          type: 'choice',
-          question: questionText,
-          options: options.map(o => `${o.label}. ${cleanOptionText(o.text)}`),
-          answer: correctOption.label,
-          explanation: `${this.safeRichText(entry.original)} 的意思是 ${this.safeRichText(entry.translation)}${entry.explanation ? '，' + entry.explanation : ''}${entry.example ? '\n例句: ' + entry.example : ''}`
+        const candidates = shuffled.filter(e => e.id !== entry.id && e.moduleId === entry.moduleId)
+          .map(e => plainText(e.translation)).filter(t => t && t !== translation && !t.startsWith('[请使用AI'));
+        const distractors = [...new Set(candidates)].slice(0, 3);
+        if (distractors.length !== 3) continue;
+        const options = [translation, ...distractors].sort(() => 0.5 - Math.random());
+        questions.push({ ...metadata,
+          question: `“${original}”的中文意思是什么？`,
+          options: options.map((text, i) => `${String.fromCharCode(65 + i)}. ${text}`),
+          answer: String.fromCharCode(65 + options.indexOf(translation)),
+          explanation: `${original}：${translation}`
         });
       } else if (type === 'fill') {
-        // 填空题：优先从例句中抽取关键词
-        const textToUse = cleanExample || entry.original;
-        // 根据条目类型确定答案：phrase类型用完整短语，word类型用第一个词
-        const isPhrase = entry.type === 'phrase';
-        const keyword = isPhrase ? entry.original : entry.original.split(/\s+/)[0];
-        let maskedQuestion = textToUse;
-        
-        // 尝试在例句中替换关键词/短语（必须是完整出现）
-        if (cleanExample && cleanExample.includes(keyword)) {
-          maskedQuestion = cleanExample.replace(keyword, '_____');
-        } else if (isPhrase) {
-          // phrase类型：尝试匹配第一个词，但必须是较长且不易混淆的词
-          const firstWord = entry.original.split(/\s+/)[0];
-          const commonArticles = ['a', 'an', 'the', 'to', 'de', 'la', 'le', 'les', 'un', 'une', 'el', 'la', 'los', 'las'];
-          if (cleanExample && cleanExample.includes(firstWord) && firstWord.length > 2 && !commonArticles.includes(firstWord.toLowerCase())) {
-            maskedQuestion = cleanExample.replace(firstWord, '_____');
-          } else {
-            // 无法安全替换，使用通用填空提示
-            maskedQuestion = `请用适当的表达填空：_____（${this.safeRichText(entry.translation)}）`;
-          }
-        } else {
-          const words = entry.original.split(/\s+/);
-          const targetWord = words.find(w => w.length > 2) || words[0] || '';
-          maskedQuestion = entry.original.replace(targetWord, '_____');
+        let example = plainText(entry.example);
+        // Only remove a suffix explicitly matching this entry's known translation.
+        for (const suffix of [' ' + translation, '（' + translation + '）', '(' + translation + ')']) {
+          if (example.endsWith(suffix)) { example = example.slice(0, -suffix.length).trim(); break; }
         }
-        
-        // 在句末添加中文提示
-        questions.push({
-          type: 'fill',
-          question: `填空：${maskedQuestion}（${this.safeRichText(entry.translation)}）`,
-          answer: keyword,
-          explanation: `正确答案是 "${keyword}"，意思是 ${this.safeRichText(entry.translation)}${entry.example ? '\n例句: ' + entry.example : ''}`
-        });
+        const index = example.indexOf(original);
+        const requiresBoundary = !['japanese', 'chinese', 'korean'].includes(language);
+        const wordChar = c => /[\p{L}\p{N}]/u.test(c || '');
+        const completeMatch = index >= 0 && (!requiresBoundary ||
+          (!wordChar(example[index - 1]) && !wordChar(example[index + original.length])));
+        const question = completeMatch
+          ? example.slice(0, index) + '_____' + example.slice(index + original.length)
+          : '请填写完整词条：_____';
+        questions.push({ ...metadata, question: `${question}（${translation}）`, answer: original,
+          explanation: `参考答案：${original}。${translation}` });
       } else if (type === 'translation') {
-        // 翻译题：给中文让用户翻译成外语
-        questions.push({
-          type: 'translation',
-          question: `翻译：将下列句子翻译成${entryMod?.name || '外'}语：\n"${this.safeRichText(entry.translation)}"`,
-          answer: entry.original,
-          explanation: `参考答案: ${this.safeRichText(entry.original)}${entry.example ? '\n例句: ' + entry.example : ''}`
-        });
+        questions.push({ ...metadata, question: `请翻译成${mod?.name || '目标语言'}：“${translation}”`,
+          answer: original, explanation: `参考答案：${original}` });
       }
     }
-    
     return questions;
   },
-  
-  async callAIForQuestions(materials, count, types, settings) {
-    const content = materials.map(m => m.content.substring(0, 1000)).join('\n\n');
-    const language = (this.modules[this.currentModule] && this.modules[this.currentModule].language) || 'Unknown';
-    
-    const prompt = `Based on the following ${language} learning materials, generate ${count} test questions.
 
-Materials:
-${content.substring(0, 3000)}
-
-Generate a JSON array of questions with this format:
-[{
-  "type": "choice" | "fill" | "translation",
-  "question": "the question text",
-  "options": ["A. option1", "B. option2", "C. option3", "D. option4"], // for choice questions
-  "answer": "correct answer",
-  "explanation": "detailed explanation"
-}]
-
-Requirements:
-- Include ${types.join(', ')} question types
-- Questions should test understanding of the materials
-- Provide detailed explanations for each answer
-- IMPORTANT for choice questions:
-  - All four options (A, B, C, D) must be DISTINCT and different from each other
-  - Only ONE correct answer; distractors must be logically incorrect but grammatically plausible
-  - Distractors should be tempting but clearly wrong upon analysis
-  - Options should be relevant to the question context
-  - Avoid contradictory or nonsensical distractors`;
-
-    const response = await this.requestAI(`${settings.apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${settings.apiKey}`
-      },
-      body: JSON.stringify({
-        model: settings.model,
-        messages: [
-          { role: 'system', content: 'You are a language learning assistant that generates educational test questions.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    const content_text = data.choices[0].message.content;
-    
-    // Extract JSON from response
-    const jsonMatch = content_text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-    
-    throw new Error('Invalid response format');
+  hasUsableTranslation(value) {
+    return typeof value === 'string' && value.trim() && !/^(?:\[请使用AI|[（(]AI补全失败[:：])/u.test(value.trim());
   },
-  
-  generateFallbackQuestions(materials, count, types) {
-    const questions = [];
-    const sentences = [];
-    
-    materials.forEach(m => {
-      const sents = this.extractSentences(m.content);
-      sentences.push(...sents);
-    });
-    
-    for (let i = 0; i < Math.min(count, sentences.length); i++) {
-      const sentence = sentences[i];
-      const type = types[i % types.length];
-      
-      if (type === 'choice') {
-        const words = sentence.split(' ').filter(w => w.length > 3);
-        const targetWord = words[Math.floor(Math.random() * words.length)] || 'word';
-        
-        questions.push({
-          type: 'choice',
-          question: `What is the meaning of "${targetWord}" in this context: "${sentence.substring(0, 100)}..."`,
-          options: [
-            'A. A type of food',
-            'B. An action or verb',
-            'C. A descriptive word',
-            'D. A place or location'
-          ],
-          answer: 'B',
-          explanation: `In this context, "${targetWord}" is used as a key vocabulary word in the sentence. Further study of the material would help understand its specific meaning.`
-        });
-      } else if (type === 'fill') {
-        const words = sentence.split(' ');
-        const targetIndex = Math.floor(Math.random() * words.length);
-        const targetWord = words[targetIndex];
-        words[targetIndex] = '_____';
-        
-        questions.push({
-          type: 'fill',
-          question: `Fill in the blank: "${words.join(' ').substring(0, 150)}"`,
-          answer: targetWord,
-          explanation: `The correct word is "${targetWord}". This word is essential for understanding the complete meaning of the sentence.`
-        });
-      } else {
-        questions.push({
-          type: 'translation',
-          question: `Translate the following sentence into your native language:\n"${sentence.substring(0, 150)}"`,
-          answer: '[Translation would depend on target language]',
-          explanation: `This sentence uses vocabulary and grammar from the learning material. Break it down into smaller parts to understand each component.`
-        });
-      }
-    }
-    
-    return questions;
-  },
-  
+
   showTest() {
     this.testData.questions = this.testData.questions.filter(q => q && typeof q.question === 'string' && typeof q.answer === 'string' && ['choice', 'fill', 'translation'].includes(q.type) && (q.type !== 'choice' || (Array.isArray(q.options) && q.options.length >= 2 && q.options.every(o => typeof o === 'string') && /^[A-D]/i.test(q.answer))));
     if (!this.testData.questions.length) {
@@ -5770,7 +5371,7 @@ Requirements:
       } else if (q.type === 'fill') {
         optionsHtml = `
           <div class="mt-4">
-            <input type="text" name="q${idx}" placeholder="输入答案..." class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
+            <input type="text" name="q${idx}" placeholder="输入完整答案，保留冠词和大小写" class="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent">
           </div>
         `;
       } else {
@@ -5821,7 +5422,7 @@ Requirements:
         if (isCorrect) correct++;
         scorableCount++;
       } else {
-        // 填空题：使用标准化比较（考虑冠词差异）
+        // 填空题保留冠词和大小写。
         isCorrect = this.isAnswerEquivalent(userAnswer, q.answer, q.language || this.modules[q.moduleId]?.language);
         if (isCorrect) correct++;
         scorableCount++;
@@ -5888,7 +5489,7 @@ Requirements:
     // Save test record with full user answers
     await dbAdapter.putTest({
       id: `test_${Date.now()}`,
-      moduleId: this.currentModule,
+      moduleId: this.testData.moduleId,
       questions: this.testData.questions,
       answers: this.testData.answers,
       results: results,
@@ -5899,7 +5500,7 @@ Requirements:
     
     // 记录学习时长和测试完成情况（只记录一次）
     const testDuration = duration;
-    await this.recordActivity('test', testDuration, this.testData.questions.length);
+    await this.recordActivity('test', testDuration, this.testData.questions.length, this.testData.moduleId);
     
     // Show result modal
     const translationCount = this.testData.questions.filter(q => q.type === 'translation').length;
@@ -6098,6 +5699,7 @@ Requirements:
   
   // Calendar
   async showCalendar() {
+    if (!await this.canLeaveStudy()) return;
     this.setActiveNavigation('nav-calendar');
     this.hideAllViews();
     document.getElementById('calendar-view').classList.remove('hidden');
@@ -6180,6 +5782,7 @@ Requirements:
   
   // Statistics
   async showStats() {
+    if (!await this.canLeaveStudy()) return;
     this.setActiveNavigation('nav-stats');
     this.hideAllViews();
     document.getElementById('stats-view').classList.remove('hidden');
@@ -6295,6 +5898,7 @@ Requirements:
       // Last 12 months
       labels = Array.from({ length: 12 }, (_, i) => {
         const d = new Date();
+        d.setDate(1);
         d.setMonth(d.getMonth() - (11 - i));
         return d;
       });
@@ -6728,7 +6332,7 @@ Requirements:
   },
   
   async exportData() {
-    if (this.processingCount || this.bulkImporting || this.currentView === 'review' || this.currentView === 'test') {
+    if (this.processingCount || this.fileImportCount || this.bulkImporting || this.currentView === 'review' || this.currentView === 'test') {
       await this.alertDialog('请先完成当前导入、复习或测试，再导出备份');
       return;
     }
@@ -6804,7 +6408,7 @@ Requirements:
     const file = event.target.files[0];
     if (!file) return;
     try {
-      if (this.processingCount || this.bulkImporting || this.currentView === 'review' || this.currentView === 'test') {
+      if (this.processingCount || this.fileImportCount || this.bulkImporting || this.currentView === 'review' || this.currentView === 'test') {
         throw new Error('请先完成当前导入、复习或测试，再恢复备份');
       }
       const data = JSON.parse(await file.text());
@@ -6883,11 +6487,11 @@ Requirements:
     }
   },
   
-  async recordActivity(action, duration, count = 1) {
+  async recordActivity(action, duration, count = 1, moduleId = this.currentModule) {
     await dbAdapter.putRecord({
       id: `record_${Date.now()}`,
       date: this.localDate(),
-      moduleId: this.currentModule,
+      moduleId,
       duration: duration,
       count: count,
       action: action,
@@ -6992,10 +6596,13 @@ Requirements:
   },
 
   async deleteMaterial(id) {
+    if (this.processingCount || this.fileImportCount) {
+      await this.alertDialog('材料正在提取，请完成后再删除。');
+      return;
+    }
     const confirmed = await this.confirmDialog('确定要删除这个材料吗？相关的学习条目也会被删除。');
     if (confirmed) {
       await dbAdapter.deleteMaterial(id);
-      await dbAdapter.deleteEntriesByMaterial(id);
       await this.loadModuleMaterials();
       await this.updateSidebarStats();
     }
@@ -7313,16 +6920,15 @@ Requirements:
       await this.alertDialog('默认模块不能删除');
       return;
     }
+    if (this.processingCount || this.fileImportCount || this.bulkImporting) {
+      await this.alertDialog('正在导入学习内容，请完成后再删除模块。');
+      return;
+    }
     
     const confirmed = await this.confirmDialog(`确定要删除 ${this.modules[moduleId].name} 模块吗？该模块的所有语料和学习记录都会被删除。`);
     if (confirmed) {
       // Delete related data
       await dbAdapter.deleteModule(moduleId);
-      const materials = await dbAdapter.getMaterialsByModule(moduleId);
-      for (const m of materials) {
-        await dbAdapter.deleteCardsByMaterial(m.id);
-      }
-      await dbAdapter.deleteMaterialsByModule(moduleId);
       
       // Remove from modules object
       delete this.modules[moduleId];

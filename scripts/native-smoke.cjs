@@ -2,6 +2,7 @@
 const { chromium } = require('@playwright/test');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
+const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
@@ -18,20 +19,29 @@ const assert = require('node:assert/strict');
       ALL_PROXY: process.env.EASYLINGO_TEST_PROXY, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' });
   }
   fs.mkdirSync('artifacts', { recursive: true });
+  const requests = [];
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
       const request = JSON.parse(body);
+      requests.push(request);
       assert.equal(req.headers.authorization, 'Bearer smoke-test-key');
       assert.ok(request.messages.length);
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify([{ type: 'word', original: 'hello', translation: '你好', explanation: 'greeting', example: 'Hello there!' }]) }, finish_reason: 'stop' }] }));
+      const entry = request.messages[0].content.includes('法语')
+        ? { type: 'word', original: 'maison', translation: '房屋', wordType: '名词', gender: 'f.', example: 'La maison est grande.' }
+        : { type: 'word', original: 'hello', translation: '你好', wordType: 'Noun', explanation: 'greeting', example: 'Hello there!' };
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify([entry]) }, finish_reason: 'stop' }] }));
     });
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const debugSocket = net.createServer();
+  await new Promise(resolve => debugSocket.listen(0, '127.0.0.1', resolve));
+  const debugPort = debugSocket.address().port;
+  await new Promise(resolve => debugSocket.close(resolve));
   const child = spawn(path.resolve(exe), [], { windowsHide: true, env: { ...process.env, ...newsEnv,
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9337',
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${debugPort}`,
     WEBVIEW2_USER_DATA_FOLDER: path.resolve('artifacts/native-webview')
   } });
   let launchError;
@@ -44,7 +54,7 @@ const assert = require('node:assert/strict');
     for (let i = 0; i < 120; i++) {
       if (launchError) throw launchError;
       if (child.exitCode !== null) throw new Error(`Application exited before WebView2 connected: ${child.exitCode}`);
-      try { browser = await chromium.connectOverCDP('http://127.0.0.1:9337', { timeout: 1500 }); break; }
+      try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 1500 }); break; }
       catch (error) { connectionError = error; await new Promise(resolve => setTimeout(resolve, 500)); }
     }
     if (!browser) throw new Error(`WebView2 debug endpoint did not start (PID ${child.pid}, exit ${child.exitCode}): ${connectionError?.message}`);
@@ -54,8 +64,17 @@ const assert = require('node:assert/strict');
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text().slice(0, 300)); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.isReady, { timeout: 20000 });
     assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(250, 248, 252)');
-    const database = await page.evaluate(() => dbAdapter.select('PRAGMA database_list'));
-    if (!process.env.CI) assert.match(database[0].file, /easylingo\.audit/i);
+    let database = await page.evaluate(() => dbAdapter.select('PRAGMA database_list'));
+    if (!process.env.CI) {
+      assert.match(database[0].file, /easylingo\.audit/i);
+      const isolatedDb = path.resolve('artifacts/easylingo.audit.native-db');
+      fs.mkdirSync(isolatedDb, { recursive: true });
+      await page.evaluate(dir => localStorage.setItem('polylingo_db_path', dir), isolatedDb.replaceAll('\\', '/'));
+      await page.reload();
+      await page.waitForFunction(() => app.isReady);
+      database = await page.evaluate(() => dbAdapter.select('PRAGMA database_list'));
+      assert.equal(path.resolve(path.dirname(database[0].file)).toLowerCase(), isolatedDb.toLowerCase());
+    }
     console.log('Native startup and SQLite ready:', database[0].file);
     await page.getByRole('button', { name: '帮助与关于' }).click();
     await page.screenshot({ path: 'artifacts/native-about.png' });
@@ -73,6 +92,8 @@ const assert = require('node:assert/strict');
     const result = await page.evaluate(async () => ({ materials: await dbAdapter.getAllMaterials(), entries: await dbAdapter.getAllEntries() }));
     assert.equal(result.materials.at(-1).status, 'completed');
     assert.equal(result.entries.at(-1).original, 'hello');
+    assert.match(requests.at(-1).messages[0].content, /英语/);
+    assert.doesNotMatch(requests.at(-1).messages[1].content, /德语句子|Ich lese/);
     console.log('Native HTTP → AI JSON → SQLite → UI passed');
     for (const extension of ['pdf', 'docx']) {
       const bytes = [...fs.readFileSync(`tests/fixtures/sample.${extension}`)];
@@ -94,6 +115,34 @@ const assert = require('node:assert/strict');
     await page.locator(`#entry-${japaneseId}`).getByText('名词（サ变）', { exact: true }).waitFor();
     assert.equal(await page.evaluate(async id => (await dbAdapter.getEntry(id)).wordType, japaneseId), '名词（サ变）');
     console.log('Native Japanese part-of-speech display and editing passed');
+    const frenchId = await page.evaluate(async () => {
+      await dbAdapter.putModule({ id: 'custom_native_fr', name: '法语', language: 'French', code: 'FR', flag: 'fr', customPrompt: '保留法语语法性别' });
+      await app.loadCustomModules();
+      const entry = { moduleId: 'custom_native_fr', type: 'word', original: 'maison', translation: '房屋', wordType: '名词', gender: 'f.' };
+      await dbAdapter.putEntry(entry);
+      await app.switchModule('custom_native_fr');
+      app.switchModuleTab('words');
+      return entry.id;
+    });
+    await page.locator(`#entry-${frenchId}`).getByText('f.', { exact: true }).waitFor();
+    await page.locator(`#entry-${frenchId} button[title="编辑"]`).click();
+    assert.equal(await page.locator('#edit-gender').inputValue(), 'f.');
+    await page.locator('#edit-wordType').fill('名词（具体名词）');
+    await page.locator('#entry-edit-modal').getByRole('button', { name: '保存', exact: true }).click();
+    assert.equal(await page.evaluate(async id => (await dbAdapter.getEntry(id)).gender, frenchId), 'f.');
+    await page.evaluate(async () => {
+      await app.enrichEntriesCompleteWithAI([{ original: 'maison' }], await app.getSettings(), 'custom_native_fr');
+    });
+    assert.match(requests.at(-1).messages[0].content, /法语/);
+    assert.match(requests.at(-1).messages[1].content, /保留法语语法性别/);
+    assert.doesNotMatch(requests.at(-1).messages[1].content, /德语句子|Ich lese/);
+    const localQuiz = await page.evaluate(() => app.generateFallbackQuestionsByType([
+      { moduleId: 'english', type: 'word', original: 'hello', translation: '你好' },
+      { moduleId: 'german', type: 'phrase', original: 'in der Stadt', translation: '在城里' }
+    ], 2, 'fill'));
+    assert.deepEqual(localQuiz.map(q => q.language).sort(), ['English', 'German']);
+    assert.ok(localQuiz.some(q => q.answer === 'in der Stadt'));
+    console.log('Native custom-language gender, AI request routing and mixed local quiz passed');
     const restored = await page.evaluate(async () => {
       const data = { version: '2.0' };
       const tables = ['modules', 'materials', 'entries', 'cards', 'tests', 'records', 'settings'];
