@@ -12,11 +12,19 @@
 
 ## 安装包
 
-正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.1.0 在 2.0.1 已验证功能基线上完成紫色界面与中英日字体改版，正在进行双平台安装验收。PR 和 Release 保持草稿，尚未正式发布。各新闻源的实际访问结果见[审计记录](docs/submission-audit.md)。
+正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.1.0 在 2.0.1 已验证功能基线上完成紫色界面与中英日字体改版，已通过[双平台构建与安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43813735978)。PR 和 Release 保持草稿，尚未正式发布。各新闻源的实际访问结果见[审计记录](docs/submission-audit.md)。
 
 - Windows 10/11 x64：`EasyLingo_2.1.0_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
 - macOS Apple Silicon：`EasyLingo_2.1.0_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
 - 安装包尚未使用商业代码签名证书或 Apple 公证，系统可能要求确认来源。macOS 的首次运行行为仍需按目标设备系统版本验收。
+
+## 界面预览
+
+以下截图使用隔离演示数据。
+
+![紫色学习概览](docs/images/overview.png)
+
+![日语词条与注音](docs/images/japanese.png)
 
 ## 使用
 

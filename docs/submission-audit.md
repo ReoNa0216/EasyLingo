@@ -51,7 +51,7 @@
 
 参考：[PDF.js 公告](https://github.com/mozilla/pdf.js/security/advisories/GHSA-wgrm-67xf-hhpq)、[SQLite 公告](https://rustsec.org/advisories/RUSTSEC-2026-0459.html)、[Tauri CSP](https://v2.tauri.app/security/csp/)。
 
-## 验收记录
+## 2.0.1 功能基线验收记录
 
 - 数据库：7 项测试通过，覆盖补列旧库、完整恢复、错误恢复回滚、目录切换、级联删除、旧日期转换与恶意数值字段拒绝。
 - 浏览器：3 个端到端场景通过，覆盖阻断外网条件下启动、署名、恶意内容净化、编辑、复习、模块修改、图表和日历；PDF/DOCX 真实样本解析；模拟 401 错误；六个新闻源获取失败后可重试、抓取历史耗尽后重置、恶意预览按文本显示；六来源 AI 失败重试及重复点击互斥、目标语言词条和原文来源保存；NPR 默认选项、China Daily 选项及简短代理标签。
@@ -59,7 +59,7 @@
 - 原生 Windows 桌面：隔离数据库启动、署名显示、本机 HTTP 模拟 AI → SQLite → 界面、真实 PDF/DOCX 解析、7 张表备份恢复往返通过；原生保存对话框导出 JSON 成功，读取落盘文件确认不含 API 密钥。
 - Windows x64：从 NSIS 安装器静默安装，读取注册表确认 2.0.1 和安装路径，再启动已安装的程序；原生 SQLite、AI 协议、PDF/DOCX 和备份事务往返全部通过，输出 `NATIVE_SMOKE_PASS`。本机 Debug、Release 和全新隔离数据库也通过原生回归。
 - macOS Apple Silicon：实际挂载 DMG，复制包内应用，验证 `codesign --verify --deep --strict`、ARM64 架构和进程启动；通过。当前为 ad-hoc 签名，未取得 Apple Developer ID 签名和公证；尚未完成用户 Mac 上带下载隔离标记的交互验收。
-- 最新构建来源：应用源码提交 `33af40ca6e6a7151a8ac18f732e631b46b16bba4`，双平台包及 Windows 安装后验收均在[运行 43806912722](https://github.com/ReoNa0216/EasyLingo/actions/runs/43806912722)通过。本次构建包含 China Daily、人民网、NPR 默认选项与精简代理标签；同版本旧包已替换，以 SHA-256 区分。随后只更新交付文档及测试脚本的失败诊断，包内应用源码保持一致。
+- 2.0.1 基线构建来源：应用源码提交 `33af40ca6e6a7151a8ac18f732e631b46b16bba4`，双平台包及 Windows 安装后验收均在[运行 43806912722](https://github.com/ReoNa0216/EasyLingo/actions/runs/43806912722)通过。本次构建包含 China Daily、人民网、NPR 默认选项与精简代理标签；同版本旧包已替换，以 SHA-256 区分。随后只更新交付文档及测试脚本的失败诊断，包内应用源码保持一致。
 - CI 环境差异：Windows 2025 运行器安装成功，但 WebView2 调试端口持续拒绝连接；同一安装包在 Windows 2022 运行器和本机原生验证成功。安装验证固定为 Windows 2022，可指定已有构建 run ID 单独重验，避免重复编译；此记录不代表已证实 Windows 2025 系统上的所有交互使用均失败。
 - 真实付费 AI 服务：尚未使用用户密钥调用；当前以本机模拟服务验证请求协议和错误处理。
 - 新闻功能当前使用 BBC、Guardian、NPR、China Daily、人民网日语版和 ZDFheute。当前代理下六来源的列表、正文、预览、模拟 AI 提取、SQLite 词条入库及原文链接保存均通过本机 Release 原生验证。朝日抓取实现已按用户选择移除，已有朝日学习材料保留。
@@ -99,6 +99,8 @@
 
 本地验证：数据库 7 项、Rust 6 项、浏览器 7 组场景。新增检查涵盖全文/XSS/焦点返回、设置保存后刷新读回、缩放可达性、输入不触发复习快捷键，以及 CDP 确认实际渲染用到本地中英日字体。浏览器禁止外网请求，字库仍加载成功。真实 AI 服务质量与 macOS 首次运行由最终人工验收补充。
 
-2.1.0 双平台构建、Windows 已安装包原生回归与 macOS 安装卷/启动结果待 CI 完成后记录。Windows 另提供独立数据目录的免安装试用版，不覆盖正式学习数据。
+2.1.0 最终应用源码为 `d8dca61f1c8dd35ea311d934d93583654b7bec69`，[运行 43813735978](https://github.com/ReoNa0216/EasyLingo/actions/runs/43813735978) 全部通过：Windows x64 安装器真实安装、版本确认与原生回归输出 `NATIVE_SMOKE_PASS`；macOS Apple Silicon 挂载 DMG、复制应用、签名完整性、ARM64 与进程启动通过。Windows 另提供已通过原生回归和实际字体检查的免安装试用版，使用独立数据目录，不覆盖正式学习数据；交付前已清空测试材料和测试密钥。
 
 2.1.0 原生验收发现将应用版号写入备份 version 会被旧格式校验拒绝。已固定导出为现有 2.0 数据格式，应用版号独立为 2.1.0，并补上从界面导出、排除 API Key、再恢复的回归检查。
+
+本地交付目录为 `artifacts/submission-2.1.0`，包含两个安装包、SHA256SUMS.txt、构建清单、界面/署名截图和 Windows 验收日志。免安装目录为 `dist/EasyLingo-2.1.0-preview`。2.0.1 归档保留。PR 与 Release 保持草稿，未合并 main、未正式发布。
