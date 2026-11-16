@@ -58,7 +58,8 @@ const assert = require('node:assert/strict');
       catch (error) { connectionError = error; await new Promise(resolve => setTimeout(resolve, 500)); }
     }
     if (!browser) throw new Error(`WebView2 debug endpoint did not start (PID ${child.pid}, exit ${child.exitCode}): ${connectionError?.message}`);
-    const page = browser.contexts()[0].pages()[0];
+    const context = browser.contexts()[0];
+    const page = context.pages()[0] || await context.waitForEvent('page', { timeout: 20000 });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text().slice(0, 300)); });
