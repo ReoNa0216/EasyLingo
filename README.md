@@ -6,16 +6,16 @@
 
 **开发单位：清华大学语言教学中心**
 
-**版本：2.0.1**
+**版本：2.1.0**
 
 应用侧栏的「帮助与关于」和「设置」均显示开发者及开发单位。
 
 ## 安装包
 
-正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.0.1 功能基线的双平台安装包已通过[构建和安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43806912722)，可在 Actions 登录下载（产物保留 7 天）。包内含 China Daily、人民网、NPR 默认选项和简短代理标签，开发署名完整。PR 和 Release 仍为草稿，尚未正式发布；用户提出的整体 UI 改版另行确定后执行。各新闻源的实际访问结果见[审计记录](docs/submission-audit.md)。
+正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.1.0 在 2.0.1 已验证功能基线上完成紫色界面与中英日字体改版，正在进行双平台安装验收。PR 和 Release 保持草稿，尚未正式发布。各新闻源的实际访问结果见[审计记录](docs/submission-audit.md)。
 
-- Windows 10/11 x64：`EasyLingo_2.0.1_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
-- macOS Apple Silicon：`EasyLingo_2.0.1_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
+- Windows 10/11 x64：`EasyLingo_2.1.0_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
+- macOS Apple Silicon：`EasyLingo_2.1.0_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
 - 安装包尚未使用商业代码签名证书或 Apple 公证，系统可能要求确认来源。macOS 的首次运行行为仍需按目标设备系统版本验收。
 
 ## 使用
@@ -24,7 +24,7 @@
 2. 导入 TXT、Markdown、文本型 PDF、DOCX，或手动添加词条。扫描 PDF 需要先 OCR。
 3. 在设置中填写兼容 OpenAI 格式的 API 地址、密钥与模型名称，使用 AI 提取和出题。API 地址填写基础路径，例如供应商文档中的 `/v1`，不包含 `/chat/completions`。
 4. 按到期词条复习；测试支持选择、填空、翻译。翻译题对照参考答案自行评估。
-5. 在设置中导出 JSON 备份。恢复备份会替换当前数据，恢复前请备份；2.0.1 接受 v2.0 格式的完整 JSON 备份。
+5. 在设置中导出 JSON 备份。恢复备份会替换当前数据，恢复前请备份；2.1.0 接受 v2.0 格式的完整 JSON 备份。
 
 界面、图表、日历、文件解析器随安装包提供。已有词条的阅读和复习可离线使用；AI 和新闻抓取需要联网。软件会读取 Windows/macOS 系统代理设置；更改代理后请重启软件。新闻网站可能限制当前网络的访问或改变页面结构，界面会显示具体失败原因。
 
@@ -57,6 +57,15 @@ npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 ```
 
 浏览器回归测试默认使用已安装的 Microsoft Edge；开发运行 `npm run dev`，使用 Node.js 提供本地静态服务。构建会自动生成本地前端资源。
+
+## 2.1.0 界面更新
+
+- 使用传统紫色色系，统一概览、材料、词条、复习、设置、日历与图表。
+- 本地打包 Inter、Noto Sans SC 和 Noto Sans JP 可变字体；中文界面、英语/德语原文与日语原文分别选用相应字库，日语保留注音。
+- 已导入材料优先显示；预览支持全文滚动、安全文本呈现、键盘关闭和焦点返回。
+- 设置固定显示保存/关闭，窄窗口和放大阅读可继续操作；设置输入不再触发背后的复习快捷键。
+- 复习评分改为“忘记、模糊、记得、熟练”，明确每日复习量与已记住比例；从首页只选择一种语言时，记录显示对应语言。
+- 字体采用 OFL 许可，许可证随本地字体资源提供；不依赖在线字体服务。
 
 ## 2.0.1 修复
 

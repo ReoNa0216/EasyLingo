@@ -36,12 +36,16 @@ test('offline UI, safe content, editing, review, statistics and custom modules',
   expect(await page.evaluate(() => window.pwned)).toBeUndefined();
 
   await db.putSetting({ id: 'dailyLimit', value: 1 });
-  await page.evaluate(() => app.startSingleModuleReview('english'));
+  await page.locator('#nav-home').click();
+  await page.locator('#study-overview').getByRole('button', { name: '开始复习' }).click();
+  await page.locator('.mixed-review-checkbox[value="english"]').check();
+  await page.locator('#mixed-review-modal').getByRole('button', { name: '开始复习' }).click();
   await expect(page.locator('#review-progress')).toHaveText('1/1');
   await page.evaluate(() => app.flipCard());
   await page.evaluate(() => Promise.all([app.rateCard(3), app.rateCard(3)]));
   await expect(page.locator('#due-count')).toHaveText('1/1');
   expect((await db.getAllRecords()).filter(r => r.action === 'review').length).toBe(1);
+  expect((await db.getAllRecords()).find(r => r.action === 'review').moduleId).toBe('english');
   expect((await db.getEntry(entry.id)).srsLevel).toBe(1);
 
   await db.putModule({ id: 'custom_1', name: 'Français', language: 'French', flag: 'fr' });
@@ -157,5 +161,106 @@ test('news failures remain retryable and untrusted previews stay text', async ({
     expect(material.sourceFile).toBe(source === 'people' ? 'https://j.people.com.cn/n3/2026/1116/c1-1.html' : source === 'chinadaily' ? 'https://www.chinadaily.com.cn/a/202611/16/WS1.html' : `https://example.com/${source}`);
     expect((await db.getEntriesByMaterial(material.id)).map(e => e.original)).toEqual(['猫']);
   }
+  sql.close();
+});
+
+test('material preview shows full safe text and remains usable in a narrow viewport', async ({ page }) => {
+  const { db, sql, invoke } = fixture();
+  await page.exposeFunction('nativeInvoke', invoke);
+  await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
+  await page.goto('http://127.0.0.1:1427');
+  await page.waitForFunction(() => app.isReady);
+  const payload = '<img src=x onerror="window.previewInjected=1">';
+  await db.putMaterial({ id: 'long-material', moduleId: 'english', title: payload, source: payload,
+    content: ('A long learning text.\n').repeat(80) + payload + 'END OF FULL MATERIAL', status: 'completed' });
+  await page.locator('#nav-english').click();
+  await page.locator('#tab-upload').click();
+  const trigger = page.locator('#materials-list button[title="预览"]');
+  await trigger.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('END OF FULL MATERIAL');
+  await expect(dialog.locator('img')).toHaveCount(0);
+  expect(await page.evaluate(() => window.previewInjected)).toBeUndefined();
+  await expect(dialog.getByRole('button', { name: '关闭' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialog.locator('[tabindex="0"]')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: '关闭' })).toBeFocused();
+  await page.setViewportSize({ width: 512, height: 384 });
+  expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  for (const id of ['nav-home', 'nav-english', 'nav-stats', 'nav-calendar']) {
+    await page.locator(`#${id}`).click();
+    await expect(page.locator(`#${id}`)).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await expect(page.locator('.fc-today-button')).toHaveText('今天');
+  await page.reload();
+  await page.waitForFunction(() => app.isReady);
+  await page.locator('#nav-english').click();
+  await page.locator('#tab-upload').click();
+  await page.locator('#materials-list button[title="预览"]').click();
+  await expect(page.getByRole('dialog')).toContainText('END OF FULL MATERIAL');
+  sql.close();
+});
+
+test('settings stay reachable at 200% equivalent size and do not trigger review shortcuts', async ({ page }) => {
+  const { db, sql, invoke } = fixture();
+  await page.exposeFunction('nativeInvoke', invoke);
+  page.on('dialog', dialog => dialog.accept());
+  await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
+  await page.goto('http://127.0.0.1:1427');
+  await page.waitForFunction(() => app.isReady);
+  await db.putEntry({ moduleId: 'english', type: 'word', original: 'hello', translation: '你好', nextReview: new Date(), srsLevel: 0, interval: 0 });
+  await page.evaluate(() => app.startSingleModuleReview('english'));
+  await page.locator('#nav-settings').click();
+  await page.setViewportSize({ width: 512, height: 384 });
+  const modal = page.locator('#settings-modal');
+  await expect(modal.getByRole('button', { name: '保存', exact: true })).toBeInViewport();
+  await expect(modal.getByRole('button', { name: '关闭', exact: true })).toBeInViewport();
+  await page.locator('#setting-model').fill('');
+  await page.locator('#setting-model').pressSequentially('model 1234');
+  await expect(page.locator('#review-answer')).toBeHidden();
+  expect((await db.getAllRecords()).filter(r => r.action === 'review').length).toBe(0);
+  await page.locator('#setting-api-url').fill('https://example.com/v1');
+  await page.locator('#setting-api-key').fill('test-only');
+  await modal.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(modal).toBeHidden();
+  await expect(page.locator('#flip-btn')).toBeInViewport();
+  await expect(page.locator('#nav-settings')).toBeFocused();
+  await page.reload();
+  await page.waitForFunction(() => app.isReady);
+  await page.locator('#nav-settings').click();
+  await expect(page.locator('#setting-model')).toHaveValue('model 1234');
+  await page.keyboard.press('Escape');
+  await expect(modal).toBeHidden();
+  sql.close();
+});
+
+test('bundled fonts render Chinese, Latin and Japanese without external requests', async ({ page }) => {
+  const { db, sql, invoke } = fixture();
+  await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:1427/') ? route.continue() : route.abort());
+  await page.exposeFunction('nativeInvoke', invoke);
+  await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
+  await page.goto('http://127.0.0.1:1427');
+  await page.waitForFunction(() => app.isReady);
+  await db.putEntry({ id: 'japanese-font', moduleId: 'japanese', type: 'word', original: '<ruby>学習<rt>がくしゅう</rt></ruby>', translation: '学习', example: '毎日少しずつ日本語を学習しています。' });
+  await page.locator('#nav-japanese').click();
+  await page.locator('#tab-words').click();
+  await page.evaluate(() => document.fonts.ready);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('CSS.enable');
+  const { root } = await cdp.send('DOM.getDocument');
+  for (const [selector, family] of [['#page-title', 'Noto Sans SC'], ['#app-sidebar h1', 'Inter'], ['#entries-words [lang="ja"]', 'Noto Sans JP']]) {
+    await expect(page.locator(selector).first()).toBeVisible();
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+    expect(nodeId, selector).toBeGreaterThan(0);
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+    expect(fonts.some(font => font.familyName.includes(family) && font.isCustomFont && font.glyphCount > 0)).toBe(true);
+  }
+  await cdp.detach();
   sql.close();
 });

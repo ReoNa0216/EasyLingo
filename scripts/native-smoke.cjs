@@ -53,6 +53,7 @@ const assert = require('node:assert/strict');
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text().slice(0, 300)); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.isReady, { timeout: 20000 });
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(250, 248, 252)');
     const database = await page.evaluate(() => dbAdapter.select('PRAGMA database_list'));
     if (!process.env.CI) assert.match(database[0].file, /easylingo\.audit/i);
     console.log('Native startup and SQLite ready:', database[0].file);
@@ -80,7 +81,7 @@ const assert = require('node:assert/strict');
     }
     console.log('Native PDF/DOCX parsing passed');
     const restored = await page.evaluate(async () => {
-      const data = { version: '2.0.1' };
+      const data = { version: '2.1.0' };
       const tables = ['modules', 'materials', 'entries', 'cards', 'tests', 'records', 'settings'];
       for (const table of tables) data[table] = await dbAdapter.select(`SELECT * FROM ${table}`);
       await dbAdapter.restoreBackup(data);

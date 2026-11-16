@@ -387,21 +387,24 @@ const app = {
         const card = document.createElement('div');
         card.id = `card-${mod.id}`;
         card.onclick = () => app.switchModule(mod.id);
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.onkeydown = event => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); card.click(); } };
         card.className = 'module-card bg-white rounded-xl p-6 shadow-lg cursor-pointer border border-primary-100';
         card.innerHTML = `
           <div class="flex items-center justify-between mb-4">
-            <div class="w-16 h-12 rounded-lg shadow-lg overflow-hidden">
+            <div class="module-flag-badge">
               <span class="fi fi-${this.escapeHtml(mod.flag || 'un')} w-full h-full"></span>
             </div>
             <div class="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
-              <span class="text-primary-600 font-bold text-sm" id="${mod.id}-progress">0%</span>
+              <span class="text-primary-600 font-bold text-sm" id="${mod.id}-progress">0%</span><span class="text-primary-500">已记住</span>
             </div>
           </div>
           <h4 class="text-xl font-bold mb-1">${this.escapeHtml(mod.name)}</h4>
           <p class="text-sm text-primary-500 mb-3">${this.escapeHtml(mod.language)}</p>
           <div class="flex items-center justify-between text-sm">
             <span class="text-primary-600"><span id="${mod.id}-entries">0</span> 条目</span>
-            <span class="text-accent-600"><span id="${mod.id}-due">0</span> 到期未复习</span>
+            <span class="text-accent-600"><span id="${mod.id}-due">0</span> 待复习</span>
           </div>
           <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
             <div id="${mod.id}-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>
@@ -452,6 +455,18 @@ const app = {
   setupEventListeners() {
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
+      const settings = document.getElementById('settings-modal');
+      if (!settings.classList.contains('hidden')) {
+        if (e.key === 'Escape') { e.preventDefault(); this.closeSettings(); }
+        if (e.key === 'Tab') {
+          const fields = [...settings.querySelectorAll('input, button, select, textarea, a[href]')].filter(el => !el.disabled && el.getClientRects().length);
+          const first = fields[0], last = fields.at(-1);
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+        return;
+      }
+      if (e.defaultPrevented || document.querySelector('.fixed.inset-0:not(.hidden)') || e.target.matches('input, textarea, select, [contenteditable="true"]')) return;
       if (this.currentView === 'review') {
         if (e.key === ' ' || e.key === 'Enter') {
           e.preventDefault();
@@ -537,18 +552,18 @@ ${placeholderText}`;
     if (aiHint) {
       if (isDefaultModule) {
         const hints = {
-          german: '💡 AI将自动识别词性（如名词der/die/das、动词等）并生成中文翻译和例句',
-          english: '💡 AI将自动识别词性（如名词、动词等）并生成中文翻译和例句',
-          japanese: '💡 AI将自动识别词性（他动词·五段/一段、自动词·五段/一段、名词、い形容词、な形容动词等），为汉字标注平假名读音，并生成中文翻译和例句'
+          german: 'AI将自动识别词性（如名词der/die/das、动词等）并生成中文翻译和例句',
+          english: 'AI将自动识别词性（如名词、动词等）并生成中文翻译和例句',
+          japanese: 'AI将自动识别词性（他动词·五段/一段、自动词·五段/一段、名词、い形容词、な形容动词等），为汉字标注平假名读音，并生成中文翻译和例句'
         };
         aiHint.textContent = hints[moduleId] || hints.english;
       } else {
         // 非默认模块显示用户自定义提示
         const customPrompt = mod.customPrompt;
         if (customPrompt) {
-          aiHint.textContent = `💡 自定义提取要求：${customPrompt.substring(0, 50)}${customPrompt.length > 50 ? '...' : ''}`;
+          aiHint.textContent = `自定义提取要求：${customPrompt.substring(0, 50)}${customPrompt.length > 50 ? '...' : ''}`;
         } else {
-          aiHint.textContent = '💡 AI将根据输入内容自动补全信息';
+          aiHint.textContent = 'AI将根据输入内容自动补全信息';
         }
       }
     }
@@ -557,18 +572,17 @@ ${placeholderText}`;
     this.renderNewsImport(moduleId);
     
     // Update active nav
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('bg-primary-800'));
-    const navEl = document.getElementById(`nav-${moduleId}`);
-    if (navEl) navEl.classList.add('bg-primary-800');
+    this.setActiveNavigation(`nav-${moduleId}`);
     
     await this.loadModuleMaterials();
     this.currentView = 'module';
   },
   
   async loadDashboard() {
+    this.setActiveNavigation('nav-home');
     this.hideAllViews();
     document.getElementById('dashboard-view').classList.remove('hidden');
-    document.getElementById('page-title').textContent = '仪表盘';
+    document.getElementById('page-title').textContent = '学习概览';
     document.getElementById('module-badge').classList.add('hidden');
     this.currentView = 'dashboard';
     this.currentModule = null; // 重置为混合模式
@@ -2266,21 +2280,17 @@ ${chunk.substring(0, 8000)}
     
     // 更新选项卡样式
     const tabs = ['npr', 'chinadaily', 'bbc', 'guardian'];
-    const colors = {
-      'chinadaily': { border: 'border-red-700', text: 'text-red-700' },
-      'bbc': { border: 'border-red-600', text: 'text-red-600' },
-      'npr': { border: 'border-blue-700', text: 'text-blue-700' },
-      'guardian': { border: 'border-blue-600', text: 'text-blue-600' }
-    };
-    
+
     tabs.forEach(tab => {
       const tabEl = document.getElementById(`tab-${tab}`);
       if (tabEl) {
         if (tab === source) {
           tabEl.classList.remove('border-transparent', 'text-gray-500');
-          tabEl.classList.add(colors[tab].border, colors[tab].text);
+          tabEl.classList.add('news-tab-active');
+          tabEl.setAttribute('aria-pressed', 'true');
         } else {
-          tabEl.classList.remove(colors[tab].border, colors[tab].text);
+          tabEl.classList.remove('news-tab-active');
+          tabEl.setAttribute('aria-pressed', 'false');
           tabEl.classList.add('border-transparent', 'text-gray-500');
         }
       }
@@ -2295,17 +2305,17 @@ ${chunk.substring(0, 8000)}
     if (moduleId === 'german') {
       container.innerHTML = `
         <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
-          <h4 class="text-lg font-bold mb-4">📰 从 ZDF Heute 导入新闻</h4>
-          <p class="text-sm text-primary-500 mb-3">自动抓取 ZDF Heute 最新文章，AI提取学习条目。每次抓取的文章不重复。</p>
-          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p class="text-xs text-amber-700">新闻抓取需要能够访问来源网站；软件会读取系统代理设置。更改代理后请重启软件。</p>
+          <h4 class="text-lg font-bold mb-4">从新闻开始</h4>
+          <p class="text-sm text-primary-500 mb-3">自动抓取 ZDF Heute 最新文章，提取学习条目。每次抓取的文章不重复。</p>
+          <div class="news-network-note mb-3">
+            <p class="text-xs text-primary-500">软件读取系统代理设置，更改后请重启。</p>
           </div>
           <div class="flex flex-wrap gap-3 items-center">
             <button onclick="app.fetchZDFNews()" id="zdf-fetch-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-              🔍 获取新闻文章
+              获取文章
             </button>
             <button onclick="app.clearZDFHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-              🗑️ 清空记录
+              清空记录
             </button>
             <span class="text-sm text-primary-500">来源：zdfheute.de</span>
           </div>
@@ -2322,7 +2332,7 @@ ${chunk.substring(0, 8000)}
             <div class="font-medium text-sm mb-2">文章预览：</div>
             <div id="zdf-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
             <button onclick="app.processZDFContent()" id="zdf-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-              🧠 AI提取学习条目
+              提取学习条目
             </button>
           </div>
         </div>
@@ -2330,19 +2340,19 @@ ${chunk.substring(0, 8000)}
     } else if (moduleId === 'japanese') {
       container.innerHTML = `
         <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
-          <h4 class="text-lg font-bold mb-4">🇯🇵 从日语新闻源导入</h4>
-          <p class="text-sm text-primary-500 mb-3">自动抓取人民网日语版最新日语文章，AI提取学习条目。</p>
-          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p class="text-xs text-amber-700">新闻抓取需要能够访问来源网站；软件会读取系统代理设置。更改代理后请重启软件。</p>
+          <h4 class="text-lg font-bold mb-4">从新闻开始</h4>
+          <p class="text-sm text-primary-500 mb-3">自动抓取人民网日语版最新日语文章，提取学习条目。</p>
+          <div class="news-network-note mb-3">
+            <p class="text-xs text-primary-500">软件读取系统代理设置，更改后请重启。</p>
           </div>
           
           <!-- 人民网日语版 -->
           <div class="flex flex-wrap gap-3 items-center mb-3">
             <button onclick="app.fetchPeopleNews()" id="people-fetch-btn" class="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg transition-colors">
-              🔍 获取新闻文章
+              获取文章
             </button>
             <button onclick="app.clearPeopleHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-              🗑️ 清空记录
+              清空记录
             </button>
           </div>
           <div class="text-sm text-primary-500">来源：j.people.com.cn</div>
@@ -2357,9 +2367,9 @@ ${chunk.substring(0, 8000)}
           </div>
           <div id="people-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
             <div class="font-medium text-sm mb-2">文章预览：</div>
-            <div id="people-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
+            <div id="people-content" lang="ja" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
             <button onclick="app.processPeopleContent()" id="people-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-              🧠 AI提取学习条目
+              提取学习条目
             </button>
           </div>
         </div>
@@ -2367,31 +2377,31 @@ ${chunk.substring(0, 8000)}
     } else if (moduleId === 'english') {
       container.innerHTML = `
         <div class="bg-white rounded-xl shadow-lg p-6 border border-primary-100">
-          <h4 class="text-lg font-bold mb-4">📰 从英语新闻源导入</h4>
-          <p class="text-sm text-primary-500 mb-3">自动抓取 NPR、China Daily、BBC、The Guardian 最新英语文章，AI提取学习条目。默认来源为 NPR。</p>
-          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p class="text-xs text-amber-700">BBC、Guardian 在部分网络下需代理。软件读取系统代理设置，更改后请重启。</p>
+          <h4 class="text-lg font-bold mb-4">从新闻开始</h4>
+          <p class="text-sm text-primary-500 mb-3">选择来源，获取最新文章。默认使用 NPR。</p>
+          <div class="news-network-note mb-3">
+            <p class="text-xs text-primary-500">软件读取系统代理设置，更改后请重启。</p>
           </div>
           
           <!-- 新闻源选项卡 -->
           <div class="flex flex-wrap gap-2 mb-4 border-b border-gray-200">
-            <button onclick="app.switchEnglishNewsSource('npr')" id="tab-npr" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-700 text-blue-700">📻 NPR</button>
-            <button onclick="app.switchEnglishNewsSource('chinadaily')" id="tab-chinadaily" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">📰 China Daily</button>
-            <button onclick="app.switchEnglishNewsSource('bbc')" id="tab-bbc" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">📺 BBC News <span class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">需代理</span></button>
-            <button onclick="app.switchEnglishNewsSource('guardian')" id="tab-guardian" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">📰 The Guardian <span class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">需代理</span></button>
+            <button onclick="app.switchEnglishNewsSource('npr')" id="tab-npr" class="news-tab-active px-4 py-2 text-sm font-medium border-b-2">NPR</button>
+            <button onclick="app.switchEnglishNewsSource('chinadaily')" id="tab-chinadaily" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">China Daily</button>
+            <button onclick="app.switchEnglishNewsSource('bbc')" id="tab-bbc" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">BBC News <span class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-primary-500">需代理</span></button>
+            <button onclick="app.switchEnglishNewsSource('guardian')" id="tab-guardian" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">The Guardian <span class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-primary-500">需代理</span></button>
           </div>
 
           <div id="panel-chinadaily" class="news-panel hidden">
             <div class="flex flex-wrap gap-3 items-center mb-3">
-              <button onclick="app.fetchChinaDailyNews()" id="chinadaily-fetch-btn" class="px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg transition-colors">🔍 获取新闻文章</button>
-              <button onclick="app.clearChinaDailyHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">🗑️ 清空记录</button>
+              <button onclick="app.fetchChinaDailyNews()" id="chinadaily-fetch-btn" class="px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg transition-colors">获取文章</button>
+              <button onclick="app.clearChinaDailyHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">清空记录</button>
             </div>
             <div class="text-sm text-primary-500">来源：www.chinadaily.com.cn（China 栏目最新英语文章）</div>
             <div id="chinadaily-progress" class="hidden mt-3 text-sm text-primary-600"><span id="chinadaily-status">正在获取文章...</span></div>
             <div id="chinadaily-preview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="chinadaily-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
-              <button onclick="app.processChinaDailyContent()" id="chinadaily-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">🧠 AI提取学习条目</button>
+              <button onclick="app.processChinaDailyContent()" id="chinadaily-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">提取学习条目</button>
             </div>
           </div>
 
@@ -2408,10 +2418,10 @@ ${chunk.substring(0, 8000)}
                 <option value="politics">🏛️ 政治</option>
               </select>
               <button onclick="app.fetchBBCNews()" id="bbc-fetch-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-                🔍 获取新闻文章
+                获取文章
               </button>
               <button onclick="app.clearBBCHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-                🗑️ 清空记录
+                清空记录
               </button>
             </div>
             <div class="text-sm text-primary-500">来源：bbc.com/news</div>
@@ -2428,7 +2438,7 @@ ${chunk.substring(0, 8000)}
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="bbc-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
               <button onclick="app.processBBCContent()" id="bbc-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
+                提取学习条目
               </button>
             </div>
           </div>
@@ -2437,7 +2447,7 @@ ${chunk.substring(0, 8000)}
           <div id="panel-npr" class="news-panel hidden">
             <div class="flex flex-wrap gap-3 items-center mb-3">
               <select id="npr-category" onchange="app.nprCategory = this.value" class="px-3 py-2 border border-primary-200 rounded-lg text-sm">
-                <option value="news">📰 头条</option>
+                <option value="news">头条</option>
                 <option value="world">🌍 国际</option>
                 <option value="usa">美国 (US)</option>
                 <option value="business">📈 商业</option>
@@ -2446,10 +2456,10 @@ ${chunk.substring(0, 8000)}
                 <option value="tech">💻 科技</option>
               </select>
               <button onclick="app.fetchNPRNews()" id="npr-fetch-btn" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg transition-colors">
-                🔍 获取新闻文章
+                获取文章
               </button>
               <button onclick="app.clearNPRHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-                🗑️ 清空记录
+                清空记录
               </button>
             </div>
             <div class="text-sm text-primary-500">来源：npr.org</div>
@@ -2466,7 +2476,7 @@ ${chunk.substring(0, 8000)}
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="npr-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
               <button onclick="app.processNPRContent()" id="npr-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
+                提取学习条目
               </button>
             </div>
           </div>
@@ -2484,10 +2494,10 @@ ${chunk.substring(0, 8000)}
                 <option value="culture">🎨 文化</option>
               </select>
               <button onclick="app.fetchGuardianNews()" id="guardian-fetch-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-                🔍 获取新闻文章
+                获取文章
               </button>
               <button onclick="app.clearGuardianHistory()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors" title="清空已抓取记录">
-                🗑️ 清空记录
+                清空记录
               </button>
             </div>
             <div class="text-sm text-primary-500">来源：theguardian.com</div>
@@ -2504,7 +2514,7 @@ ${chunk.substring(0, 8000)}
               <div class="font-medium text-sm mb-2">文章预览：</div>
               <div id="guardian-content" class="text-sm text-primary-600 max-h-32 overflow-y-auto mb-3"></div>
               <button onclick="app.processGuardianContent()" id="guardian-process-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg text-sm transition-colors">
-                🧠 AI提取学习条目
+                提取学习条目
               </button>
             </div>
           </div>
@@ -3495,6 +3505,7 @@ ${wordsList}
     
     const materials = await dbAdapter.getMaterialsByModule(this.currentModule);
     const container = document.getElementById('materials-list');
+    document.getElementById('panel-upload').classList.toggle('has-materials', materials.length > 0);
     
     if (materials.length === 0) {
       container.innerHTML = '<p class="text-primary-500 text-center py-8">暂无语料，请上传文件</p>';
@@ -3555,12 +3566,22 @@ ${wordsList}
     await this.loadEntries();
   },
   
+  setActiveNavigation(id) {
+    document.querySelectorAll('#app-sidebar .nav-item').forEach(button => {
+      const active = button.id === id;
+      button.classList.toggle('bg-primary-800', active);
+      if (active) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    });
+  },
+
   // 切换模块内标签
   switchModuleTab(tab) {
     // 更新按钮样式
     ['upload', 'words', 'phrases', 'sentences'].forEach(t => {
       const btn = document.getElementById(`tab-${t}`);
       const panel = document.getElementById(`panel-${t}`);
+      btn.setAttribute('aria-pressed', String(t === tab));
       if (t === tab) {
         btn.className = 'px-4 py-2 bg-primary-600 text-white rounded-lg transition-colors';
         panel.classList.remove('hidden');
@@ -3718,13 +3739,13 @@ ${wordsList}
             <div class="flex-1">
               <div class="flex items-center gap-2 mb-1 flex-wrap">
                 ${typeBadge}
-                <span class="text-lg font-bold text-primary-900">${this.safeRichText(entry.original)}</span>
+                <span lang="${isJapanese ? 'ja' : ''}" class="text-lg font-bold text-primary-900">${this.safeRichText(entry.original)}</span>
               </div>
               <div class="text-primary-700 mb-2">${this.safeRichText(entry.translation) || '<span class="text-gray-400">暂无翻译</span>'}</div>
               ${entry.explanation ? (isCustomModule ? 
                 `<div class="text-sm text-primary-600 mb-2 prose prose-sm max-w-none markdown-content">${this.safeMarkdown(entry.explanation)}</div>` :
-                `<div class="text-sm text-primary-500 mb-1">💡 ${this.safeRichText(entry.explanation)}</div>`) : ''}
-              ${entry.example ? `<div class="text-sm text-accent-600 mt-2">📖 ${this.safeRichText(entry.example)}</div>` : ''}
+                `<div class="text-sm text-primary-500 mb-1">${this.safeRichText(entry.explanation)}</div>`) : ''}
+              ${entry.example ? `<div lang="${isJapanese ? 'ja' : ''}" class="text-sm text-accent-600 mt-2">${this.safeRichText(entry.example)}</div>` : ''}
             </div>
           </div>
           ${actionsHtml}
@@ -3774,7 +3795,7 @@ ${wordsList}
       </div>
       <div>
         <label class="block text-sm font-medium text-primary-700 mb-1">例句</label>
-        <textarea id="edit-example" rows="2" class="w-full px-3 py-2 border border-primary-200 rounded-lg">${this.escapeHtml(entry.example || '')}</textarea>
+        <textarea id="edit-example" lang="${isJapanese ? 'ja' : ''}" rows="2" class="w-full px-3 py-2 border border-primary-200 rounded-lg">${this.escapeHtml(entry.example || '')}</textarea>
       </div>
     `) : '';
     
@@ -3787,7 +3808,7 @@ ${wordsList}
         <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-primary-700 mb-1">${this.escapeHtml((this.modules[this.currentModule] && this.modules[this.currentModule].language) || '外语')}原文</label>
-            <input type="text" id="edit-original" value="${this.escapeHtml(entry.original)}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
+            <input type="text" id="edit-original" lang="${isJapanese ? 'ja' : ''}" value="${this.escapeHtml(entry.original)}" class="w-full px-3 py-2 border border-primary-200 rounded-lg">
           </div>
           <div>
             <label class="block text-sm font-medium text-primary-700 mb-1">中文翻译</label>
@@ -4429,6 +4450,8 @@ ${wordsList}
       return;
     }
     
+    const reviewModules = [...new Set(this.reviewQueue.map(entry => entry.moduleId))];
+    this.currentModule = reviewModules.length === 1 ? reviewModules[0] : null;
     this.hideAllViews();
     document.getElementById('review-view').classList.remove('hidden');
     document.getElementById('page-title').textContent = '复习模式';
@@ -4467,9 +4490,9 @@ ${wordsList}
     
     // 类型标签
     let typeLabel = '';
-    if (entry.type === 'word') typeLabel = '📚 单词';
-    else if (entry.type === 'phrase') typeLabel = '💬 短语';
-    else typeLabel = '📝 语句';
+    if (entry.type === 'word') typeLabel = '单词';
+    else if (entry.type === 'phrase') typeLabel = '短语';
+    else typeLabel = '语句';
     
     // 词性标签（仅单词）
     let genderLabel = '';
@@ -4483,8 +4506,10 @@ ${wordsList}
       genderLabel = `<span class="${genderColor} font-bold text-xl">${this.safeRichText(entry.gender)}</span>`;
     }
     
-    document.getElementById('review-context').textContent = `${typeLabel} | SRS Level: ${entry.srsLevel} | 间隔: ${entry.interval}天`;
+    document.getElementById('review-context').textContent = `${typeLabel}，等级 ${entry.srsLevel}，间隔 ${entry.interval} 天`;
     
+    document.getElementById('review-question').lang = entry.moduleId === 'japanese' || this.modules[entry.moduleId]?.language === 'Japanese' ? 'ja' : '';
+
     // 正面显示原文
     document.getElementById('review-question').innerHTML = `
       <div class="flex items-center justify-center gap-3 mb-4 max-w-full">
@@ -4522,7 +4547,7 @@ ${wordsList}
       answerHtml += `
         <div class="p-4 bg-accent-50 rounded-lg">
           <div class="text-sm text-accent-600 mb-1">例句</div>
-          <div class="text-primary-800 italic">${this.safeRichText(entry.example)}</div>
+          <div lang="${entry.moduleId === 'japanese' ? 'ja' : ''}" class="text-primary-800">${this.safeRichText(entry.example)}</div>
         </div>
       `;
     }
@@ -5790,9 +5815,9 @@ Requirements:
         // 翻译题显示用户答案和参考答案
         questionEl.innerHTML += `
           <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div class="font-medium text-blue-600 mb-2">📝 您的答案</div>
+            <div class="font-medium text-blue-600 mb-2">您的答案</div>
             <div class="text-primary-700 mb-3 p-2 bg-white rounded">${this.escapeHtml(userAnswer || '（未作答）')}</div>
-            <div class="font-medium text-blue-600 mb-1">📖 参考答案</div>
+            <div class="font-medium text-blue-600 mb-1">参考答案</div>
             <div class="text-primary-700">${this.safeRichText(q.answer)}</div>
             <div class="text-sm text-primary-500 mt-2">翻译题由您自行评估</div>
           </div>
@@ -6049,6 +6074,7 @@ Requirements:
   
   // Calendar
   async showCalendar() {
+    this.setActiveNavigation('nav-calendar');
     this.hideAllViews();
     document.getElementById('calendar-view').classList.remove('hidden');
     document.getElementById('page-title').textContent = '学习日历';
@@ -6058,6 +6084,9 @@ Requirements:
     if (!this.calendar) {
       this.calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
         initialView: 'dayGridMonth',
+        locale: 'zh-cn',
+        buttonText: { today: '今天', month: '月', week: '周' },
+        height: 'auto',
         headerToolbar: {
           left: 'prev,next today',
           center: 'title',
@@ -6127,6 +6156,7 @@ Requirements:
   
   // Statistics
   async showStats() {
+    this.setActiveNavigation('nav-stats');
     this.hideAllViews();
     document.getElementById('stats-view').classList.remove('hidden');
     document.getElementById('page-title').textContent = '数据统计';
@@ -6288,14 +6318,15 @@ Requirements:
         datasets: [{
           label: '学习时长（分钟）',
           data: data,
-          borderColor: '#f59e0b',
-          backgroundColor: viewType === 'week' ? 'rgba(245, 158, 11, 0.1)' : '#f59e0b',
+          borderColor: '#7b5aa3',
+          backgroundColor: viewType === 'week' ? 'rgba(123, 90, 163, 0.1)' : '#7b5aa3',
           fill: viewType === 'week',
           tension: 0.4
         }]
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { 
           legend: { display: false },
           tooltip: {
@@ -6329,8 +6360,12 @@ Requirements:
     const data = Object.values(moduleMinutes);
     const total = data.reduce((sum, v) => sum + v, 0);
     
+    const empty = document.getElementById('module-distribution-empty');
+    empty.classList.toggle('hidden', total > 0);
+    document.getElementById('module-distribution-chart').parentElement.classList.toggle('hidden', total === 0);
+
     // Generate distinct colors
-    const colors = ['#f59e0b', '#10b981', '#486581', '#8b5cf6', '#ec4899', '#14b8a6'];
+    const colors = ['#5f479a', '#806d9e', '#ad6598', '#a4abd6', '#652a41', '#c2afd3'];
     
     const distCtx = document.getElementById('module-distribution-chart').getContext('2d');
     if (this.charts.dist) this.charts.dist.destroy();
@@ -6345,6 +6380,7 @@ Requirements:
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { 
             position: 'bottom',
@@ -6352,7 +6388,7 @@ Requirements:
               generateLabels: (chart) => {
                 const data = chart.data;
                 return data.labels.map((label, i) => ({
-                  text: `${label} (${((data.datasets[0].data[i] / total) * 100).toFixed(1)}%)`,
+                  text: `${label} (${(total ? (data.datasets[0].data[i] / total) * 100 : 0).toFixed(1)}%)`,
                   fillStyle: data.datasets[0].backgroundColor[i],
                   hidden: false,
                   index: i
@@ -6423,6 +6459,7 @@ Requirements:
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { 
           legend: { display: false },
           tooltip: {
@@ -6450,7 +6487,7 @@ Requirements:
     // 获取各模块的学习进度
     const progressData = [];
     const labels = [];
-    const colors = ['#f59e0b', '#10b981', '#486581', '#8b5cf6', '#ec4899'];
+    const colors = ['#5f479a', '#806d9e', '#ad6598', '#a4abd6', '#652a41'];
     
     for (const [key, mod] of Object.entries(this.modules)) {
       const entries = await dbAdapter.getEntriesByModule(key);
@@ -6477,6 +6514,7 @@ Requirements:
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { 
           legend: { display: false },
           tooltip: {
@@ -6508,6 +6546,7 @@ Requirements:
   
   // Settings
   async showSettings() {
+    this.settingsReturnFocus = document.activeElement;
     const settings = await this.getSettings();
     document.getElementById('setting-api-url').value = settings.apiUrl;
     document.getElementById('setting-api-key').value = settings.apiKey || '';
@@ -6520,6 +6559,8 @@ Requirements:
     document.getElementById('setting-data-path').value = dataPath;
     
     document.getElementById('settings-modal').classList.remove('hidden');
+    document.querySelector('#settings-modal .settings-body').scrollTop = 0;
+    document.getElementById('setting-api-url').focus();
   },
 
   // 选择数据存储路径
@@ -6587,6 +6628,8 @@ Requirements:
   
   closeSettings() {
     document.getElementById('settings-modal').classList.add('hidden');
+    if (this.settingsReturnFocus?.isConnected) this.settingsReturnFocus.focus();
+    this.settingsReturnFocus = null;
   },
   
   async saveSettings() {
@@ -6690,7 +6733,7 @@ Requirements:
         records: await dbAdapter.getAllRecords(),
         settings: (await dbAdapter.getAllSettings()).filter(s => s.id !== 'apiKey'),
         exportDate: new Date().toISOString(),
-        version: '2.0.1'
+        version: '2.1.0'
       };
       
       const jsonContent = JSON.stringify(data, null, 2);
@@ -6883,11 +6926,46 @@ Requirements:
   
   async previewMaterial(id) {
     const material = await dbAdapter.getMaterial(id);
-    if (material) {
-      alert(`预览: ${material.title}\n\n${material.content.substring(0, 500)}...`);
-    }
+    if (!material) return;
+    document.getElementById('material-preview-modal')?.remove();
+    this.materialPreviewReturn = document.activeElement;
+    const modal = document.createElement('div');
+    modal.id = 'material-preview-modal';
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'material-preview-title');
+    modal.innerHTML = `
+      <div class="bg-white rounded-xl p-6 w-full max-w-3xl">
+        <div class="flex items-start justify-between gap-4 mb-4">
+          <div class="min-w-0">
+            <h3 id="material-preview-title" class="text-xl font-bold break-words">${this.escapeHtml(material.title)}</h3>
+            <p class="text-sm text-primary-500 mt-2">${this.escapeHtml(material.source || '导入材料')}</p>
+          </div>
+          <button type="button" onclick="app.closeMaterialPreview()" class="px-3 py-2 bg-primary-100 text-primary-700 rounded-lg flex-shrink-0">关闭</button>
+        </div>
+        ${material.status === 'error' ? `<p class="p-3 mb-4 bg-red-50 text-red-700 rounded-lg">${this.escapeHtml(material.errorMsg || '提取失败，请检查 AI 设置后重新导入。')}</p>` : ''}
+        <div lang="${material.moduleId === 'japanese' ? 'ja' : ''}" class="whitespace-pre-wrap break-words text-primary-800 leading-relaxed max-h-[60vh] overflow-y-auto" tabindex="0">${this.escapeHtml(material.content || '')}</div>
+      </div>`;
+    modal.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); this.closeMaterialPreview(); }
+      if (event.key === 'Tab') {
+        const focusable = [...modal.querySelectorAll('button, [tabindex="0"]')];
+        const first = focusable[0], last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    });
+    document.body.appendChild(modal);
+    modal.querySelector('button').focus();
   },
-  
+
+  closeMaterialPreview() {
+    document.getElementById('material-preview-modal')?.remove();
+    if (this.materialPreviewReturn?.isConnected) this.materialPreviewReturn.focus();
+    this.materialPreviewReturn = null;
+  },
+
   async deleteMaterial(id) {
     const confirmed = await this.confirmDialog('确定要删除这个材料吗？相关的学习条目也会被删除。');
     if (confirmed) {
@@ -7170,21 +7248,24 @@ Requirements:
       const card = document.createElement('div');
       card.id = `card-${mod.id}`;
       card.onclick = () => app.switchModule(mod.id);
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.onkeydown = event => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); card.click(); } };
       card.className = 'module-card bg-white rounded-xl p-6 shadow-lg cursor-pointer border border-primary-100';
       card.innerHTML = `
         <div class="flex items-center justify-between mb-4">
-          <div class="w-16 h-12 rounded-lg shadow-lg overflow-hidden">
+          <div class="module-flag-badge">
             <span class="fi fi-${this.escapeHtml(mod.flag || 'un')} w-full h-full"></span>
           </div>
           <div class="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
-            <span class="text-primary-600 font-bold text-sm" id="${mod.id}-progress">0%</span>
+            <span class="text-primary-600 font-bold text-sm" id="${mod.id}-progress">0%</span><span class="text-primary-500">已记住</span>
           </div>
         </div>
         <h4 class="text-xl font-bold mb-1">${this.escapeHtml(mod.name)}</h4>
         <p class="text-sm text-primary-500 mb-3">${this.escapeHtml(mod.language)}</p>
         <div class="flex items-center justify-between text-sm">
           <span class="text-primary-600"><span id="${mod.id}-entries">0</span> 条目</span>
-          <span class="text-accent-600"><span id="${mod.id}-due">0</span> 到期未复习</span>
+          <span class="text-accent-600"><span id="${mod.id}-due">0</span> 待复习</span>
         </div>
         <div class="mt-4 w-full bg-primary-100 rounded-full h-2">
           <div id="${mod.id}-bar" class="bg-primary-600 h-2 rounded-full transition-all" style="width: 0%"></div>

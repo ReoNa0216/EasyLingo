@@ -16,6 +16,18 @@ const files = {
 for (const [source, target] of Object.entries(files)) {
   fs.copyFileSync(path.join(root, 'node_modules', source), path.join(dest, target));
 }
+// Bundle only font files referenced by each stylesheet, including its OFL license.
+for (const name of ['inter', 'noto-sans-sc', 'noto-sans-jp']) {
+  const packageDir = path.join(root, 'node_modules/@fontsource-variable', name);
+  const fontDir = path.join(dest, 'fonts', name);
+  const css = fs.readFileSync(path.join(packageDir, 'index.css'), 'utf8');
+  fs.mkdirSync(path.join(fontDir, 'files'), { recursive: true });
+  fs.writeFileSync(path.join(fontDir, 'index.css'), css);
+  for (const match of css.matchAll(/url\(['"]?(\.\/files\/[^)'"\s]+)['"]?\)/g)) {
+    fs.copyFileSync(path.join(packageDir, match[1]), path.join(fontDir, match[1]));
+  }
+  fs.copyFileSync(path.join(packageDir, 'LICENSE'), path.join(fontDir, 'LICENSE.txt'));
+}
 fs.cpSync(path.join(root, 'node_modules/flag-icons/css'), path.join(dest, 'flags/css'), { recursive: true });
 fs.cpSync(path.join(root, 'node_modules/flag-icons/flags'), path.join(dest, 'flags/flags'), { recursive: true });
 execFileSync(process.execPath, [path.join(root, 'node_modules/tailwindcss/lib/cli.js'), '-c', 'tailwind.config.js', '-i', 'styles/tailwind.css', '-o', 'src/vendor/tailwind.css', '--minify'], { cwd: root, stdio: 'inherit' });
