@@ -6,9 +6,15 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      installer_run_id:
+        description: 'Existing successful build run to verify without rebuilding (optional)'
+        required: false
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +22,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ !inputs.installer_run_id }}
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +81,8 @@ jobs:
           retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
   verify-windows:
     needs: build
-    runs-on: windows-latest
+    if: ${{ !cancelled() && (needs.build.result == 'success' || inputs.installer_run_id != '') }}
+    runs-on: windows-2022
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +95,8 @@ jobs:
         with:
           name: EasyLingo-Windows
           path: installers
+          run-id: ${{ inputs.installer_run_id || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Install and verify Windows package
         shell: pwsh
         run: |
