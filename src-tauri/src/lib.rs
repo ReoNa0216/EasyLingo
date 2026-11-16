@@ -1,3 +1,5 @@
+mod ai;
+mod database;
 use serde_json::json;
 
 /// 获取新闻 RSS Feed
@@ -44,7 +46,8 @@ async fn fetch_news_rss(source: String, category: String) -> Result<String, Stri
 
 /// 获取新闻文章正文（解析 HTML）
 #[tauri::command]
-async fn fetch_news_article(source: String, url: String, _category: String) -> Result<serde_json::Value, String> {
+async fn fetch_news_article(source: String, url: String, category: String) -> Result<serde_json::Value, String> {
+    let _ = category;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
@@ -244,17 +247,6 @@ fn extract_asahi(document: &scraper::Html) -> String {
     String::new()
 }
 
-/// 写入文件到指定路径
-#[tauri::command]
-async fn write_file(path: String, contents: String) -> Result<(), String> {
-    use std::fs;
-    use std::io::Write;
-    
-    let mut file = fs::File::create(&path).map_err(|e| format!("创建文件失败: {}", e))?;
-    file.write_all(contents.as_bytes()).map_err(|e| format!("写入文件失败: {}", e))?;
-    Ok(())
-}
-
 /// 确保目录存在，不存在则创建
 #[tauri::command]
 async fn ensure_dir(path: String) -> Result<(), String> {
@@ -277,9 +269,10 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
+            database::database_batch,
+            ai::request_ai,
             fetch_news_rss,
             fetch_news_article,
-            write_file,
             ensure_dir,
             path_exists
         ])

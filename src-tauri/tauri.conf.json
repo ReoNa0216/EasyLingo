@@ -1,12 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "EasyLingo",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "identifier": "com.reona0216.easylingo",
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "python -m http.server 1420 --directory src"
+    "beforeDevCommand": "npm run assets && python -m http.server 1420 --bind 127.0.0.1 --directory src",
+    "beforeBuildCommand": "npm run assets"
   },
   "app": {
     "withGlobalTauri": true,
@@ -22,13 +23,19 @@
       }
     ],
     "security": {
-      "csp": null,
-      "capabilities": ["default"]
+      "csp": "default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'",
+      "capabilities": [
+        "default"
+      ]
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "dmg", "app"],
+    "targets": [
+      "nsis",
+      "dmg",
+      "app"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -36,7 +43,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "copyright": "Copyright (c) 2024 ReoNa0216",
+    "copyright": "Copyright (c) 2026 陈挚",
     "category": "Education",
     "shortDescription": "AI-powered language learning app",
     "longDescription": "EasyLingo is a desktop language learning application with AI extraction and SRS review system.",
@@ -45,8 +52,11 @@
         "installerIcon": "icons/icon.ico",
         "installMode": "both",
         "displayLanguageSelector": false,
-        "languages": ["SimpChinese"]
+        "languages": [
+          "SimpChinese"
+        ]
       }
-    }
+    },
+    "publisher": "清华大学语言教学中心"
   }
 }

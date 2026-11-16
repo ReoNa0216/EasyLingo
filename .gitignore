@@ -10,3 +10,9 @@ src-tauri/target
 # OS files
 .DS_Store
 Thumbs.db
+
+# Generated frontend assets and verification output
+src/vendor/
+test-results/
+playwright-report/
+artifacts/

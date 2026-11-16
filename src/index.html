@@ -5,75 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EasyLingo - 语言学习助手</title>
   
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
-  
- <!-- Flag Icons CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@6.6.6/css/flag-icons.min.css">
-  
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  
-  <!-- Marked.js for Markdown rendering (custom modules only) -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
-  
-  <!-- SQLite Database Adapter -->
+  <link rel="stylesheet" href="vendor/tailwind.css">
+  <link rel="stylesheet" href="vendor/flags/css/flag-icons.min.css">
+  <script src="vendor/chart.js"></script>
+  <script src="vendor/marked.js"></script>
+  <script src="vendor/purify.js"></script>
+  <script src="vendor/fullcalendar.js"></script>
+  <script src="vendor/mammoth.js"></script>
   <script src="db-adapter.js"></script>
-  
-  <!-- FullCalendar -->
-  <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/main.min.css' rel='stylesheet' />
-  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
-  
-  <!-- File Parsers -->
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            display: ['Playfair Display', 'serif'],
-            body: ['Source Sans 3', 'sans-serif'],
-          },
-          colors: {
-            primary: {
-              50: '#f0f4f8',
-              100: '#d9e2ec',
-              200: '#bcccdc',
-              300: '#9fb3c8',
-              400: '#829ab1',
-              500: '#627d98',
-              600: '#486581',
-              700: '#334e68',
-              800: '#243b53',
-              900: '#102a43',
-            },
-            accent: {
-              50: '#fffbeb',
-              100: '#fef3c7',
-              200: '#fde68a',
-              300: '#fcd34d',
-              400: '#fbbf24',
-              500: '#f59e0b',
-              600: '#d97706',
-              700: '#b45309',
-              800: '#92400e',
-              900: '#78350f',
-            }
-          }
-        }
-      }
-    }
-  </script>
-  
   <style>
     body {
       font-family: 'Source Sans 3', 'Noto Color Emoji', sans-serif;
@@ -337,6 +276,7 @@
           </svg>
           <span>设置</span>
         </button>
+        <button onclick="document.getElementById('about-modal').classList.remove('hidden')" class="nav-item w-full px-4 py-3 text-left hover:bg-primary-800">帮助与关于</button>
       </nav>
       
       <!-- User Stats -->
@@ -1129,7 +1069,8 @@
   <!-- Settings Modal -->
   <div id="settings-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
     <div class="bg-white rounded-2xl p-8 max-w-lg w-full mx-4 animate-fade-in max-h-[90vh] overflow-y-auto">
-      <h3 class="text-2xl font-bold mb-6">设置</h3>
+      <h3 class="text-2xl font-bold mb-2">设置</h3>
+      <p class="text-sm text-primary-600 mb-6">EasyLingo 2.0.1 · 开发者：陈挚<br>开发单位：清华大学语言教学中心</p>
       
       <div class="space-y-6">
         <!-- AI Settings -->
@@ -1387,6 +1328,22 @@
       window.appInitStarted = true;
     })();
   </script>
-  <script src="app.js?v=36"></script>
+  <script src="app.js"></script>
+  <div id="about-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center" role="dialog" aria-label="帮助与关于">
+    <div class="bg-white rounded-2xl p-8 max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+      <h3 class="text-2xl font-bold mb-4">EasyLingo 2.0.1</h3>
+      <p class="mb-2">开发者：陈挚</p>
+      <p class="mb-6">开发单位：清华大学语言教学中心</p>
+      <div class="space-y-3 text-primary-700">
+        <p>选择语言模块，导入 TXT、Markdown、PDF 或 DOCX 学习材料，也可手动添加词条。已有词条可离线复习。</p>
+        <p>AI 提取和出题需在设置中填写兼容 OpenAI 格式的 API 地址、密钥与模型名称。使用 AI 时，相关材料或词条会发送给您配置的服务商，费用由该服务商收取。</p>
+        <p>学习数据保存在本机。API 密钥保存在本机数据库中；JSON 备份不包含密钥，恢复后请重新填写。</p>
+        <p>恢复备份会替换当前数据，请先导出当前备份。PDF 支持文本提取，扫描图片需先进行文字识别。</p>
+        <p>新闻抓取需要联网，可用性受新闻网站与网络状况影响。AI 生成内容与自动判分供学习参考，翻译题请对照参考答案自行评估。</p>
+        <p class="break-all">GitHub：https://github.com/ReoNa0216/EasyLingo</p>
+      </div>
+      <button onclick="document.getElementById('about-modal').classList.add('hidden')" class="mt-6 w-full px-4 py-2 bg-accent-500 text-white rounded-lg">关闭</button>
+    </div>
+  </div>
 </body>
 </html>
