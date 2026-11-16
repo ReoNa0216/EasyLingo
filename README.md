@@ -74,6 +74,7 @@ npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 - 设置固定显示保存/关闭，窄窗口和放大阅读可继续操作；设置输入不再触发背后的复习快捷键。
 - 复习评分改为“忘记、模糊、记得、熟练”，明确每日复习量与已记住比例；从首页只选择一种语言时，记录显示对应语言。
 - 字体采用 OFL 许可，许可证随本地字体资源提供；不依赖在线字体服务。
+- 应用和安装器统一使用紫色「书页＋对话气泡」图标；配置指南同步当前界面。
 
 ## 2.0.1 修复
 
@@ -90,7 +91,7 @@ npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 
 ## 资源与许可
 
-- [API 配置示例](API_configuration.pdf)（旧版 GLM 配置示例，具体模型和价格以供应商当前文档为准）
+- [API 配置指南](API_configuration.pdf)（2.1.0 当前界面、字段说明、首次提取、排错与备份；[文字版](docs/api-configuration.md)）
 - [自定义提示词示例](prompt-examples/)
 - [MIT License](LICENSE)
 
