@@ -12,7 +12,7 @@
 
 ## 安装包
 
-正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.0.1 提交版仍为草稿；本次加入 China Daily、将 NPR 设为英语默认源并精简代理提示，双平台安装包正在重新构建。各新闻源的实际访问结果见[审计记录](docs/submission-audit.md)。
+正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.0.1 功能基线的双平台安装包已通过[构建和安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43806912722)，可在 Actions 登录下载（产物保留 7 天）。包内含 China Daily、人民网、NPR 默认选项和简短代理标签，开发署名完整。PR 和 Release 仍为草稿，尚未正式发布；用户提出的整体 UI 改版另行确定后执行。各新闻源的实际访问结果见[审计记录](docs/submission-audit.md)。
 
 - Windows 10/11 x64：`EasyLingo_2.0.1_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
 - macOS Apple Silicon：`EasyLingo_2.0.1_aarch64.dmg`。Intel Mac 不在本轮构建范围内。

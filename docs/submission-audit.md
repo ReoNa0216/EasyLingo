@@ -59,7 +59,7 @@
 - 原生 Windows 桌面：隔离数据库启动、署名显示、本机 HTTP 模拟 AI → SQLite → 界面、真实 PDF/DOCX 解析、7 张表备份恢复往返通过；原生保存对话框导出 JSON 成功，读取落盘文件确认不含 API 密钥。
 - Windows x64：从 NSIS 安装器静默安装，读取注册表确认 2.0.1 和安装路径，再启动已安装的程序；原生 SQLite、AI 协议、PDF/DOCX 和备份事务往返全部通过，输出 `NATIVE_SMOKE_PASS`。本机 Debug、Release 和全新隔离数据库也通过原生回归。
 - macOS Apple Silicon：实际挂载 DMG，复制包内应用，验证 `codesign --verify --deep --strict`、ARM64 架构和进程启动；通过。当前为 ad-hoc 签名，未取得 Apple Developer ID 签名和公证；尚未完成用户 Mac 上带下载隔离标记的交互验收。
-- 最新构建来源：当前变更已通过本地回归；包含 China Daily、NPR 默认选项及精简代理标签的新安装包正在构建。交付时更新构建提交与运行记录，同版本旧包以 SHA-256 区分。
+- 最新构建来源：应用源码提交 `33af40ca6e6a7151a8ac18f732e631b46b16bba4`，双平台包及 Windows 安装后验收均在[运行 43806912722](https://github.com/ReoNa0216/EasyLingo/actions/runs/43806912722)通过。本次构建包含 China Daily、人民网、NPR 默认选项与精简代理标签；同版本旧包已替换，以 SHA-256 区分。随后只更新交付文档及测试脚本的失败诊断，包内应用源码保持一致。
 - CI 环境差异：Windows 2025 运行器安装成功，但 WebView2 调试端口持续拒绝连接；同一安装包在 Windows 2022 运行器和本机原生验证成功。安装验证固定为 Windows 2022，可指定已有构建 run ID 单独重验，避免重复编译；此记录不代表已证实 Windows 2025 系统上的所有交互使用均失败。
 - 真实付费 AI 服务：尚未使用用户密钥调用；当前以本机模拟服务验证请求协议和错误处理。
 - 新闻功能当前使用 BBC、Guardian、NPR、China Daily、人民网日语版和 ZDFheute。当前代理下六来源的列表、正文、预览、模拟 AI 提取、SQLite 词条入库及原文链接保存均通过本机 Release 原生验证。朝日抓取实现已按用户选择移除，已有朝日学习材料保留。
@@ -76,6 +76,8 @@
 
 以上是 2026-11-16 本机及当前代理出口的样本测试，不代表所有地区、所有文章或未来持续可用。代理六源检查通过并输出 `NATIVE_SMOKE_PASS`；直连六源检查因 BBC、Guardian 超时返回非零，保留此结果。直连可用的四来源也已通过模拟 AI 提取与入库。实际界面与网络检查分别验证，不把 RSS 成功当成正文成功。证据：`artifacts/native-news-proxy.json`、`artifacts/native-news-direct.json`、`artifacts/chinadaily-native-proxy.log`、`artifacts/chinadaily-native-direct.log`。
 
+最终界面版本复测中，China Daily 曾出现一次代理连接失败：原生命令已取得正文，但随后界面再次请求时连接失败，软件显示错误且未写入抓取历史。独立重试列表和正文均返回 HTTP 200，同一程序复跑六来源全部通过。失败记录保留在 `artifacts/chinadaily-proxy-transient.json` 与 `artifacts/chinadaily-proxy-transient.log`，不计入成功样本。
+
 此前代理特性遗漏来自本轮依赖配置调整，已恢复 `system-proxy`；ZDF 旧域名来自原项目，已更新。朝日此前有一次直连样本成功，后续当前代理出口返回 HTTP 403，故采用用户确认的人民网替代方案。
 
 ## 提交产物与存储
@@ -86,4 +88,4 @@
 
 ## 第二阶段候选范围
 
-提交版确认后再决定：拆分单体 app.js、标准 SM-2/FSRS 调度、AI 结果质量评测与失败重试、新闻解析适配、扫描 PDF/OCR、大词库性能、加密密钥存储、代码签名与 Apple 公证、Intel Mac 构建。以上未作为本轮已完成功能。
+2026-11-16 用户新增整体 UI 改版意向，当前 2.0.1 保留为功能基线，UI 改版范围与方向待确定。其余深度优化待决定：拆分单体 app.js、标准 SM-2/FSRS 调度、AI 结果质量评测与失败重试、新闻解析适配、扫描 PDF/OCR、大词库性能、加密密钥存储、代码签名与 Apple 公证、Intel Mac 构建。以上未作为本轮已完成功能。

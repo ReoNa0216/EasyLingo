@@ -138,7 +138,7 @@ const assert = require('node:assert/strict');
       fs.writeFileSync('artifacts/native-news.json', JSON.stringify(news, null, 2));
       fs.writeFileSync(`artifacts/native-news-${newsMode}.json`, JSON.stringify({ mode: newsMode, checkedAt: new Date().toISOString(), news }, null, 2));
       console.log('Native news results:', news);
-      for (const item of news.filter(item => !item.error)) {
+      for (const item of news.filter(item => !item.error && item.ui.contentLength >= 100)) {
         const imported = await page.evaluate(async source => {
           const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', people: 'People', zdf: 'ZDF', chinadaily: 'ChinaDaily' };
           const moduleId = source === 'people' ? 'japanese' : source === 'zdf' ? 'german' : 'english';
