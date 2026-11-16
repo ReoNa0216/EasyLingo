@@ -463,6 +463,7 @@ const app = {
   },
   
   async switchModule(moduleId) {
+    this.currentView = 'module';
     this.currentModule = moduleId;
     this.hideAllViews();
     document.getElementById('module-view').classList.remove('hidden');
@@ -6130,7 +6131,7 @@ Requirements:
     const tests = await dbAdapter.getAllTests();
     
     // Total time
-    const totalMinutes = records.reduce((sum, r) => sum + r.duration, 0);
+    const totalMinutes = records.filter(r => r.action !== 'review_detail').reduce((sum, r) => sum + r.duration, 0);
     document.getElementById('stat-total-time').textContent = `${Math.round(totalMinutes / 60 * 10) / 10}小时`;
     
     // Total days (unique dates with activity)
@@ -6189,7 +6190,7 @@ Requirements:
   
   // Get filtered records by module
   getFilteredRecords(records, moduleId) {
-    if (moduleId === 'all' || !moduleId) return records;
+    if (moduleId === 'all' || !moduleId) return records.filter(r => r.action !== 'review_detail');
     return records.filter(r => r.moduleId === moduleId);
   },
   
@@ -6312,12 +6313,12 @@ Requirements:
   // Update Module Distribution Chart (doughnut with percentages)
   async updateModuleDistributionChart(records) {
     const moduleMinutes = {};
-    records.forEach(r => {
-      const mod = r.moduleId || 'german';
+    records.filter(r => r.action !== 'review_detail').forEach(r => {
+      const mod = r.moduleId || 'mixed';
       moduleMinutes[mod] = (moduleMinutes[mod] || 0) + r.duration;
     });
     
-    const labels = Object.keys(moduleMinutes).map(k => (this.modules[k] && this.modules[k].name) || k);
+    const labels = Object.keys(moduleMinutes).map(k => (this.modules[k] && this.modules[k].name) || (k === 'mixed' ? '混合' : k));
     const data = Object.values(moduleMinutes);
     const total = data.reduce((sum, v) => sum + v, 0);
     
