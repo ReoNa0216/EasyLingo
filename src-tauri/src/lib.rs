@@ -2,6 +2,24 @@ mod ai;
 mod database;
 use serde_json::json;
 
+fn news_request_error(error: reqwest::Error) -> String {
+    if error.is_timeout() {
+        "连接新闻网站超时，请检查网络或系统代理设置".into()
+    } else if error.is_connect() {
+        "无法连接新闻网站，请检查网络或系统代理设置".into()
+    } else {
+        format!("新闻请求失败：{}", error)
+    }
+}
+
+fn news_status_error(status: reqwest::StatusCode) -> String {
+    if status == reqwest::StatusCode::FORBIDDEN {
+        "来源网站拒绝当前请求（HTTP 403），请检查该网站在当前网络下是否可访问".into()
+    } else {
+        format!("新闻网站返回 HTTP {}", status)
+    }
+}
+
 /// 获取新闻 RSS Feed
 #[tauri::command]
 async fn fetch_news_rss(source: String, category: String) -> Result<String, String> {
@@ -26,7 +44,7 @@ async fn fetch_news_rss(source: String, category: String) -> Result<String, Stri
             };
             format!("https://feeds.npr.org/{}/rss.xml", map)
         }
-        "zdf" => "https://www.zdf.de/rss/zdf/nachrichten".to_string(),
+        "zdf" => "https://www.zdfheute.de/rss/zdf/nachrichten".to_string(),
         "asahi" => "https://rss.asahi.com/rss/asahi/newsheadlines.rdf".to_string(),
         _ => return Err(format!("Unknown news source: {}", source)),
     };
@@ -37,9 +55,9 @@ async fn fetch_news_rss(source: String, category: String) -> Result<String, Stri
         .build()
         .map_err(|e| e.to_string())?;
 
-    let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let response = client.get(&url).send().await.map_err(news_request_error)?;
     if !response.status().is_success() {
-        return Err(format!("HTTP error: {}", response.status()));
+        return Err(news_status_error(response.status()));
     }
     response.text().await.map_err(|e| e.to_string())
 }
@@ -54,9 +72,9 @@ async fn fetch_news_article(source: String, url: String, category: String) -> Re
         .build()
         .map_err(|e| e.to_string())?;
 
-    let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let response = client.get(&url).send().await.map_err(news_request_error)?;
     if !response.status().is_success() {
-        return Err(format!("HTTP error: {}", response.status()));
+        return Err(news_status_error(response.status()));
     }
 
     let html = response.text().await.map_err(|e| e.to_string())?;

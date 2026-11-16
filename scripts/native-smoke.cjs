@@ -88,18 +88,38 @@ const assert = require('node:assert/strict');
     assert.deepEqual(errors, []);
     if (process.argv.includes('--news')) {
       const news = await page.evaluate(async () => Promise.all(['bbc', 'guardian', 'npr', 'asahi', 'zdf'].map(async source => {
+        let stage = 'rss';
         try {
           const rss = await app.desktopFetchRSS(source, 'world');
           const document = new DOMParser().parseFromString(rss, 'text/xml');
           const item = document.querySelector('item');
           const url = item?.querySelector('link')?.textContent?.trim();
           if (!url) return { source, status: 'no-article-links' };
+          stage = 'article';
           const article = await app.desktopFetchArticle(source, url, 'world');
           return { source, url, title: article.title, contentLength: article.content?.length || 0 };
-        } catch (error) { return { source, error: String(error) }; }
+        } catch (error) { return { source, stage, error: String(error) }; }
       })));
+      for (const result of news) {
+        result.ui = await page.evaluate(async source => {
+          const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', asahi: 'Asahi', zdf: 'ZDF' };
+          const suffix = names[source];
+          await app.switchModule(source === 'zdf' ? 'german' : source === 'asahi' ? 'japanese' : 'english');
+          app[`fetched${suffix}Feeds`] = [];
+          app[`save${suffix}History`]();
+          app[`${source}CurrentArticle`] = null;
+          const alertsBefore = window.smokeAlerts.length;
+          await app[`fetch${suffix}News`]();
+          const article = app[`${source}CurrentArticle`];
+          return { title: article?.title, contentLength: article?.content?.length || 0,
+            historyCount: app[`fetched${suffix}Feeds`].length,
+            status: document.getElementById(`${source}-status`)?.textContent,
+            alerts: window.smokeAlerts.slice(alertsBefore) };
+        }, result.source);
+      }
       fs.writeFileSync('artifacts/native-news.json', JSON.stringify(news, null, 2));
       console.log('Native news results:', news);
+      assert.ok(news.every(item => item.title && item.contentLength >= 100 && item.ui.contentLength >= 100), 'All five news sources must return article text through the native command and UI');
     }
     if (process.argv.includes('--export')) {
       console.log('Waiting for native Save dialog selection');

@@ -1895,14 +1895,14 @@ ${chunk.substring(0, 8000)}
       
       // 选择最新的一篇文章
       const selectedArticle = articles[0];
-      this.fetchedBBCFeeds.push(selectedArticle.link);
-      this.saveBBCHistory();
       
       if (status) status.textContent = '正在获取文章内容...';
       
       const articleData = await this.desktopFetchArticle('bbc', selectedArticle.link, this.bbcCategory);
       
       if (articleData.content) {
+        this.fetchedBBCFeeds.push(selectedArticle.link);
+        this.saveBBCHistory();
         // 解析日期，处理无效日期情况
         let dateStr = selectedArticle.pubDate;
         const pubDate = new Date(selectedArticle.pubDate);
@@ -1922,7 +1922,7 @@ ${chunk.substring(0, 8000)}
         if (contentDiv) {
           contentDiv.innerHTML = `
             <h5 class="font-bold mb-2">${this.escapeHtml(this.bbcCurrentArticle.title)}</h5>
-            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</p>
+            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${this.escapeHtml(dateStr)}</p>
             <p class="text-xs text-gray-500 mb-2">${this.escapeHtml(this.bbcCurrentArticle.content.substring(0, 300))}...</p>
           `;
         }
@@ -2077,14 +2077,14 @@ ${chunk.substring(0, 8000)}
       
       // 选择最新的一篇文章
       const selectedArticle = articles[0];
-      this.fetchedGuardianFeeds.push(selectedArticle.link);
-      this.saveGuardianHistory();
       
       if (status) status.textContent = '正在获取文章内容...';
       
       const articleData = await this.desktopFetchArticle('guardian', selectedArticle.link, this.guardianCategory);
       
       if (articleData.content) {
+        this.fetchedGuardianFeeds.push(selectedArticle.link);
+        this.saveGuardianHistory();
         const pubDate = new Date(selectedArticle.pubDate);
         const dateStr = pubDate.toLocaleDateString('zh-CN');
         
@@ -2100,7 +2100,7 @@ ${chunk.substring(0, 8000)}
         if (contentDiv) {
           contentDiv.innerHTML = `
             <h5 class="font-bold mb-2">${this.escapeHtml(this.guardianCurrentArticle.title)}</h5>
-            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</p>
+            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${this.escapeHtml(dateStr)}</p>
             <p class="text-xs text-gray-500 mb-2">${this.escapeHtml(this.guardianCurrentArticle.content.substring(0, 300))}...</p>
           `;
         }
@@ -2261,14 +2261,14 @@ ${chunk.substring(0, 8000)}
       
       // 选择最新的一篇文章
       const selectedArticle = articles[0];
-      this.fetchedNPRFeeds.push(selectedArticle.link);
-      this.saveNPRHistory();
       
       if (status) status.textContent = '正在获取文章内容...';
       
       const articleData = await this.desktopFetchArticle('npr', selectedArticle.link, this.nprCategory);
       
       if (articleData.content) {
+        this.fetchedNPRFeeds.push(selectedArticle.link);
+        this.saveNPRHistory();
         // 解析日期，处理无效日期情况
         let dateStr = selectedArticle.pubDate;
         const pubDate = new Date(selectedArticle.pubDate);
@@ -2288,7 +2288,7 @@ ${chunk.substring(0, 8000)}
         if (contentDiv) {
           contentDiv.innerHTML = `
             <h5 class="font-bold mb-2">${this.escapeHtml(this.nprCurrentArticle.title)}</h5>
-            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</p>
+            <p class="text-xs text-amber-600 mb-2">📅 发布日期：${this.escapeHtml(dateStr)}</p>
             <p class="text-xs text-gray-500 mb-2">${this.escapeHtml(this.nprCurrentArticle.content.substring(0, 300))}...</p>
           `;
         }
@@ -2396,7 +2396,7 @@ ${chunk.substring(0, 8000)}
           <h4 class="text-lg font-bold mb-4">📰 从 ZDF Heute 导入新闻</h4>
           <p class="text-sm text-primary-500 mb-3">自动抓取 ZDF Heute 最新文章，AI提取学习条目。每次抓取的文章不重复。</p>
           <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p class="text-xs text-amber-700">⚠️ 国内用户注意：获取新闻功能需要访问海外服务器，请开启 VPN 后使用。</p>
+            <p class="text-xs text-amber-700">新闻抓取需要能够访问来源网站；软件会读取系统代理设置。更改代理后请重启软件。</p>
           </div>
           <div class="flex flex-wrap gap-3 items-center">
             <button onclick="app.fetchZDFNews()" id="zdf-fetch-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
@@ -2431,7 +2431,7 @@ ${chunk.substring(0, 8000)}
           <h4 class="text-lg font-bold mb-4">🇯🇵 从日语新闻源导入</h4>
           <p class="text-sm text-primary-500 mb-3">自动抓取朝日新聞最新日语文章，AI提取学习条目。</p>
           <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p class="text-xs text-amber-700">⚠️ 国内用户注意：获取新闻功能需要访问海外服务器，请开启 VPN 后使用。</p>
+            <p class="text-xs text-amber-700">新闻抓取需要能够访问来源网站；软件会读取系统代理设置。更改代理后请重启软件。</p>
           </div>
           
           <!-- 朝日新聞 -->
@@ -2468,7 +2468,7 @@ ${chunk.substring(0, 8000)}
           <h4 class="text-lg font-bold mb-4">📰 从英语新闻源导入</h4>
           <p class="text-sm text-primary-500 mb-3">自动抓取 BBC、NPR、The Guardian 最新英语文章，AI提取学习条目。</p>
           <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p class="text-xs text-amber-700">⚠️ 国内用户注意：获取新闻功能需要访问海外服务器，请开启 VPN 后使用。</p>
+            <p class="text-xs text-amber-700">新闻抓取需要能够访问来源网站；软件会读取系统代理设置。更改代理后请重启软件。</p>
           </div>
           
           <!-- 新闻源选项卡 -->
@@ -2677,10 +2677,6 @@ ${chunk.substring(0, 8000)}
         }
       }
       
-      // 记录已获取并保存
-      this.fetchedZDFFeeds.push(selectedArticle.link);
-      this.saveZDFHistory();
-      
       // 获取正文内容（通过全文 RSS 或简介）
       status.textContent = '正在解析文章内容...';
       
@@ -2693,6 +2689,9 @@ ${chunk.substring(0, 8000)}
       } catch (e) {
         console.log('无法获取完整内容，使用简介');
       }
+      if (!fullContent.trim()) throw new Error('未获取到文章内容，请稍后重试');
+      this.fetchedZDFFeeds.push(selectedArticle.link);
+      this.saveZDFHistory();
       
       // 解析日期
       let dateStr = selectedArticle.pubDate;
@@ -2716,15 +2715,17 @@ ${chunk.substring(0, 8000)}
       // 显示预览
       contentDiv.innerHTML = `
         <div class="font-bold mb-1">${this.escapeHtml(selectedArticle.title)}</div>
-        <div class="text-xs text-amber-600 mb-2">📅 发布日期：${dateStr}</div>
-        <div class="text-gray-600">${fullContent.substring(0, 500)}...</div>
+        <div class="text-xs text-amber-600 mb-2">📅 发布日期：${this.escapeHtml(dateStr)}</div>
+        <div class="text-gray-600">${this.escapeHtml(fullContent.substring(0, 500))}...</div>
       `;
       preview.classList.remove('hidden');
       status.textContent = '获取成功！';
       
     } catch (error) {
       console.error('ZDF fetch error:', error);
-      alert('获取失败: ' + error.message + '\n\n请检查网络连接或稍后重试。');
+      const message = '获取失败: ' + (error?.message || String(error));
+      if (status) status.textContent = message;
+      alert(message + '\n\n请检查网络连接或稍后重试。');
     } finally {
       btn.disabled = false;
       setTimeout(() => progress.classList.add('hidden'), 2000);
@@ -2876,14 +2877,14 @@ ${chunk.substring(0, 8000)}
       }
       
       const selectedArticle = articles[0];
-      this.fetchedAsahiFeeds.push(selectedArticle.link);
-      this.saveAsahiHistory();
       
       if (status) status.textContent = '正在获取文章内容...';
       
       const articleData = await this.desktopFetchArticle('asahi', selectedArticle.link);
       
       if (articleData.content) {
+        this.fetchedAsahiFeeds.push(selectedArticle.link);
+        this.saveAsahiHistory();
         // 处理日期 - 朝日 RSS 使用 dc:date 格式
         let dateStr = '日期未知';
         if (selectedArticle.pubDate) {
@@ -2919,7 +2920,9 @@ ${chunk.substring(0, 8000)}
       
     } catch (error) {
       console.error('Asahi fetch error:', error);
-      alert('获取失败: ' + error.message + '\n\n请检查网络连接或稍后重试。');
+      const message = '获取失败: ' + (error?.message || String(error));
+      if (status) status.textContent = message;
+      alert(message + '\n\n请检查网络连接或稍后重试。');
     } finally {
       if (btn) btn.disabled = false;
       setTimeout(() => progress?.classList.add('hidden'), 2000);

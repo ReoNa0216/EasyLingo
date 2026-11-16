@@ -92,3 +92,40 @@ test('failed AI extraction is visible and PDF/Word parsers load locally', async 
   }
   sql.close();
 });
+
+test('news failures remain retryable and untrusted previews stay text', async ({ page }) => {
+  const { sql, invoke } = fixture();
+  let failArticle = true;
+  const payload = '<img src=x onerror="window.newsInjected=1">';
+  await page.exposeFunction('nativeInvoke', async (cmd, args) => {
+    if (cmd === 'fetch_news_rss') return `<rss><channel><item><title>News</title><link>https://example.com/${args.source}</link><description></description><pubDate><![CDATA[${payload}]]></pubDate></item></channel></rss>`;
+    if (cmd === 'fetch_news_article') {
+      if (failArticle) throw new Error('connection timeout');
+      return { title: payload, content: payload + ' Article body.', source: args.source };
+    }
+    if (cmd.startsWith('plugin:dialog')) return true;
+    return invoke(cmd, args);
+  });
+  page.on('dialog', dialog => dialog.accept());
+  await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
+  await page.goto('http://127.0.0.1:1427');
+  await page.waitForFunction(() => app.isReady);
+  for (const source of ['bbc', 'guardian', 'npr', 'asahi', 'zdf']) {
+    const names = { bbc: 'BBC', guardian: 'Guardian', npr: 'NPR', asahi: 'Asahi', zdf: 'ZDF' };
+    const suffix = names[source];
+    await page.evaluate(async source => {
+      await app.switchModule(source === 'zdf' ? 'german' : source === 'asahi' ? 'japanese' : 'english');
+    }, source);
+    failArticle = true;
+    await page.evaluate(suffix => app[`fetch${suffix}News`](), suffix);
+    expect(await page.evaluate(suffix => app[`fetched${suffix}Feeds`].length, suffix)).toBe(0);
+    await expect(page.locator(`#${source}-status`)).toContainText('获取失败');
+    failArticle = false;
+    await page.evaluate(suffix => app[`fetch${suffix}News`](), suffix);
+    expect(await page.evaluate(suffix => app[`fetched${suffix}Feeds`].length, suffix)).toBe(1);
+    await expect(page.locator(`#${source}-content`)).toContainText('Article body.');
+    await expect(page.locator(`#${source}-content img`)).toHaveCount(0);
+    expect(await page.evaluate(() => window.newsInjected)).toBeUndefined();
+  }
+  sql.close();
+});
