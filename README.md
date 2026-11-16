@@ -97,7 +97,7 @@ npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 
 ## 资源与许可
 
-- [API 配置指南](API_configuration.pdf)（2.1.0 当前界面、字段说明、首次提取、排错与备份；[文字版](docs/api-configuration.md)）
+- [API 配置指南](API_configuration.pdf)（DeepSeek 与智谱官网截图、可复制参数、三个单词首次验证、排错与备份；[文字版](docs/api-configuration.md)）
 - [自定义提示词示例](prompt-examples/)
 - [MIT License](LICENSE)
 

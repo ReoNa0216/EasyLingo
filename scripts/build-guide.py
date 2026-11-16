@@ -6,7 +6,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak, Table, TableStyle, Preformatted
 
 root = Path(__file__).resolve().parents[1]
 pdfmetrics.registerFont(TTFont('CN', 'C:/Windows/Fonts/msyh.ttc'))
@@ -19,6 +19,8 @@ small = ParagraphStyle('small', parent=body, fontSize=8.5, leading=13, textColor
 title = ParagraphStyle('title', parent=body, fontName='CN-Bold', fontSize=25, leading=34, textColor=purple, spaceAfter=12)
 h2 = ParagraphStyle('h2', parent=body, fontName='CN-Bold', fontSize=17, leading=25, textColor=purple, spaceBefore=7, spaceAfter=13)
 h3 = ParagraphStyle('h3', parent=body, fontName='CN-Bold', fontSize=12, leading=20, textColor=purple, spaceBefore=9, spaceAfter=8)
+cell = ParagraphStyle('cell', parent=body, fontSize=8.5, leading=13, spaceAfter=0)
+code = ParagraphStyle('code', parent=body, fontSize=11, leading=20, backColor=colors.HexColor('#F2EDF7'), borderPadding=12, spaceBefore=4, spaceAfter=18)
 
 def markup(t):
     t = escape(t)
@@ -38,11 +40,32 @@ for block in (root/'docs/api-configuration.md').read_text(encoding='utf-8').spli
     elif block.startswith('# '): story.append(Paragraph(markup(block[2:]), title))
     elif block.startswith('!['):
         path = root/'docs'/re.search(r'\]\(([^)]+)\)', block).group(1)
-        pic = Image(str(path), width=270, height=270*1776/1024)
+        pic = Image(str(path))
+        width = 215 if path.name == 'settings.png' else (230 if 'create-key' in path.name else A4[0]-100)
+        pic.drawHeight = width * pic.imageHeight / pic.imageWidth
+        pic.drawWidth = width
         pic.hAlign='CENTER'
         story.extend([Spacer(1,3), pic, Spacer(1,10)])
+    elif block.startswith('|'):
+        rows = [[v.strip() for v in line.strip().strip('|').split('|')] for line in block.splitlines()]
+        rows.pop(1)  # Markdown header separator.
+        data = [[Paragraph(markup('**'+v+'**' if i == 0 else v), cell) for v in row] for i, row in enumerate(rows)]
+        width = A4[0]-100
+        widths = [90, 176, width-266] if len(rows[0]) == 3 else [128, width-128]
+        table = Table(data, colWidths=widths, repeatRows=1, hAlign='LEFT')
+        table.setStyle(TableStyle([
+            ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#E7E0F0')),
+            ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.HexColor('#F7F4FA'),colors.white]),
+            ('VALIGN',(0,0),(-1,-1),'TOP'),
+            ('LEFTPADDING',(0,0),(-1,-1),9), ('RIGHTPADDING',(0,0),(-1,-1),9),
+            ('TOPPADDING',(0,0),(-1,-1),8), ('BOTTOMPADDING',(0,0),(-1,-1),8),
+            ('LINEBELOW',(0,-1),(-1,-1),0.5,colors.HexColor('#E7E0F0')),
+        ]))
+        story.extend([table, Spacer(1,10)])
+    elif block.startswith('```'):
+        story.append(Preformatted('\n'.join(block.splitlines()[1:-1]), code))
     else:
-        is_small = block.startswith(('适用版本', '开发者', '图中', '官方参考', '项目与下载'))
+        is_small = block.startswith(('适用版本', '开发者', '截图', '官方参考', '项目与下载'))
         story.append(Paragraph(markup(block.replace('\n',' ')), small if is_small else body))
 
 def page_frame(c, doc):
