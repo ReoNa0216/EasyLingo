@@ -1,127 +1,89 @@
 # EasyLingo
 
-桌面语言学习工具，支持从学习材料提取词条、间隔复习、测试与学习记录。
+EasyLingo 是一款桌面语言学习工具，支持从材料中提取词条、间隔复习、生成测试和查看学习记录。内置德语、日语、英语模块，也可添加其他语言。
 
 **开发者：陈挚**
 
 **开发单位：清华大学语言教学中心**
 
-**版本：2.1.2**
+## 下载
 
-应用侧栏的「帮助与关于」和「设置」均显示开发者及开发单位。
+当前版本：**2.1.2**。全部文件见 [GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.2)。
 
-## 安装包
+| 平台 | 下载 | 使用方式 |
+|---|---|---|
+| Windows 10/11 x64 | [安装包](https://github.com/ReoNa0216/EasyLingo/releases/download/v2.1.2/EasyLingo_2.1.2_x64-setup.exe) | 双击安装，缺少 WebView2 时安装器会引导下载 |
+| macOS Apple Silicon | [DMG](https://github.com/ReoNa0216/EasyLingo/releases/download/v2.1.2/EasyLingo_2.1.2_aarch64.dmg) | 打开后将应用拖入“应用程序” |
+| Windows 免安装试用 | [ZIP](https://github.com/ReoNa0216/EasyLingo/releases/download/v2.1.2/EasyLingo_2.1.2_Windows-preview.zip) | 解压后双击 `EasyLingo-2.1.2.exe` |
 
-正式提交版下载：[EasyLingo 2.1.2](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.2)。本版完成跨语言和核心流程回归，修复词性、批量补全、出题判分、备份及跨模块操作问题。查看[Windows 安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43890370271)和[双平台构建](https://github.com/ReoNa0216/EasyLingo/actions/runs/43886759494)。各新闻源的实际访问结果及验证范围见[审计记录](docs/submission-audit.md)。
+Windows 版本需要 Edge WebView2 Runtime。macOS 安装包适用于 Apple Silicon，未做 Apple 公证，首次打开可能需要在系统设置中确认来源。免安装试用版与正式版分别保存数据，可用 JSON 备份迁移词条和学习记录。
 
-- Windows 10/11 x64：`EasyLingo_2.1.2_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
-- macOS Apple Silicon：`EasyLingo_2.1.2_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
-- Windows 免安装试用：解压 `EasyLingo_2.1.2_Windows-preview.zip`，双击 `EasyLingo-2.1.2.exe`。试用数据使用独立目录。
-- 安装包尚未使用商业代码签名证书或 Apple 公证，系统可能要求确认来源。macOS 已验证包内应用启动，带下载隔离标记时的首次运行提示取决于系统版本。
+## 可以做什么
+
+- **导入学习材料**：支持 TXT、Markdown、文本型 PDF 和 DOCX，也可批量输入或手动添加词条。
+- **整理词条**：通过自行配置的 AI 服务生成释义、词性和例句；支持编辑、日语注音，以及自定义语言的提取要求。
+- **复习与测试**：按间隔安排复习，生成选择、填空和翻译题，查看学习日历与统计。
+- **阅读新闻**：英语默认 NPR，另有 China Daily、BBC 和 Guardian；日语使用人民网日语版，德语使用 ZDFheute。BBC、Guardian 标注“需代理”。
+
+已有词条可离线阅读和复习。AI 功能和新闻抓取需要联网，软件会读取系统代理设置；修改代理后请重启应用。
 
 ## 界面预览
 
-以下截图使用隔离演示数据。
+以下截图使用演示数据。
 
-![紫色学习概览](docs/images/overview.png)
+![学习概览](docs/images/overview-2.1.2.png)
 
-![日语词条、名词（サ变）标注与注音](docs/images/japanese.png)
+![日语词条：名词（サ变）与读音标注](docs/images/japanese-2.1.2.png)
 
-## 使用
+## 开始使用
 
-1. 选择德语、日语、英语或自建语言模块。
-2. 按 [API 配置指南](docs/api-configuration.md) 填写地址、密钥、模型和输出长度。智谱 GLM-4-Plus 的 Max Tokens 使用 `4000`。API 地址填写基础路径，不包含 `/chat/completions`。
-3. 导入 TXT、Markdown、文本型 PDF、DOCX，或手动添加词条。选择文件后会自动开始 AI 提取；扫描 PDF 需要先 OCR。
-4. 按到期词条复习；测试支持选择、填空、翻译。翻译题对照参考答案自行评估。
-5. 在设置中导出 JSON 备份。恢复备份会替换当前数据，恢复前请备份；2.1.2 接受 v2.0 格式的完整 JSON 备份。
-
-界面、图表、日历、文件解析器随安装包提供。已有词条的阅读和复习可离线使用；AI 和新闻抓取需要联网。软件会读取 Windows/macOS 系统代理设置；更改代理后请重启软件。新闻网站可能限制当前网络的访问或改变页面结构，界面会显示具体失败原因。
-
-日语新闻使用人民网日语版；英语默认 NPR，另提供 China Daily（China 栏目最新英语文章）、BBC 和 The Guardian；德语使用 ZDFheute。BBC、Guardian 标注“需代理”，适用于部分网络下无法直连的情况。新闻导入均保留来源及原文链接。各来源在直连与代理下的可用性分别测试，结果见审计记录。
+1. 选择德语、日语、英语，或添加自己的语言模块。
+2. 打开“设置”，按 [API 配置指南](docs/api-configuration.md) 填写地址、密钥、模型和输出长度。指南提供 DeepSeek 与智谱的官网配图和完整步骤，也可下载 [PDF](API_configuration.pdf)。
+3. 先按指南导入三个单词，确认释义、词性和例句正常生成，再导入自己的材料。选择文件后会自动开始提取；扫描 PDF 需先进行 OCR。
+4. 在词条页面查看和编辑内容，使用“开始复习”或“生成测试”。填空题保留冠词和大小写，翻译题对照参考答案自行评估。
+5. 在“设置”中导出 JSON 备份。恢复备份会替换当前学习数据，恢复前请先导出一份备份。
 
 ## 数据与隐私
 
-学习记录与 API 密钥保存在本机 SQLite 数据库。AI 功能将相关学习材料、词条和提示词发送至您配置的 API 服务商，费用按该服务商规则收取。JSON 备份不包含 API 密钥，恢复后重新填写。
+学习数据和 API 密钥保存在本机 SQLite 数据库。使用 AI 时，相关材料、词条和提示词会发送到您配置的服务商，费用按服务商规则收取。生成内容可结合原文核对和编辑。
 
-- Windows：`%APPDATA%/com.reona0216.easylingo/polylingo.db`
-- macOS：`~/Library/Application Support/com.reona0216.easylingo/polylingo.db`
-- 自定义目录在重启后生效，当前数据不会自动搬迁。只选择自己管理的可信目录；交换学习资料请使用 JSON 备份。
+JSON 备份包含词条与学习记录，不包含 API 密钥。恢复或换电脑后需重新填写密钥。
 
-AI 生成的释义、例句、题目和参考答案需结合原文核对。当前复习调度采用分级间隔规则。
+默认数据目录：
+
+- Windows：`%APPDATA%/com.reona0216.easylingo/`
+- macOS：`~/Library/Application Support/com.reona0216.easylingo/`
+
+自定义数据目录在重启后生效。迁移顺序为：导出 JSON，选择新目录并重启，再导入 JSON。
 
 ## 从源码构建
 
-需要 Node.js 24、Rust 1.94 或更新稳定版，以及 [Tauri v2 对应系统构建依赖](https://v2.tauri.app/start/prerequisites/)。
+需要 Node.js 24、Rust 1.94 或更新稳定版，以及 [Tauri v2 系统构建依赖](https://v2.tauri.app/start/prerequisites/)。
 
 ```sh
 npm ci
 npm run assets
 npm run check
 npm test
-cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 npm run test:ui
+cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+
+# Windows 安装包
 npm run build:win
-# Windows 免安装试用构建，使用独立数据目录
+# Windows 免安装试用
 npm run tauri -- build --no-bundle --config scripts/preview.conf.json
 # Apple Silicon Mac
 npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 ```
 
-浏览器回归测试默认使用已安装的 Microsoft Edge；开发运行 `npm run dev`，使用 Node.js 提供本地静态服务。构建会自动生成本地前端资源。
+开发运行 `npm run dev`。浏览器回归测试默认使用已安装的 Microsoft Edge。构建会打包本地字体、图表和文件解析器。
 
-免安装试用构建的可执行文件位于 `src-tauri/target/release/easylingo.exe`，可复制到任意目录双击运行，运行环境要求与正式版相同。切换回正式版请重新运行正式构建命令。`node_modules/`、`src/vendor/`、`src-tauri/gen/` 和 `src-tauri/target/` 均可重新生成；清理后先运行 `npm ci`。
+## 更多资料
 
-配置指南的文字源为 `docs/api-configuration.md`。在装有微软雅黑的 Windows 上安装 Python `reportlab` 后，运行 `python scripts/build-guide.py` 可重新生成根目录 PDF；更新界面时同步替换 `docs/images/settings.png`。
-
-## 2.1.2 跨语言与核心流程修复
-
-- 德语、英语、日语和自定义语言按各自规则提取、补全及出题；保留自定义要求、细分类和语法性别。
-- 批量补全按原词匹配结果，支持模型乱序和缺项；失败词保留供重试，错误消息不会作为释义入库。
-- 保留完整材料；空响应、无效 JSON 和输出截断显示提取失败。新闻部分成功后重试复用材料，保留已有编辑和复习进度。
-- 选择题校验四个不同选项；填空保留完整短语、冠词和大小写；题目关联实际词条，混合测试不串语言，也不改变所选题型配额。
-- 删除词条同时清理关联卡片并更新材料计数，完整备份仍可恢复；查重保留不同大小写、释义和词性，重复内容保留复习等级较高的一条。
-- 修复跨模块批量误删、延迟查询覆盖、导入完成清空新输入、新闻预览丢失及离开复习后继续计时。
-- 修复月末统计遗漏月份；长文、重试、旧数据与失败回滚纳入自动回归。
-
-三名独立子代理分别审计数据、AI 与出题、界面与发布配置。合并验证通过 15 项数据库、48 组浏览器场景；原生和两平台安装验证记录见审计文档。AI 请求采用可控响应检查协议、提示词和异常处理，真实模型的语言内容质量另行评价。
-
-## 2.1.1 日语词性修复
-
-- 对齐原生 SQLite 命令的返回格式，修复新增词条后未取得 ID 的问题。
-
-- 将旧数据中的 `Noun` 等常见词性标签显示为中文，保留已标注的活用类型、自他性及自定义内容；不会把所有名词都判为サ变。
-- 日语材料提取、空结果重试、批量补全使用同一套中文日语学习术语，区分五段、一段、サ变、カ变、自他动词及两类形容词。
-- 修复日语批量补全漏传详细词性要求，以及材料空结果重试误用德语提示的问题。
-- 日语、英语及自定义模块的单词均可在编辑窗口修改词性；德语名词性别继续单独保存。
-- 更新隔离演示截图：“学習”标为“名词（サ变）”，可接する构成学習する。依据[小学馆《デジタル大辞泉》“学習”词条](https://kotobank.jp/word/%E5%AD%A6%E7%BF%92-11976)的名词及する用法标注。
-
-## 2.1.0 界面更新
-
-- 使用传统紫色色系，统一概览、材料、词条、复习、设置、日历与图表。
-- 本地打包 Inter、Noto Sans SC 和 Noto Sans JP 可变字体；中文界面、英语/德语原文与日语原文分别选用相应字库，日语保留注音。
-- 已导入材料优先显示；预览支持全文滚动、安全文本呈现、键盘关闭和焦点返回。
-- 设置固定显示保存/关闭，窄窗口和放大阅读可继续操作；设置输入不再触发背后的复习快捷键。
-- 复习评分改为“忘记、模糊、记得、熟练”，明确每日复习量与已记住比例；从首页只选择一种语言时，记录显示对应语言。
-- 字体采用 OFL 许可，许可证随本地字体资源提供；不依赖在线字体服务。
-- 应用和安装器统一使用紫色「书页＋对话气泡」图标；配置指南同步当前界面。
-
-## 2.0.1 修复
-
-- 数据库升级采用补字段迁移，保留旧数据；修复旧时间戳导致词条无法进入复习的问题。
-- 完整备份恢复纳入卡片与学习记录，校验后在单个事务内写入，出错回滚。
-- 修复自定义模块修改、词条编辑关闭弹窗、模块删除残留词条、存储目录切换问题。
-- 修复短时复习不计数、快速重复评分、每日限额为 1 时抽不到词条、混合测试语言判分问题。
-- AI 请求改用原生网络连接并设置超时；错误提取结果显示失败；更新 PDF 解析器和前端内容净化。
-- 日语新闻改用人民网，修复新闻历史清空后重新加载旧记录的问题；全部新闻源的 AI 提取失败时保留预览供重试，重复点击不会重复导入。
-- 增加 China Daily 英语新闻，默认 NPR，BBC 与 Guardian 使用简短代理标签。
-- 移除运行时 CDN 依赖，补齐离线界面资源、开发署名、许可证、自动化回归与双平台构建。
-
-完整审计和验收记录见 [docs/submission-audit.md](docs/submission-audit.md)。
-
-## 资源与许可
-
-- [API 配置指南](API_configuration.pdf)（DeepSeek 与智谱官网截图、可复制参数、三个单词首次验证、排错与备份；[文字版](docs/api-configuration.md)）
+- [API 配置指南](docs/api-configuration.md)
 - [自定义提示词示例](prompt-examples/)
+- [版本发布记录](https://github.com/ReoNa0216/EasyLingo/releases)
+- [审计与验证记录](docs/submission-audit.md)
 - [MIT License](LICENSE)
 
-本项目由 [PolyLingo](https://github.com/ReoNa0216/PolyLingo) 的桌面版本演进而来。第三方前端组件许可证随应用资源打包。
+本项目由 [PolyLingo](https://github.com/ReoNa0216/PolyLingo) 的桌面版本演进而来。第三方组件和字体许可证随应用资源提供。
