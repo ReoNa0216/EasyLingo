@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run assets && python -m http.server 1420 --bind 127.0.0.1 --directory src",
+    "beforeDevCommand": "npm run assets && node scripts/serve.cjs 1420",
     "beforeBuildCommand": "npm run assets"
   },
   "app": {
@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'",
+      "csp": "default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'",
       "capabilities": [
         "default"
       ]
@@ -47,6 +47,9 @@
     "category": "Education",
     "shortDescription": "AI-powered language learning app",
     "longDescription": "EasyLingo is a desktop language learning application with AI extraction and SRS review system.",
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",

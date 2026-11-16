@@ -281,6 +281,27 @@ class DatabaseAdapter {
       for (const row of data[table]) {
         if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`无效的 ${table} 记录`);
         await this.validateColumns(table, row);
+        const schema = await this.select(`PRAGMA table_info(${table})`);
+        for (const column of schema) {
+          const value = row[column.name];
+          if (value == null) continue;
+          if (['INTEGER', 'REAL'].includes(column.type) && (typeof value !== 'number' || !Number.isFinite(value))) {
+            throw new Error(`备份数字字段无效: ${table}.${column.name}`);
+          }
+          if (column.type === 'TEXT' && !(table === 'tests' && ['answers', 'questions', 'results'].includes(column.name)) && typeof value !== 'string') {
+            throw new Error(`备份文本字段无效: ${table}.${column.name}`);
+          }
+        }
+        if (table === 'tests') {
+          for (const field of ['questions', 'results']) {
+            const list = typeof row[field] === 'string' ? JSON.parse(row[field]) : row[field];
+            if (list != null && !Array.isArray(list)) throw new Error(`备份测试字段无效: ${field}`);
+            for (const item of list || []) {
+              const question = field === 'results' ? item?.question : item;
+              if (!question || typeof question !== 'object' || (question.options != null && (!Array.isArray(question.options) || question.options.some(o => typeof o !== 'string')))) throw new Error('备份题目格式无效');
+            }
+          }
+        }
         if (row.id == null || ids.has(row.id)) throw new Error(`无效或重复的 ${table} ID`);
         ids.add(row.id);
         if (['entries', 'cards', 'records'].includes(table) && !Number.isSafeInteger(row.id)) throw new Error(`无效的 ${table} ID`);

@@ -48,7 +48,13 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          app="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/EasyLingo.app"
+          dmg=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)
+          mount="$RUNNER_TEMP/EasyLingo-dmg"
+          mkdir -p "$mount"
+          hdiutil attach "$dmg" -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount"' EXIT
+          app="$RUNNER_TEMP/EasyLingo.app"
+          ditto "$mount/EasyLingo.app" "$app"
           codesign --verify --deep --strict "$app"
           file "$app/Contents/MacOS/easylingo" | grep arm64
           "$app/Contents/MacOS/easylingo" > macos-startup.log 2>&1 &

@@ -36,7 +36,7 @@ const assert = require('node:assert/strict');
     const page = browser.contexts()[0].pages()[0];
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    page.on('console', m => { if (m.type() === 'error') console.log('WEBVIEW:', m.text()); });
+    page.on('console', m => { if (m.type() === 'error') errors.push(m.text().slice(0, 300)); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.isReady, { timeout: 20000 });
     const database = await page.evaluate(() => dbAdapter.select('PRAGMA database_list'));
     if (!process.env.CI) assert.match(database[0].file, /easylingo\.audit/i);
@@ -45,7 +45,7 @@ const assert = require('node:assert/strict');
     await page.screenshot({ path: 'artifacts/native-about.png' });
     assert.match(await page.locator('#about-modal').innerText(), /开发者：陈挚/);
     await page.locator('#about-modal button').click();
-    await page.evaluate(() => { window.alert = () => {}; app.alertDialog = async () => {}; app.confirmDialog = async () => true; });
+    await page.evaluate(() => { window.smokeAlerts = []; window.alert = message => window.smokeAlerts.push(message); app.alertDialog = async message => window.smokeAlerts.push(message); app.confirmDialog = async () => true; });
     const port = server.address().port;
     await page.evaluate(async port => {
       await dbAdapter.putSetting({ id: 'apiUrl', value: `http://127.0.0.1:${port}/v1` });
@@ -64,7 +64,27 @@ const assert = require('node:assert/strict');
       assert.match(text, /Hello EasyLingo/);
     }
     console.log('Native PDF/DOCX parsing passed');
+    const restored = await page.evaluate(async () => {
+      const data = { version: '2.0.1' };
+      const tables = ['modules', 'materials', 'entries', 'cards', 'tests', 'records', 'settings'];
+      for (const table of tables) data[table] = await dbAdapter.select(`SELECT * FROM ${table}`);
+      await dbAdapter.restoreBackup(data);
+      for (const table of tables) {
+        const after = await dbAdapter.select(`SELECT * FROM ${table}`);
+        if (JSON.stringify(after) !== JSON.stringify(data[table])) return false;
+      }
+      return true;
+    });
+    assert.equal(restored, true);
+    console.log('Native SQLite backup transaction round trip passed');
     assert.deepEqual(errors, []);
+    if (process.argv.includes('--export')) {
+      console.log('Waiting for native Save dialog selection');
+      await page.evaluate(() => app.exportData());
+      const alerts = await page.evaluate(() => window.smokeAlerts);
+      console.log('Native export messages:', alerts);
+      assert.ok(alerts.some(message => message.includes('数据导出成功')), 'Export must confirm a successful write');
+    }
     console.log('NATIVE_SMOKE_PASS');
   } finally {
     if (browser) await browser.close();

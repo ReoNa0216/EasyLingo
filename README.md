@@ -54,7 +54,7 @@ npm run build:win
 npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 ```
 
-浏览器回归测试默认使用已安装的 Microsoft Edge；开发运行 `npm run dev`，需要 Python 3 提供本地静态服务。构建会自动生成本地前端资源。
+浏览器回归测试默认使用已安装的 Microsoft Edge；开发运行 `npm run dev`，使用 Node.js 提供本地静态服务。构建会自动生成本地前端资源。
 
 ## 2.0.1 修复
 

@@ -6713,7 +6713,7 @@ Requirements:
       this.showProgressDialog('正在导出数据');
       
       // 使用 Tauri FS API 写入文件
-      await invoke('plugin:fs|write_text_file', { path: savePath, data: jsonContent, options: {} });
+      await invoke('plugin:fs|write_text_file', new TextEncoder().encode(jsonContent), { headers: { path: encodeURIComponent(savePath) } });
       
       this.closeProgressDialog();
       await this.alertDialog(`✅ 数据导出成功！\n保存路径: ${savePath}`);

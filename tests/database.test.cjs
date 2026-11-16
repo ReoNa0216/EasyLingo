@@ -80,3 +80,12 @@ test('legacy millisecond dates become valid ISO strings without losing review da
   assert.equal(row.nextReview, '2023-11-14T22:13:20.000Z');
   sql.close();
 });
+
+test('backup rejects HTML masquerading as numeric learning history', async () => {
+  const { db, sql } = fixture(); await db.init();
+  await db.putModule({ id: 'english', name: 'keep' });
+  const data = { version: '2.0', modules: [], materials: [], entries: [], cards: [], tests: [], records: [{ id: 1, duration: '<img src=x onerror=alert(1)>' }], settings: [] };
+  await assert.rejects(db.restoreBackup(data), /数字字段无效/);
+  assert.equal((await db.getModule('english')).name, 'keep');
+  sql.close();
+});
