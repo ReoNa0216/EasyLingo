@@ -6,17 +6,17 @@
 
 **开发单位：清华大学语言教学中心**
 
-**版本：2.1.0**
+**版本：2.1.1**
 
 应用侧栏的「帮助与关于」和「设置」均显示开发者及开发单位。
 
 ## 安装包
 
-正式提交版下载：[EasyLingo 2.1.0](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.0)。本版完成旧项目修复、紫色界面、中英日字体、新图标及配置指南，已通过[双平台构建与安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43853836214)。各新闻源的实际访问结果及验证范围见[审计记录](docs/submission-audit.md)。
+正式提交版下载：[EasyLingo 2.1.1](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.1)。本版在紫色界面、字体、新图标及配置指南的基础上，修复日语词性标注与编辑。查看[双平台构建与安装验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43876855049)。各新闻源的实际访问结果及验证范围见[审计记录](docs/submission-audit.md)。
 
-- Windows 10/11 x64：`EasyLingo_2.1.0_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
-- macOS Apple Silicon：`EasyLingo_2.1.0_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
-- Windows 免安装试用：解压 `EasyLingo_2.1.0_Windows-preview.zip`，双击 `EasyLingo-2.1.0.exe`。试用数据使用独立目录。
+- Windows 10/11 x64：`EasyLingo_2.1.1_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
+- macOS Apple Silicon：`EasyLingo_2.1.1_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
+- Windows 免安装试用：解压 `EasyLingo_2.1.1_Windows-preview.zip`，双击 `EasyLingo-2.1.1.exe`。试用数据使用独立目录。
 - 安装包尚未使用商业代码签名证书或 Apple 公证，系统可能要求确认来源。macOS 已验证包内应用启动，带下载隔离标记时的首次运行提示取决于系统版本。
 
 ## 界面预览
@@ -25,7 +25,7 @@
 
 ![紫色学习概览](docs/images/overview.png)
 
-![日语词条与注音](docs/images/japanese.png)
+![日语词条、名词（サ变）标注与注音](docs/images/japanese.png)
 
 ## 使用
 
@@ -33,7 +33,7 @@
 2. 按 [API 配置指南](docs/api-configuration.md) 填写地址、密钥、模型和输出长度。智谱 GLM-4-Plus 的 Max Tokens 使用 `4000`。API 地址填写基础路径，不包含 `/chat/completions`。
 3. 导入 TXT、Markdown、文本型 PDF、DOCX，或手动添加词条。选择文件后会自动开始 AI 提取；扫描 PDF 需要先 OCR。
 4. 按到期词条复习；测试支持选择、填空、翻译。翻译题对照参考答案自行评估。
-5. 在设置中导出 JSON 备份。恢复备份会替换当前数据，恢复前请备份；2.1.0 接受 v2.0 格式的完整 JSON 备份。
+5. 在设置中导出 JSON 备份。恢复备份会替换当前数据，恢复前请备份；2.1.1 接受 v2.0 格式的完整 JSON 备份。
 
 界面、图表、日历、文件解析器随安装包提供。已有词条的阅读和复习可离线使用；AI 和新闻抓取需要联网。软件会读取 Windows/macOS 系统代理设置；更改代理后请重启软件。新闻网站可能限制当前网络的访问或改变页面结构，界面会显示具体失败原因。
 
@@ -72,6 +72,16 @@ npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
 免安装试用构建的可执行文件位于 `src-tauri/target/release/easylingo.exe`，可复制到任意目录双击运行，运行环境要求与正式版相同。切换回正式版请重新运行正式构建命令。`node_modules/`、`src/vendor/`、`src-tauri/gen/` 和 `src-tauri/target/` 均可重新生成；清理后先运行 `npm ci`。
 
 配置指南的文字源为 `docs/api-configuration.md`。在装有微软雅黑的 Windows 上安装 Python `reportlab` 后，运行 `python scripts/build-guide.py` 可重新生成根目录 PDF；更新界面时同步替换 `docs/images/settings.png`。
+
+## 2.1.1 日语词性修复
+
+- 对齐原生 SQLite 命令的返回格式，修复新增词条后未取得 ID 的问题。
+
+- 将旧数据中的 `Noun` 等常见词性标签显示为中文，保留已标注的活用类型、自他性及自定义内容；不会把所有名词都判为サ变。
+- 日语材料提取、空结果重试、批量补全使用同一套中文日语学习术语，区分五段、一段、サ变、カ变、自他动词及两类形容词。
+- 修复日语批量补全漏传详细词性要求，以及材料空结果重试误用德语提示的问题。
+- 日语、英语及自定义模块的单词均可在编辑窗口修改词性；德语名词性别继续单独保存。
+- 更新隔离演示截图：“学習”标为“名词（サ变）”，可接する构成学習する。依据[小学馆《デジタル大辞泉》“学習”词条](https://kotobank.jp/word/%E5%AD%A6%E7%BF%92-11976)的名词及する用法标注。
 
 ## 2.1.0 界面更新
 
