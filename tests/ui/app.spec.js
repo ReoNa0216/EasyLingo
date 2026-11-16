@@ -264,3 +264,26 @@ test('bundled fonts render Chinese, Latin and Japanese without external requests
   await cdp.detach();
   sql.close();
 });
+
+test('exported backup can be restored after an application version update', async ({ page }) => {
+  const { db, sql, invoke } = fixture();
+  let exported;
+  await page.exposeFunction('nativeInvoke', async (command, args) => {
+    if (command === 'plugin:dialog|save') return 'test-only-backup.json';
+    if (command === 'plugin:fs|write_text_file') { exported = JSON.parse(Buffer.from(Object.values(args)).toString('utf8')); return; }
+    if (command.startsWith('plugin:dialog')) return;
+    return invoke(command, args);
+  });
+  await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
+  await page.goto('http://127.0.0.1:1427');
+  await page.waitForFunction(() => app.isReady);
+  await db.putEntry({ moduleId: 'english', original: 'keep this word', translation: '保存此词条' });
+  await db.putSetting({ id: 'apiKey', value: 'test-only-secret' });
+  await page.locator('#nav-settings').click();
+  await page.getByRole('button', { name: '导出数据', exact: true }).click();
+  await expect.poll(() => exported?.entries?.length).toBe(1);
+  expect(exported.settings.some(setting => setting.id === 'apiKey')).toBe(false);
+  await page.evaluate(data => dbAdapter.restoreBackup(data), exported);
+  expect((await db.getAllEntries())[0].original).toBe('keep this word');
+  sql.close();
+});

@@ -6733,7 +6733,8 @@ Requirements:
         records: await dbAdapter.getAllRecords(),
         settings: (await dbAdapter.getAllSettings()).filter(s => s.id !== 'apiKey'),
         exportDate: new Date().toISOString(),
-        version: '2.1.0'
+        // Backup schema version is independent of the application release number.
+        version: '2.0'
       };
       
       const jsonContent = JSON.stringify(data, null, 2);

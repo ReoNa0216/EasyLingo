@@ -81,7 +81,7 @@ const assert = require('node:assert/strict');
     }
     console.log('Native PDF/DOCX parsing passed');
     const restored = await page.evaluate(async () => {
-      const data = { version: '2.1.0' };
+      const data = { version: '2.0' };
       const tables = ['modules', 'materials', 'entries', 'cards', 'tests', 'records', 'settings'];
       for (const table of tables) data[table] = await dbAdapter.select(`SELECT * FROM ${table}`);
       await dbAdapter.restoreBackup(data);
