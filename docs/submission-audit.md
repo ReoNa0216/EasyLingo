@@ -49,9 +49,18 @@
 - 浏览器：2 个端到端场景通过，覆盖阻断外网条件下启动、署名、恶意内容净化、编辑、复习、模块修改、图表和日历；PDF/DOCX 真实样本解析；模拟 401 错误。
 - Rust：2 项测试通过，验证真实 SQLx 事务回滚、API URL 限制。
 - 原生 Windows 桌面：隔离数据库启动、署名显示、本机 HTTP 模拟 AI → SQLite → 界面、真实 PDF/DOCX 解析、7 张表备份恢复往返通过；原生保存对话框导出 JSON 成功，读取落盘文件确认不含 API 密钥。
-- 双平台安装包：构建及验收进行中，最终结果在此处补记。macOS 使用 ad-hoc 签名，尚未取得 Apple Developer ID 签名和公证。
+- Windows x64：从 NSIS 安装器静默安装，读取注册表确认 2.0.1 和安装路径，再启动已安装的程序；原生 SQLite、AI 协议、PDF/DOCX 和备份事务往返全部通过，输出 `NATIVE_SMOKE_PASS`。本机 Debug、Release 和全新隔离数据库也通过原生回归。
+- macOS Apple Silicon：实际挂载 DMG，复制包内应用，验证 `codesign --verify --deep --strict`、ARM64 架构和进程启动；通过。当前为 ad-hoc 签名，未取得 Apple Developer ID 签名和公证；尚未完成用户 Mac 上带下载隔离标记的交互验收。
+- 构建来源：应用源码提交 `52004e402bf4202e5c377877e45d578da74157d5`，双平台包由 [构建运行 43798388100](https://github.com/ReoNa0216/EasyLingo/actions/runs/43798388100) 生成。Windows 安装验证使用同一产物，在 [验收运行 43799725076](https://github.com/ReoNa0216/EasyLingo/actions/runs/43799725076) 通过。后续提交仅调整验收工作流和交付文档，没有修改包内应用源码。
+- CI 环境差异：Windows 2025 运行器安装成功，但 WebView2 调试端口持续拒绝连接；同一安装包在 Windows 2022 运行器和本机原生验证成功。安装验证固定为 Windows 2022，可指定已有构建 run ID 单独重验，避免重复编译；此记录不代表已证实 Windows 2025 系统上的所有交互使用均失败。
 - 真实付费 AI 服务：尚未使用用户密钥调用；当前以本机模拟服务验证请求协议和错误处理。
 - 新闻实测：2026-11-16 本机原生请求中，NPR 与朝日新闻 RSS 和文章正文返回成功；BBC、Guardian、ZDF 在请求阶段失败，本轮网络环境未能验证其抓取效果。此结果未计为五个新闻源全部验收通过。可用 `node scripts/native-smoke.cjs <隔离审计程序路径> --news` 重测。
+
+## 提交产物与存储
+
+本轮交付 `EasyLingo_2.0.1_x64-setup.exe`、`EasyLingo_2.0.1_aarch64.dmg`、`SHA256SUMS.txt`。Windows 验收日志与署名截图随本地交付目录保存。安装包按用户要求使用数字结尾的 2.0.1，不使用预发行后缀。
+
+本仓库公开，标准 GitHub 托管运行器不扣除私有仓库计算额度。Actions 同分支新运行自动取消旧运行；普通测试产物保存 7 天，标签构建产物保存 30 天，正式发布文件通过 GitHub Releases 长期提供。2026-11-16 检查时，旧运行记录多数已无构建产物，未为节省额度删除排错历史。
 
 ## 第二阶段候选范围
 

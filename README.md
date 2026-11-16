@@ -12,7 +12,7 @@
 
 ## 安装包
 
-正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.0.1 验收期间请使用对应构建产物；旧版 v2.0.0 不含本次修复。
+正式发布下载：[GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases)。2.0.1 提交版待确认期间，可从[双平台构建产物](https://github.com/ReoNa0216/EasyLingo/actions/runs/43798388100)下载（Actions 下载需要登录，产物保留 7 天）；旧版 v2.0.0 不含本次修复。Windows 安装后的原生功能已在[独立验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/43799725076)通过，macOS 包已通过签名完整性和启动检查。
 
 - Windows 10/11 x64：`EasyLingo_2.0.1_x64-setup.exe`，需要 Microsoft Edge WebView2 Runtime，安装器可在缺少时下载。
 - macOS Apple Silicon：`EasyLingo_2.0.1_aarch64.dmg`。Intel Mac 不在本轮构建范围内。
