@@ -70,7 +70,8 @@ jobs:
           $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/CURRENTUSER', '/NS') -WindowStyle Hidden -PassThru -Wait
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
           $registration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\EasyLingo' -ErrorAction Stop
-          if ($registration.DisplayVersion -ne '2.0.1') { throw 'Unexpected installed version' }
+          $expectedVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($registration.DisplayVersion -ne $expectedVersion) { throw 'Unexpected installed version' }
           $installDir = $registration.InstallLocation.Trim('"')
           if (!(Test-Path -LiteralPath "$installDir/easylingo.exe")) { throw "Installed executable missing: $installDir" }
           Write-Output "Verifying installed version $($registration.DisplayVersion) at $installDir"
