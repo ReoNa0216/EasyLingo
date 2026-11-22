@@ -202,3 +202,17 @@ GitHub 日语演示截图显示 `Noun`，核查确认前端词性翻译表遗漏
 
 
 README 已整理为当前功能、下载、使用和构建说明，各版本改进记录保留在 Releases 和本文。首页截图改用带版本号的文件名；日语截图明确显示“名词（サ变）”，更换图片地址以更新页面引用。此次仅修改文档和截图路径，2.1.2 应用文件保持原有校验值。
+
+## 2.1.3 署名与产品副标题
+
+2026-11-22，产品副标题更新为“多语学习助手”。应用、指南、README 和随包说明使用以下署名。
+
+开发者：陈挚（清华大学生命科学学院）
+
+语言顾问：清华大学语言教学中心 王雯鹤 老师
+
+安装包源码为 `be8c9f354d876bf88b0cfe71ff6927d8289f3fe5`。15 项数据库测试、48 项浏览器测试和 6 项 Rust 测试通过。macOS DMG 通过挂载、应用复制、签名完整性、ARM64 架构与启动检查。[安装包构建与 macOS 验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/44971456962)
+
+首次 Windows 免安装验收未建立 WebView2 调试连接。后续验收使用 Windows 2022，在正式安装后校验版本和发布者，再测试免安装版。两次原生检查均输出 `NATIVE_SMOKE_PASS`。验收流程提交为 `00840f7635e401d35579cb253dbf88e7436247da`，应用源码与发布标签一致。[Windows 安装版与免安装版验收](https://github.com/ReoNa0216/EasyLingo/actions/runs/44972694575)
+
+提交包包含 Windows x64 安装版、Windows 免安装版、macOS Apple Silicon DMG、API 配置指南、提交说明与校验清单。[v2.1.3 发布页](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.3)
