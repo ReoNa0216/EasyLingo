@@ -79,26 +79,11 @@ jobs:
           path: ${{ matrix.artifact }}
           if-no-files-found: error
           retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
-      - name: Build and verify Windows preview
-        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
-        shell: pwsh
-        run: |
-          npm run tauri -- build --ci --no-bundle --config scripts/preview.conf.json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node scripts/native-smoke.cjs src-tauri/target/release/easylingo.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v4
-        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
-        with:
-          name: Windows-preview
-          path: src-tauri/target/release/easylingo.exe
-          if-no-files-found: error
-          retention-days: 30
   verify-windows:
     needs: build
     if: ${{ !cancelled() && (needs.build.result == 'success' || inputs.installer_run_id != '') }}
     runs-on: windows-2022
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -135,6 +120,24 @@ jobs:
             native-smoke.log
             artifacts/native-about.png
           retention-days: 7
+      - uses: dtolnay/rust-toolchain@stable
+        if: startsWith(github.ref, 'refs/tags/') || inputs.installer_run_id != ''
+      - name: Build and verify Windows preview
+        if: startsWith(github.ref, 'refs/tags/') || inputs.installer_run_id != ''
+        id: preview
+        shell: pwsh
+        run: |
+          npm run tauri -- build --ci --no-bundle --config scripts/preview.conf.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/native-smoke.cjs src-tauri/target/release/easylingo.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: steps.preview.outcome == 'success'
+        with:
+          name: Windows-preview
+          path: src-tauri/target/release/easylingo.exe
+          if-no-files-found: error
+          retention-days: 30
   release:
     needs: [build, verify-windows]
     if: startsWith(github.ref, 'refs/tags/')
