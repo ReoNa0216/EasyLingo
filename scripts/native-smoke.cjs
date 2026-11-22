@@ -77,9 +77,12 @@ const assert = require('node:assert/strict');
       assert.equal(path.resolve(path.dirname(database[0].file)).toLowerCase(), isolatedDb.toLowerCase());
     }
     console.log('Native startup and SQLite ready:', database[0].file);
+    assert.equal(await page.title(), 'EasyLingo · 多语学习助手');
     await page.getByRole('button', { name: '帮助与关于' }).click();
     await page.screenshot({ path: 'artifacts/native-about.png' });
-    assert.match(await page.locator('#about-modal').innerText(), /开发者：陈挚/);
+    const about = await page.locator('#about-modal').innerText();
+    assert.ok(about.includes('开发者：陈挚（清华大学生命科学学院）'));
+    assert.ok(about.includes('语言顾问：清华大学语言教学中心 王雯鹤 老师'));
     await page.locator('#about-modal button').click();
     await page.evaluate(() => { window.smokeAlerts = []; window.alert = message => window.smokeAlerts.push(message); app.alertDialog = async message => window.smokeAlerts.push(message); app.confirmDialog = async () => true; });
     const port = server.address().port;

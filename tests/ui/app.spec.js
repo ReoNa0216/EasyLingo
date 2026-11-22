@@ -16,10 +16,12 @@ test('offline UI, safe content, editing, review, statistics and custom modules',
   await page.addInitScript(() => { window.__TAURI__ = { core: { invoke: (...args) => window.nativeInvoke(...args) } }; });
   await page.goto('http://127.0.0.1:1427');
   await page.waitForFunction(() => app.isReady);
+  await expect(page).toHaveTitle('EasyLingo · 多语学习助手');
+  await expect(page.locator('#app-sidebar')).toContainText('多语学习助手');
   await expect(page.locator('#due-count')).toHaveText('0/20');
   await page.getByRole('button', { name: '帮助与关于' }).click();
-  await expect(page.locator('#about-modal')).toContainText('开发者：陈挚');
-  await expect(page.locator('#about-modal')).toContainText('开发单位：清华大学语言教学中心');
+  await expect(page.locator('#about-modal')).toContainText('开发者：陈挚（清华大学生命科学学院）');
+  await expect(page.locator('#about-modal')).toContainText('语言顾问：清华大学语言教学中心 王雯鹤 老师');
   await page.screenshot({ path: 'artifacts/about.png' });
   await page.locator('#about-modal button').click();
 

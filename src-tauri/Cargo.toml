@@ -1,8 +1,8 @@
 [package]
 name = "easylingo"
-version = "2.1.2"
+version = "2.1.3"
 description = "A desktop language learning app powered by AI and SRS"
-authors = ["陈挚"]
+authors = ["陈挚（清华大学生命科学学院）"]
 license = "MIT"
 edition = "2021"
 rust-version = "1.94"

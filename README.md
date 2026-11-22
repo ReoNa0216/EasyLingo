@@ -1,20 +1,20 @@
-# EasyLingo
+# EasyLingo · 多语学习助手
 
-EasyLingo 是一款桌面语言学习工具，支持从材料中提取词条、间隔复习、生成测试和查看学习记录。内置德语、日语、英语模块，也可添加其他语言。
+从学习材料中整理词条和例句，通过间隔复习和小测巩固。软件内置德语、日语、英语模块，也可添加其他语言。
 
-**开发者：陈挚**
+**开发者：陈挚（清华大学生命科学学院）**
 
-**开发单位：清华大学语言教学中心**
+**语言顾问：清华大学语言教学中心 王雯鹤 老师**
 
 ## 下载
 
-当前版本：**2.1.2**。全部文件见 [GitHub Releases](https://github.com/ReoNa0216/EasyLingo/releases/tag/v2.1.2)。
+当前版本 **2.1.3**。全部文件见 [最新发布](https://github.com/ReoNa0216/EasyLingo/releases/latest)。
 
 | 平台 | 下载 | 使用方式 |
 |---|---|---|
-| Windows 10/11 x64 | [安装包](https://github.com/ReoNa0216/EasyLingo/releases/download/v2.1.2/EasyLingo_2.1.2_x64-setup.exe) | 双击安装，缺少 WebView2 时安装器会引导下载 |
-| macOS Apple Silicon | [DMG](https://github.com/ReoNa0216/EasyLingo/releases/download/v2.1.2/EasyLingo_2.1.2_aarch64.dmg) | 打开后将应用拖入“应用程序” |
-| Windows 免安装试用 | [ZIP](https://github.com/ReoNa0216/EasyLingo/releases/download/v2.1.2/EasyLingo_2.1.2_Windows-preview.zip) | 解压后双击 `EasyLingo-2.1.2.exe` |
+| Windows 10/11 x64 | [安装包](https://github.com/ReoNa0216/EasyLingo/releases/download/v2.1.3/EasyLingo_2.1.3_x64-setup.exe) | 双击安装，缺少 WebView2 时安装器会引导下载 |
+| macOS Apple Silicon | [DMG](https://github.com/ReoNa0216/EasyLingo/releases/download/v2.1.3/EasyLingo_2.1.3_aarch64.dmg) | 打开后将应用拖入“应用程序” |
+| Windows 免安装试用 | [ZIP](https://github.com/ReoNa0216/EasyLingo/releases/download/v2.1.3/EasyLingo_2.1.3_Windows-preview.zip) | 解压后双击 `EasyLingo-2.1.3.exe` |
 
 Windows 版本需要 Edge WebView2 Runtime。macOS 安装包适用于 Apple Silicon，未做 Apple 公证，首次打开可能需要在系统设置中确认来源。免安装试用版与正式版分别保存数据，可用 JSON 备份迁移词条和学习记录。
 
@@ -31,9 +31,9 @@ Windows 版本需要 Edge WebView2 Runtime。macOS 安装包适用于 Apple Sili
 
 以下截图使用演示数据。
 
-![学习概览](docs/images/overview-2.1.2.png)
+![学习概览](docs/images/overview-2.1.3.png)
 
-![日语词条：名词（サ变）与读音标注](docs/images/japanese-2.1.2.png)
+![日语词条：名词（サ变）与读音标注](docs/images/japanese-2.1.3.png)
 
 ## 开始使用
 

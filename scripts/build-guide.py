@@ -65,7 +65,7 @@ for block in (root/'docs/api-configuration.md').read_text(encoding='utf-8').spli
     elif block.startswith('```'):
         story.append(Preformatted('\n'.join(block.splitlines()[1:-1]), code))
     else:
-        is_small = block.startswith(('适用版本', '开发者', '截图', '官方参考', '项目与下载'))
+        is_small = block.startswith(('适用版本', '开发者', '语言顾问', '截图', '官方参考', '项目与下载'))
         story.append(Paragraph(markup(block.replace('\n',' ')), small if is_small else body))
 
 def page_frame(c, doc):
@@ -76,6 +76,6 @@ def page_frame(c, doc):
     c.drawRightString(A4[0]-44,27,str(doc.page))
 
 doc = SimpleDocTemplate(str(root/'API_configuration.pdf'), pagesize=A4, rightMargin=44,leftMargin=44,topMargin=36,bottomMargin=55,
-    title='EasyLingo 2.1.x API 配置指南', author='陈挚 / 清华大学语言教学中心')
+    title='EasyLingo 2.1.x API 配置指南', author='陈挚（清华大学生命科学学院）')
 doc.build(story,onFirstPage=page_frame,onLaterPages=page_frame)
 print('Created',root/'API_configuration.pdf')
